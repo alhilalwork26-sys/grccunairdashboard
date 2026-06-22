@@ -19,6 +19,20 @@ export interface UserProfile {
   created_at: string;
 }
 
+export interface Task {
+  id: string;
+  title: string;
+  description?: string | null;
+  status: "pending" | "in_progress" | "review" | "done";
+  priority: "low" | "medium" | "high" | "urgent";
+  assigned_to?: string | null;
+  created_by?: string | null;
+  due_date?: string | null;
+  tags?: string[] | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export const ROLE_LABELS: Record<Role, string> = {
   super_admin: "Super Admin",
   manager: "Manager",

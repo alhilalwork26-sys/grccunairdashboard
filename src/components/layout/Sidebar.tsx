@@ -16,7 +16,7 @@ import type { UserProfile } from "@/types";
 const NAV = [
   { label: "Dashboard",         href: "/dashboard",            icon: LayoutDashboard, phase: null },
   { label: "Daily Progress",    href: "/dashboard/progress",   icon: TrendingUp,      phase: 1 },
-  { label: "Task Management",   href: "/dashboard/tasks",      icon: CheckSquare,     phase: 1 },
+  { label: "Task Management",   href: "/dashboard/task-management", icon: CheckSquare, phase: 1 },
   { label: "Announcement",      href: "/dashboard/announce",   icon: Bell,            phase: 1 },
   { label: "Kalender",          href: "/dashboard/calendar",   icon: CalendarDays,    phase: 1 },
   { label: "Pengaturan",        href: "/dashboard/settings",   icon: Settings,        phase: 1 },
