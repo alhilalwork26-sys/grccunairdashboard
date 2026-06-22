@@ -7,6 +7,7 @@ import {
   LayoutDashboard, CheckSquare, TrendingUp,
   Bell, CalendarDays, Settings, LogOut,
   ChevronLeft, ChevronRight, FolderOpen, Wallet,
+  GraduationCap, ClipboardCheck,
 } from "lucide-react";
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
@@ -21,6 +22,8 @@ const NAV = [
   { label: "Kalender",          href: "/dashboard/calendar",   icon: CalendarDays,    phase: 1 },
   { label: "Dokumen",           href: "/dashboard/docs",       icon: FolderOpen,      phase: 1 },
   { label: "Finance",           href: "/dashboard/finance",    icon: Wallet,          phase: 2 },
+  { label: "Training",          href: "/dashboard/training",   icon: GraduationCap,   phase: 2 },
+  { label: "Approval Center",   href: "/dashboard/approvals",  icon: ClipboardCheck,  phase: 2 },
   { label: "Pengaturan",        href: "/dashboard/settings",   icon: Settings,        phase: 1 },
 ];
 

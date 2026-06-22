@@ -160,7 +160,7 @@ export default function TaskBoard({ initialTasks, profiles, currentUser }: Props
     return { text: date.toLocaleDateString("id-ID", { day: "numeric", month: "short" }), overdue: isOverdue };
   }
 
-  const canManage = ["super_admin", "manager", "program_admin"].includes(currentUser.role);
+  const canManage = ["super_admin", "manager", "program_admin", "kep_finance", "kep_trainer"].includes(currentUser.role);
 
   useEffect(() => {
     function handler() { setOpenMenu(null); }

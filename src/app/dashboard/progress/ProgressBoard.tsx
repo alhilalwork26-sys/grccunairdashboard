@@ -6,8 +6,8 @@ import { createClient } from "@/lib/supabase/client";
 import type { UserProfile, DailyProgress } from "@/types";
 import {
   ChevronLeft, ChevronRight, Plus, X, Check,
-  Smile, AlertCircle, Lightbulb, CalendarDays,
-  Users, TrendingUp, Edit2, Trash2,
+  AlertCircle, Lightbulb, CalendarDays,
+  Users, TrendingUp, Edit2, Trash2, BarChart2,
 } from "lucide-react";
 
 const MOOD_CFG = [
@@ -40,6 +40,29 @@ function addDays(dateStr: string, n: number) {
 
 const EMPTY_FORM = { activities: "", achievements: "", obstacles: "", plan_tomorrow: "", mood: 4 };
 
+function getWeekRange(today: string) {
+  const d = new Date(today + "T00:00:00");
+  const day = d.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  const mon = new Date(d);
+  mon.setDate(d.getDate() + diff);
+  const sun = new Date(mon);
+  sun.setDate(mon.getDate() + 6);
+  const toStr = (dt: Date) => dt.toISOString().split("T")[0];
+  return { start: toStr(mon), end: toStr(sun) };
+}
+
+interface WeekSummary {
+  userId: string;
+  name: string;
+  role: string;
+  entries: DailyProgress[];
+  avgMood: number;
+  totalEntries: number;
+  obstacles: string[];
+  hasObstacles: boolean;
+}
+
 interface Props {
   currentUser: UserProfile;
   initialEntries: DailyProgress[];
@@ -50,8 +73,11 @@ interface Props {
 export default function ProgressBoard({ currentUser, initialEntries, profiles, today }: Props) {
   const supabase = createClient();
 
+  const [tab, setTab] = useState<"daily" | "rekap">("daily");
   const [date, setDate] = useState(today);
   const [entries, setEntries] = useState<DailyProgress[]>(initialEntries);
+  const [weekData, setWeekData] = useState<WeekSummary[]>([]);
+  const [weekLoading, setWeekLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<DailyProgress | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -59,6 +85,7 @@ export default function ProgressBoard({ currentUser, initialEntries, profiles, t
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
   const [loading, setLoading] = useState(false);
+  const [expandedUser, setExpandedUser] = useState<string | null>(null);
 
   const showToast = (msg: string, ok = true) => {
     setToast({ msg, ok });
@@ -145,12 +172,54 @@ export default function ProgressBoard({ currentUser, initialEntries, profiles, t
     setDeleteId(null);
   };
 
+  const fetchWeekData = useCallback(async () => {
+    setWeekLoading(true);
+    const { start, end } = getWeekRange(today);
+    const { data } = await supabase
+      .from("daily_progress")
+      .select("*, profiles(full_name, role)")
+      .gte("date", start)
+      .lte("date", end)
+      .order("date", { ascending: true });
+    if (data) {
+      const byUser: Record<string, DailyProgress[]> = {};
+      data.forEach(e => {
+        if (!byUser[e.user_id]) byUser[e.user_id] = [];
+        byUser[e.user_id].push(e);
+      });
+      const summaries: WeekSummary[] = Object.entries(byUser).map(([uid, ents]) => {
+        const p = profiles.find(p => p.id === uid);
+        const obs = ents.filter(e => e.obstacles?.trim()).map(e => e.obstacles!.trim());
+        return {
+          userId: uid,
+          name: p?.full_name || (ents[0]?.profiles as any)?.full_name || "—",
+          role: p?.role || (ents[0]?.profiles as any)?.role || "",
+          entries: ents,
+          avgMood: Math.round(ents.reduce((s, e) => s + (e.mood ?? 3), 0) / ents.length),
+          totalEntries: ents.length,
+          obstacles: obs,
+          hasObstacles: obs.length > 0,
+        };
+      });
+      summaries.sort((a, b) => b.totalEntries - a.totalEntries);
+      setWeekData(summaries);
+    }
+    setWeekLoading(false);
+  }, [supabase, today, profiles]);
+
+  const handleTabSwitch = (t: "daily" | "rekap") => {
+    setTab(t);
+    if (t === "rekap" && weekData.length === 0) fetchWeekData();
+  };
+
   const myEntry = entries.find(e => e.user_id === currentUser.id);
   const avgMood = entries.length
     ? Math.round(entries.reduce((s, e) => s + (e.mood ?? 3), 0) / entries.length)
     : null;
   const isToday = date === today;
-  const canManage = ["super_admin", "manager", "program_admin"].includes(currentUser.role);
+  const canViewAll = ["super_admin", "manager"].includes(currentUser.role);
+  const canManage  = ["super_admin", "manager", "program_admin"].includes(currentUser.role);
+  const { start: weekStart, end: weekEnd } = getWeekRange(today);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: "#f9fafb" }}>
@@ -158,29 +227,182 @@ export default function ProgressBoard({ currentUser, initialEntries, profiles, t
       <div style={{
         background: "#fff", borderBottom: "1px solid #f3f4f6",
         padding: "0 28px", display: "flex", alignItems: "center",
-        justifyContent: "space-between", height: 64, flexShrink: 0,
+        justifyContent: "space-between", height: 64, flexShrink: 0, gap: 16,
       }}>
         <div>
           <h1 style={{ fontSize: 18, fontWeight: 700, color: "#111827", letterSpacing: "-0.02em" }}>Daily Progress</h1>
           <p style={{ fontSize: 12, color: "#9ca3af", marginTop: 1 }}>Catat aktivitas dan pencapaian harianmu</p>
         </div>
-        <motion.button
-          whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
-          onClick={openCreate}
-          style={{
-            display: "flex", alignItems: "center", gap: 7,
-            background: "linear-gradient(135deg, #10b981, #059669)",
-            color: "#fff", border: "none", borderRadius: 10,
-            padding: "9px 16px", cursor: "pointer", fontSize: 13, fontWeight: 600,
-            boxShadow: "0 4px 14px rgba(16,185,129,0.35)",
-          }}
-        >
-          <Plus size={15} />
-          {myEntry && isToday ? "Edit Progress Hari Ini" : "Tambah Progress"}
-        </motion.button>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginLeft: "auto" }}>
+          {canViewAll && (
+            <div style={{ display: "flex", background: "#f3f4f6", borderRadius: 10, padding: 3, gap: 2 }}>
+              {(["daily", "rekap"] as const).map(t => (
+                <motion.button key={t} whileTap={{ scale: 0.97 }}
+                  onClick={() => handleTabSwitch(t)}
+                  style={{
+                    padding: "7px 14px", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 12, fontWeight: 600,
+                    display: "flex", alignItems: "center", gap: 5,
+                    background: tab === t ? "#fff" : "transparent",
+                    color: tab === t ? "#111827" : "#6b7280",
+                    boxShadow: tab === t ? "0 1px 4px rgba(0,0,0,0.08)" : "none",
+                    transition: "all 0.15s ease",
+                  }}>
+                  {t === "daily" ? <><CalendarDays size={13} /> Harian</> : <><BarChart2 size={13} /> Rekap Mingguan</>}
+                </motion.button>
+              ))}
+            </div>
+          )}
+          {tab === "daily" && (
+            <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }} onClick={openCreate}
+              style={{
+                display: "flex", alignItems: "center", gap: 7,
+                background: "linear-gradient(135deg, #10b981, #059669)",
+                color: "#fff", border: "none", borderRadius: 10,
+                padding: "9px 16px", cursor: "pointer", fontSize: 13, fontWeight: 600,
+                boxShadow: "0 4px 14px rgba(16,185,129,0.35)",
+              }}>
+              <Plus size={15} />
+              {myEntry && isToday ? "Edit Progress Hari Ini" : "Tambah Progress"}
+            </motion.button>
+          )}
+          {tab === "rekap" && (
+            <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }} onClick={fetchWeekData}
+              style={{
+                display: "flex", alignItems: "center", gap: 7,
+                background: "#fff", color: "#374151", border: "1.5px solid #e5e7eb",
+                borderRadius: 10, padding: "9px 16px", cursor: "pointer", fontSize: 13, fontWeight: 600,
+              }}>
+              <TrendingUp size={15} /> Refresh
+            </motion.button>
+          )}
+        </div>
       </div>
 
       <div style={{ flex: 1, overflow: "auto", padding: "24px 28px", display: "flex", flexDirection: "column", gap: 20 }}>
+
+        {/* Rekap Mingguan Tab */}
+        {tab === "rekap" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {/* Week range header */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <BarChart2 size={16} color="#6366f1" />
+                <span style={{ fontSize: 14, fontWeight: 700, color: "#111827" }}>Rekap Mingguan Tim</span>
+              </div>
+              <span style={{ fontSize: 12, color: "#9ca3af", background: "#f3f4f6", padding: "4px 10px", borderRadius: 20 }}>
+                {new Date(weekStart + "T00:00:00").toLocaleDateString("id-ID", { day: "numeric", month: "short" })} –{" "}
+                {new Date(weekEnd + "T00:00:00").toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}
+              </span>
+            </div>
+
+            {weekLoading ? (
+              <div style={{ display: "flex", justifyContent: "center", padding: 60 }}>
+                <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                  style={{ width: 28, height: 28, border: "3px solid #e5e7eb", borderTopColor: "#6366f1", borderRadius: "50%" }} />
+              </div>
+            ) : weekData.length === 0 ? (
+              <div style={{ background: "#fff", border: "2px dashed #e5e7eb", borderRadius: 16, padding: "60px 40px", textAlign: "center" }}>
+                <div style={{ fontSize: 48, marginBottom: 12 }}>📊</div>
+                <p style={{ fontSize: 16, fontWeight: 600, color: "#374151" }}>Belum ada progress minggu ini</p>
+                <p style={{ fontSize: 13, color: "#9ca3af", marginTop: 4 }}>Anggota tim belum mencatat progress untuk pekan ini</p>
+              </div>
+            ) : (
+              <>
+                {/* Summary stats */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+                  {[
+                    { label: "Total Anggota Lapor", val: weekData.length, color: "#6366f1", bg: "#eef2ff" },
+                    { label: "Total Entri Minggu Ini", val: weekData.reduce((s, d) => s + d.totalEntries, 0), color: "#10b981", bg: "#f0fdf4" },
+                    { label: "Anggota Ada Hambatan", val: weekData.filter(d => d.hasObstacles).length, color: "#f59e0b", bg: "#fffbeb" },
+                  ].map((s, i) => (
+                    <motion.div key={s.label} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.06 }}
+                      style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 12, padding: "14px 18px" }}>
+                      <p style={{ fontSize: 11, color: "#9ca3af", fontWeight: 500 }}>{s.label}</p>
+                      <p style={{ fontSize: 26, fontWeight: 800, color: s.color, marginTop: 4 }}>{s.val}</p>
+                    </motion.div>
+                  ))}
+                </div>
+
+                {/* Per-user cards */}
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {weekData.map((u, i) => {
+                    const mc = MOOD_CFG[u.avgMood - 1];
+                    const isOpen = expandedUser === u.userId;
+                    const pct = Math.min(100, Math.round((u.totalEntries / 5) * 100));
+                    return (
+                      <motion.div key={u.userId} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
+                        style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 14, overflow: "hidden" }}>
+                        <div style={{ padding: "14px 18px", display: "flex", alignItems: "center", gap: 14, cursor: "pointer" }}
+                          onClick={() => setExpandedUser(isOpen ? null : u.userId)}>
+                          <div style={{
+                            width: 38, height: 38, borderRadius: "50%", flexShrink: 0,
+                            background: "linear-gradient(135deg, #6366f1, #4f46e5)",
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            fontSize: 14, fontWeight: 700, color: "#fff",
+                          }}>{u.name.charAt(0).toUpperCase()}</div>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                              <p style={{ fontSize: 13, fontWeight: 700, color: "#111827" }}>{u.name}</p>
+                              <span style={{ fontSize: 10, color: "#9ca3af" }}>{ROLE_LABELS[u.role] ?? u.role}</span>
+                              {u.hasObstacles && (
+                                <span style={{ fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 20, background: "#fffbeb", color: "#d97706" }}>
+                                  Ada hambatan
+                                </span>
+                              )}
+                            </div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                              <div style={{ flex: 1, height: 6, background: "#f3f4f6", borderRadius: 99, overflow: "hidden" }}>
+                                <motion.div initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ delay: i * 0.05 + 0.2, duration: 0.6, ease: "easeOut" }}
+                                  style={{ height: "100%", background: pct >= 80 ? "#10b981" : pct >= 40 ? "#3b82f6" : "#f59e0b", borderRadius: 99 }} />
+                              </div>
+                              <span style={{ fontSize: 11, color: "#6b7280", whiteSpace: "nowrap" }}>{u.totalEntries}/5 hari</span>
+                            </div>
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+                            {mc && <span title={mc.label} style={{ fontSize: 20 }}>{mc.emoji}</span>}
+                            <ChevronRight size={14} color="#9ca3af" style={{ transform: isOpen ? "rotate(90deg)" : "none", transition: "transform 0.2s" }} />
+                          </div>
+                        </div>
+                        <AnimatePresence>
+                          {isOpen && (
+                            <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }}
+                              transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
+                              style={{ overflow: "hidden" }}>
+                              <div style={{ padding: "0 18px 16px", borderTop: "1px solid #f3f4f6", paddingTop: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+                                {u.entries.map(e => {
+                                  const dm = MOOD_CFG[(e.mood ?? 3) - 1];
+                                  return (
+                                    <div key={e.id} style={{ padding: "10px 12px", background: "#f9fafb", borderRadius: 10 }}>
+                                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                                        <span style={{ fontSize: 11, fontWeight: 700, color: "#6366f1" }}>
+                                          {new Date(e.date + "T00:00:00").toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "short" })}
+                                        </span>
+                                        {dm && <span style={{ fontSize: 13 }}>{dm.emoji}</span>}
+                                      </div>
+                                      <p style={{ fontSize: 12, color: "#374151", lineHeight: 1.6 }}>{e.activities}</p>
+                                      {e.obstacles && (
+                                        <p style={{ fontSize: 11, color: "#f59e0b", marginTop: 4, display: "flex", alignItems: "flex-start", gap: 4 }}>
+                                          <AlertCircle size={11} style={{ flexShrink: 0, marginTop: 1 }} /> {e.obstacles}
+                                        </p>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </motion.div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Daily Tab */}
+        {tab === "daily" && <>
         {/* Date navigator + stats */}
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
           {/* Date nav */}
@@ -250,7 +472,7 @@ export default function ProgressBoard({ currentUser, initialEntries, profiles, t
               style={{ width: 28, height: 28, border: "3px solid #e5e7eb", borderTopColor: "#10b981", borderRadius: "50%" }}
             />
           </div>
-        ) : entries.length === 0 ? (
+        ) : (canViewAll ? entries : entries.filter(e => e.user_id === currentUser.id)).length === 0 ? (
           <motion.div
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
@@ -282,7 +504,7 @@ export default function ProgressBoard({ currentUser, initialEntries, profiles, t
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             <AnimatePresence mode="popLayout">
-              {entries.map((entry, i) => {
+              {(canViewAll ? entries : entries.filter(e => e.user_id === currentUser.id)).map((entry, i) => {
                 const moodCfg = MOOD_CFG[(entry.mood ?? 3) - 1];
                 const isMe = entry.user_id === currentUser.id;
                 const name = (entry.profiles as any)?.full_name || "—";
@@ -393,6 +615,7 @@ export default function ProgressBoard({ currentUser, initialEntries, profiles, t
             </AnimatePresence>
           </div>
         )}
+        </>}
       </div>
 
       {/* Modal */}
