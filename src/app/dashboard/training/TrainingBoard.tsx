@@ -14,8 +14,8 @@ interface TrainingSession {
   title: string;
   description?: string | null;
   date: string;
-  time_start?: string | null;
-  time_end?: string | null;
+  start_time?: string | null;
+  end_time?: string | null;
   location?: string | null;
   max_participants?: number | null;
   status: "upcoming" | "ongoing" | "done" | "cancelled";
@@ -37,7 +37,7 @@ function fmtDate(s: string) {
   return new Date(s + "T00:00:00").toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
 }
 
-const EMPTY = { title: "", description: "", date: "", time_start: "", time_end: "", location: "", max_participants: "", status: "upcoming" as TrainingSession["status"], trainer_id: "", materials: "" };
+const EMPTY = { title: "", description: "", date: "", start_time: "", end_time: "", location: "", max_participants: "", status: "upcoming" as TrainingSession["status"], trainer_id: "", materials: "" };
 
 interface Props {
   currentUser: UserProfile;
@@ -65,7 +65,7 @@ export default function TrainingBoard({ currentUser, initialSessions, profiles }
   const openCreate = () => { setEditing(null); setForm(EMPTY); setShowModal(true); };
   const openEdit = (s: TrainingSession) => {
     setEditing(s);
-    setForm({ title: s.title, description: s.description ?? "", date: s.date, time_start: s.time_start ?? "", time_end: s.time_end ?? "", location: s.location ?? "", max_participants: s.max_participants?.toString() ?? "", status: s.status, trainer_id: s.trainer_id ?? "", materials: s.materials ?? "" });
+    setForm({ title: s.title, description: s.description ?? "", date: s.date, start_time: s.start_time ?? "", end_time: s.end_time ?? "", location: s.location ?? "", max_participants: s.max_participants?.toString() ?? "", status: s.status, trainer_id: s.trainer_id ?? "", materials: s.materials ?? "" });
     setShowModal(true);
   };
 
@@ -74,7 +74,7 @@ export default function TrainingBoard({ currentUser, initialSessions, profiles }
     setSubmitting(true);
     const payload = {
       title: form.title.trim(), description: form.description.trim() || null,
-      date: form.date, time_start: form.time_start || null, time_end: form.time_end || null,
+      date: form.date, start_time: form.start_time || null, end_time: form.end_time || null,
       location: form.location.trim() || null,
       max_participants: form.max_participants ? Number(form.max_participants) : null,
       status: form.status, trainer_id: form.trainer_id || currentUser.id,
@@ -193,10 +193,10 @@ export default function TrainingBoard({ currentUser, initialSessions, profiles }
                       </div>
                       <h3 style={{ fontSize: 15, fontWeight: 700, color: "#111827" }}>{s.title}</h3>
                       <div style={{ display: "flex", gap: 14, marginTop: 6, flexWrap: "wrap" }}>
-                        {s.time_start && (
+                        {s.start_time && (
                           <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                             <Clock size={11} color="#9ca3af" />
-                            <span style={{ fontSize: 11, color: "#6b7280" }}>{s.time_start.slice(0, 5)}{s.time_end ? ` – ${s.time_end.slice(0, 5)}` : ""}</span>
+                            <span style={{ fontSize: 11, color: "#6b7280" }}>{s.start_time.slice(0, 5)}{s.end_time ? ` – ${s.end_time.slice(0, 5)}` : ""}</span>
                           </div>
                         )}
                         {s.location && (
@@ -309,7 +309,7 @@ export default function TrainingBoard({ currentUser, initialSessions, profiles }
                 </div>
                 {/* Time */}
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                  {[{ label: "Waktu Mulai", key: "time_start" }, { label: "Waktu Selesai", key: "time_end" }].map(f => (
+                  {[{ label: "Waktu Mulai", key: "start_time" }, { label: "Waktu Selesai", key: "end_time" }].map(f => (
                     <div key={f.key}>
                       <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}>{f.label}</label>
                       <input type="time" value={(form as any)[f.key]} onChange={e => setForm(prev => ({ ...prev, [f.key]: e.target.value }))}
