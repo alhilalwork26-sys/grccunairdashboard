@@ -33,6 +33,9 @@ export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
   const isLoginPage = pathname === "/login";
   const isDashboard = pathname.startsWith("/dashboard");
+  const isDemo = pathname.startsWith("/demo");
+
+  if (isDemo) return supabaseResponse;
 
   if (!isAuth && isDashboard) {
     return NextResponse.redirect(new URL("/login", request.url));
