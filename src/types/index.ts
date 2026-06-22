@@ -33,6 +33,20 @@ export interface Task {
   updated_at: string;
 }
 
+export interface DailyProgress {
+  id: string;
+  user_id: string;
+  date: string;
+  activities: string;
+  achievements?: string | null;
+  obstacles?: string | null;
+  plan_tomorrow?: string | null;
+  mood?: number | null;
+  created_at: string;
+  updated_at: string;
+  profiles?: { full_name: string; role: string } | null;
+}
+
 export const ROLE_LABELS: Record<Role, string> = {
   super_admin: "Super Admin",
   manager: "Manager",
