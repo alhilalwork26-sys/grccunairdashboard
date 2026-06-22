@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard, CheckSquare, TrendingUp,
   Bell, CalendarDays, Settings, LogOut,
-  ChevronLeft, ChevronRight,
+  ChevronLeft, ChevronRight, FolderOpen,
 } from "lucide-react";
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
@@ -19,6 +19,7 @@ const NAV = [
   { label: "Task Management",   href: "/dashboard/task-management", icon: CheckSquare, phase: 1 },
   { label: "Announcement",      href: "/dashboard/announce",   icon: Bell,            phase: 1 },
   { label: "Kalender",          href: "/dashboard/calendar",   icon: CalendarDays,    phase: 1 },
+  { label: "Dokumen",           href: "/dashboard/docs",       icon: FolderOpen,      phase: 1 },
   { label: "Pengaturan",        href: "/dashboard/settings",   icon: Settings,        phase: 1 },
 ];
 

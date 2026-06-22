@@ -47,6 +47,37 @@ export interface DailyProgress {
   profiles?: { full_name: string; role: string } | null;
 }
 
+export interface CalendarEvent {
+  id: string;
+  title: string;
+  description?: string | null;
+  start_date: string;
+  end_date?: string | null;
+  start_time?: string | null;
+  end_time?: string | null;
+  type: "meeting" | "deadline" | "event" | "holiday" | "training";
+  color?: string | null;
+  created_by?: string | null;
+  created_at: string;
+  updated_at: string;
+  profiles?: { full_name: string } | null;
+}
+
+export interface Document {
+  id: string;
+  title: string;
+  description?: string | null;
+  file_path: string;
+  file_name: string;
+  file_size?: number | null;
+  file_type?: string | null;
+  category: string;
+  uploaded_by?: string | null;
+  created_at: string;
+  updated_at: string;
+  profiles?: { full_name: string; role: string } | null;
+}
+
 export const ROLE_LABELS: Record<Role, string> = {
   super_admin: "Super Admin",
   manager: "Manager",
