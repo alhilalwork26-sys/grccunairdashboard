@@ -402,7 +402,7 @@ export default function ProgressBoard({ currentUser, initialEntries, profiles, t
         )}
 
         {/* Daily Tab */}
-        {tab === "daily" && <>
+        {tab === "daily" && (<>
         {/* Date navigator + stats */}
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
           {/* Date nav */}
@@ -615,7 +615,7 @@ export default function ProgressBoard({ currentUser, initialEntries, profiles, t
             </AnimatePresence>
           </div>
         )}
-        </>}
+        </>)}
       </div>
 
       {/* Modal */}
