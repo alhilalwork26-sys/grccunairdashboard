@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard, CheckSquare, TrendingUp,
   Bell, CalendarDays, Settings, LogOut,
-  ChevronLeft, ChevronRight, FolderOpen,
+  ChevronLeft, ChevronRight, FolderOpen, Wallet,
 } from "lucide-react";
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
@@ -20,6 +20,7 @@ const NAV = [
   { label: "Announcement",      href: "/dashboard/announce",   icon: Bell,            phase: 1 },
   { label: "Kalender",          href: "/dashboard/calendar",   icon: CalendarDays,    phase: 1 },
   { label: "Dokumen",           href: "/dashboard/docs",       icon: FolderOpen,      phase: 1 },
+  { label: "Finance",           href: "/dashboard/finance",    icon: Wallet,          phase: 2 },
   { label: "Pengaturan",        href: "/dashboard/settings",   icon: Settings,        phase: 1 },
 ];
 

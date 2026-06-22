@@ -78,6 +78,38 @@ export interface Document {
   profiles?: { full_name: string; role: string } | null;
 }
 
+export interface FinanceTransaction {
+  id: string;
+  title: string;
+  amount: number;
+  type: "income" | "expense";
+  category: string;
+  date: string;
+  description?: string | null;
+  status: "pending" | "confirmed" | "cancelled";
+  created_by?: string | null;
+  created_at: string;
+  updated_at: string;
+  profiles?: { full_name: string } | null;
+}
+
+export interface Reimbursement {
+  id: string;
+  title: string;
+  amount: number;
+  description?: string | null;
+  receipt_path?: string | null;
+  status: "pending" | "approved" | "rejected";
+  requested_by?: string | null;
+  reviewed_by?: string | null;
+  reviewed_at?: string | null;
+  review_note?: string | null;
+  created_at: string;
+  updated_at: string;
+  requester?: { full_name: string; role: string } | null;
+  reviewer?: { full_name: string } | null;
+}
+
 export const ROLE_LABELS: Record<Role, string> = {
   super_admin: "Super Admin",
   manager: "Manager",
