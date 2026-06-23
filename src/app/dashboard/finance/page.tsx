@@ -23,16 +23,20 @@ export default async function FinancePage() {
   const now = new Date();
   const startOfMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
 
+  const canSeeAll = ["super_admin", "manager", "kep_finance"].includes(currentUser.role);
+
+  const reimbQuery = supabase
+    .from("reimbursements")
+    .select("*, requester:profiles!reimbursements_requested_by_fkey(full_name, role), reviewer:profiles!reimbursements_reviewed_by_fkey(full_name)")
+    .order("created_at", { ascending: false });
+
   const [{ data: transactions }, { data: reimbursements }] = await Promise.all([
     supabase
       .from("finance_transactions")
       .select("*, profiles(full_name)")
       .order("date", { ascending: false })
       .limit(100),
-    supabase
-      .from("reimbursements")
-      .select("*, requester:profiles!reimbursements_requested_by_fkey(full_name, role), reviewer:profiles!reimbursements_reviewed_by_fkey(full_name)")
-      .order("created_at", { ascending: false }),
+    canSeeAll ? reimbQuery : reimbQuery.eq("requested_by", user!.id),
   ]);
 
   return (

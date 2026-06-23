@@ -37,7 +37,8 @@ export interface DailyProgress {
   id: string;
   user_id: string;
   date: string;
-  activities: string;
+  morning_plan?: string | null;
+  activities?: string | null;
   achievements?: string | null;
   obstacles?: string | null;
   plan_tomorrow?: string | null;
@@ -99,7 +100,12 @@ export interface Reimbursement {
   amount: number;
   description?: string | null;
   receipt_path?: string | null;
+  category?: string | null;
+  expense_date?: string | null;
   status: "pending" | "approved" | "rejected";
+  payment_proof_url?: string | null;
+  paid_at?: string | null;
+  paid_by?: string | null;
   requested_by?: string | null;
   reviewed_by?: string | null;
   reviewed_at?: string | null;

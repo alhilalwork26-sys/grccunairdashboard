@@ -5,10 +5,11 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus, Search, X, Edit2, Trash2, Calendar, ChevronDown,
   CheckCircle, Clock, Circle, AlertCircle, ListTodo,
-  Flag, UserCircle, MoreHorizontal
+  Flag, UserCircle, MoreHorizontal, Check, AlertTriangle,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import Topbar from "@/components/layout/Topbar";
+import Avatar from "@/components/ui/Avatar";
 import type { Task, UserProfile } from "@/types";
 
 const STATUS_CFG = {
@@ -42,7 +43,7 @@ const EMPTY_FORM = {
 
 interface Props {
   initialTasks: Task[];
-  profiles: Pick<UserProfile, "id" | "full_name" | "role">[];
+  profiles: Pick<UserProfile, "id" | "full_name" | "role" | "avatar_url">[];
   currentUser: UserProfile;
 }
 
@@ -51,12 +52,15 @@ export default function TaskBoard({ initialTasks, profiles, currentUser }: Props
   const [tab, setTab]               = useState("all");
   const [search, setSearch]         = useState("");
   const [priorityFilter, setPriorityFilter] = useState("all");
+  const [assigneeFilter, setAssigneeFilter] = useState("all");
   const [showModal, setShowModal]   = useState(false);
   const [editing, setEditing]       = useState<Task | null>(null);
   const [deleteId, setDeleteId]     = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [toast, setToast]           = useState<{ msg: string; type: "ok" | "err" } | null>(null);
-  const [openMenu, setOpenMenu]     = useState<string | null>(null);
+  const [popup, setPopup] = useState<{
+    type: "status" | "menu"; taskId: string; top: number; left: number;
+  } | null>(null);
   const [form, setForm]             = useState(EMPTY_FORM);
   const supabase = createClient();
 
@@ -68,9 +72,10 @@ export default function TaskBoard({ initialTasks, profiles, currentUser }: Props
   const filtered = useMemo(() => tasks.filter(t => {
     if (tab !== "all" && t.status !== tab) return false;
     if (priorityFilter !== "all" && t.priority !== priorityFilter) return false;
+    if (assigneeFilter !== "all" && t.assigned_to !== assigneeFilter) return false;
     if (search && !t.title.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
-  }), [tasks, tab, priorityFilter, search]);
+  }), [tasks, tab, priorityFilter, assigneeFilter, search]);
 
   const stats = useMemo(() => ({
     total:       tasks.length,
@@ -96,7 +101,7 @@ export default function TaskBoard({ initialTasks, profiles, currentUser }: Props
       due_date:    task.due_date ?? "",
     });
     setShowModal(true);
-    setOpenMenu(null);
+    setPopup(null);
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -142,7 +147,6 @@ export default function TaskBoard({ initialTasks, profiles, currentUser }: Props
   async function quickStatus(id: string, status: Task["status"]) {
     await supabase.from("tasks").update({ status }).eq("id", id);
     setTasks(prev => prev.map(t => t.id === id ? { ...t, status } : t));
-    setOpenMenu(null);
   }
 
   function getName(id?: string | null) {
@@ -153,19 +157,26 @@ export default function TaskBoard({ initialTasks, profiles, currentUser }: Props
     return name.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2);
   }
 
-  function formatDate(d?: string | null) {
-    if (!d) return "-";
-    const date = new Date(d);
-    const isOverdue = date < new Date() && new Date().toDateString() !== date.toDateString();
-    return { text: date.toLocaleDateString("id-ID", { day: "numeric", month: "short" }), overdue: isOverdue };
+  function getDeadlineStatus(dueDate?: string | null) {
+    if (!dueDate) return null;
+    const [y, m, d] = dueDate.split("-").map(Number);
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const due = new Date(y, m - 1, d);
+    const daysLeft = Math.round((due.getTime() - today.getTime()) / 86400000);
+    const dateLabel = due.toLocaleDateString("id-ID", { day: "numeric", month: "short" });
+    if (daysLeft < 0)  return { level: "overdue" as const, daysLeft, dateLabel, urgencyLabel: `Terlambat ${Math.abs(daysLeft)} hari`, color: "#ef4444", bg: "#fef9f9", badge: "#fef2f2", border: "#fca5a5" };
+    if (daysLeft === 0) return { level: "today"  as const, daysLeft, dateLabel, urgencyLabel: "Hari ini!",                        color: "#f97316", bg: "#fffbf7", badge: "#fff7ed", border: "#fdba74" };
+    if (daysLeft === 1) return { level: "soon"   as const, daysLeft, dateLabel, urgencyLabel: "Besok",                            color: "#f59e0b", bg: "#fffdf5", badge: "#fffbeb", border: "#fde68a" };
+    if (daysLeft <= 3) return { level: "soon"   as const, daysLeft, dateLabel, urgencyLabel: `${daysLeft} hari lagi`,            color: "#f59e0b", bg: "#fffdf5", badge: "#fffbeb", border: "#fde68a" };
+    return { level: "normal" as const, daysLeft, dateLabel, urgencyLabel: dateLabel, color: "#9ca3af", bg: "transparent", badge: "transparent", border: "transparent" };
   }
 
   const canManage = ["super_admin", "manager", "program_admin", "kep_finance", "kep_trainer"].includes(currentUser.role);
 
   useEffect(() => {
-    function handler() { setOpenMenu(null); }
-    document.addEventListener("click", handler);
-    return () => document.removeEventListener("click", handler);
+    function handler() { setPopup(null); }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
   }, []);
 
   return (
@@ -200,6 +211,37 @@ export default function TaskBoard({ initialTasks, profiles, currentUser }: Props
             </motion.button>
           )}
         </motion.div>
+
+        {/* ── Deadline warning banner ── */}
+        {(() => {
+          const active = tasks.filter(t => t.status !== "done");
+          const nOver  = active.filter(t => getDeadlineStatus(t.due_date)?.level === "overdue").length;
+          const nToday = active.filter(t => getDeadlineStatus(t.due_date)?.level === "today").length;
+          const nSoon  = active.filter(t => getDeadlineStatus(t.due_date)?.level === "soon").length;
+          if (!nOver && !nToday && !nSoon) return null;
+          const urgent = nOver > 0 || nToday > 0;
+          const parts = [
+            nOver  && `${nOver} terlambat`,
+            nToday && `${nToday} deadline hari ini`,
+            nSoon  && `${nSoon} segera`,
+          ].filter(Boolean).join("  ·  ");
+          return (
+            <motion.div
+              initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }}
+              style={{
+                display: "flex", alignItems: "center", gap: 8,
+                background: urgent ? "#fef2f2" : "#fffbeb",
+                border: `1px solid ${urgent ? "#fecaca" : "#fde68a"}`,
+                borderRadius: 10, padding: "9px 14px", marginBottom: 14,
+              }}
+            >
+              <AlertTriangle size={13} color={urgent ? "#ef4444" : "#f59e0b"} style={{ flexShrink: 0 }} />
+              <span style={{ fontSize: 12, fontWeight: 600, color: urgent ? "#dc2626" : "#92400e" }}>
+                {parts}
+              </span>
+            </motion.div>
+          );
+        })()}
 
         {/* Stats */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
@@ -301,6 +343,18 @@ export default function TaskBoard({ initialTasks, profiles, currentUser }: Props
                 <option value="medium">Sedang</option>
                 <option value="low">Rendah</option>
               </select>
+              <select
+                value={assigneeFilter} onChange={e => setAssigneeFilter(e.target.value)}
+                style={{
+                  padding: "7px 12px", borderRadius: 9, border: "1px solid #e5e7eb",
+                  fontSize: 12, color: "#374151", background: "#f9fafb", outline: "none", cursor: "pointer",
+                }}
+              >
+                <option value="all">Semua Anggota</option>
+                {profiles.map(p => (
+                  <option key={p.id} value={p.id}>{p.full_name}</option>
+                ))}
+              </select>
             </div>
           </div>
 
@@ -336,8 +390,11 @@ export default function TaskBoard({ initialTasks, profiles, currentUser }: Props
                 const sc = STATUS_CFG[task.status];
                 const pc = PRIORITY_CFG[task.priority];
                 const assignee = getName(task.assigned_to);
-                const due = formatDate(task.due_date);
                 const StatusIcon = sc.Icon;
+                const dl = getDeadlineStatus(task.due_date);
+                const isUrgent = dl && task.status !== "done" && (dl.level === "overdue" || dl.level === "today");
+                const isSoon = dl && task.status !== "done" && dl.level === "soon";
+                const accentColor = isUrgent ? (dl!.level === "overdue" ? "#ef4444" : "#f97316") : isSoon ? "#f59e0b" : "transparent";
 
                 return (
                   <motion.div
@@ -347,11 +404,13 @@ export default function TaskBoard({ initialTasks, profiles, currentUser }: Props
                     animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, x: 12, transition: { duration: 0.15 } }}
                     transition={{ delay: i * 0.04, duration: 0.3 }}
-                    whileHover={{ background: "#fafafa" }}
+                    whileHover={{ background: isUrgent ? "#fef9f9" : "#fafafa" }}
                     style={{
                       display: "grid", gridTemplateColumns: "1fr 160px 100px 110px 110px 48px",
                       alignItems: "center", padding: "13px 18px",
                       borderBottom: "1px solid #f9fafb",
+                      borderLeft: `3px solid ${accentColor}`,
+                      background: isUrgent ? "#fffafa" : "transparent",
                       transition: "background 0.15s", cursor: "default",
                     }}
                   >
@@ -367,19 +426,40 @@ export default function TaskBoard({ initialTasks, profiles, currentUser }: Props
                       )}
                     </div>
 
-                    {/* Assignee */}
-                    <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                      {task.assigned_to ? (
-                        <>
-                          <div style={{
-                            width: 24, height: 24, borderRadius: "50%",
-                            background: "#10b981", display: "flex", alignItems: "center", justifyContent: "center",
-                            fontSize: 9, fontWeight: 700, color: "white", flexShrink: 0,
-                          }}>{getInitials(assignee)}</div>
-                          <span style={{ fontSize: 12, color: "#374151", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{assignee}</span>
-                        </>
-                      ) : (
-                        <span style={{ fontSize: 12, color: "#d1d5db" }}>—</span>
+                    {/* Assignee + Creator */}
+                    <div>
+                      {task.assigned_to ? (() => {
+                        const ap = profiles.find(p => p.id === task.assigned_to);
+                        return (
+                          <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                            {ap && (
+                              <Avatar
+                                id={ap.id}
+                                name={ap.full_name}
+                                avatarUrl={ap.avatar_url}
+                                size={28}
+                                ringColor="#f3f4f6"
+                              />
+                            )}
+                            <div style={{ minWidth: 0 }}>
+                              <p style={{ fontSize: 12, color: "#374151", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{assignee}</p>
+                              {task.created_by && task.created_by !== task.assigned_to && (
+                                <p style={{ fontSize: 10, color: "#9ca3af", marginTop: 1 }}>
+                                  Dari: {getName(task.created_by)}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })() : (
+                        <div>
+                          <span style={{ fontSize: 12, color: "#d1d5db" }}>—</span>
+                          {task.created_by && (
+                            <p style={{ fontSize: 10, color: "#9ca3af", marginTop: 1 }}>
+                              Dari: {getName(task.created_by)}
+                            </p>
+                          )}
+                        </div>
                       )}
                     </div>
 
@@ -395,31 +475,67 @@ export default function TaskBoard({ initialTasks, profiles, currentUser }: Props
                       </span>
                     </div>
 
-                    {/* Due date */}
-                    <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                      <Calendar size={12} style={{ color: typeof due === "object" && due.overdue ? "#ef4444" : "#9ca3af", flexShrink: 0 }} />
-                      <span style={{ fontSize: 12, color: typeof due === "object" && due.overdue ? "#ef4444" : "#6b7280", fontWeight: typeof due === "object" && due.overdue ? 600 : 400 }}>
-                        {typeof due === "object" ? due.text : due}
-                      </span>
-                    </div>
-
-                    {/* Status badge */}
+                    {/* Due date — clean urgency display */}
                     <div>
-                      <span style={{
-                        display: "inline-flex", alignItems: "center", gap: 5,
-                        padding: "4px 10px", borderRadius: 20,
-                        background: sc.bg, fontSize: 11, fontWeight: 600, color: sc.color,
-                      }}>
-                        <StatusIcon size={10} />
-                        {sc.label}
-                      </span>
+                      {!dl ? (
+                        <span style={{ fontSize: 12, color: "#d1d5db" }}>—</span>
+                      ) : (
+                        <>
+                          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                            {dl.level === "overdue" && task.status !== "done"
+                              ? <AlertTriangle size={11} style={{ color: dl.color, flexShrink: 0 }} />
+                              : <Calendar size={11} style={{ color: task.status === "done" ? "#d1d5db" : dl.color, flexShrink: 0 }} />
+                            }
+                            <span style={{
+                              fontSize: 12,
+                              fontWeight: task.status !== "done" && dl.level !== "normal" ? 600 : 400,
+                              color: task.status === "done" ? "#9ca3af" : dl.level === "normal" ? "#6b7280" : dl.color,
+                            }}>
+                              {dl.dateLabel}
+                            </span>
+                          </div>
+                          {task.status !== "done" && dl.level !== "normal" && (
+                            <p style={{ fontSize: 10, fontWeight: 500, color: dl.color, marginTop: 2, opacity: 0.85 }}>
+                              {dl.urgencyLabel}
+                            </p>
+                          )}
+                        </>
+                      )}
                     </div>
 
-                    {/* Actions menu */}
-                    <div style={{ position: "relative" }} onClick={e => e.stopPropagation()}>
+                    {/* Status badge — opens fixed popup */}
+                    <div onMouseDown={e => e.stopPropagation()}>
+                      <motion.button
+                        whileHover={{ opacity: 0.85 }} whileTap={{ scale: 0.97 }}
+                        onClick={e => {
+                          const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                          setPopup(popup?.taskId === task.id && popup.type === "status"
+                            ? null
+                            : { type: "status", taskId: task.id, top: rect.bottom + 6, left: rect.left });
+                        }}
+                        style={{
+                          display: "inline-flex", alignItems: "center", gap: 5,
+                          padding: "4px 10px", borderRadius: 6,
+                          background: sc.bg, fontSize: 11, fontWeight: 600, color: sc.color,
+                          border: `1px solid ${sc.color}30`, cursor: "pointer",
+                        }}
+                      >
+                        <StatusIcon size={10} strokeWidth={2.2} />
+                        {sc.label}
+                        <ChevronDown size={9} style={{ opacity: 0.6 }} />
+                      </motion.button>
+                    </div>
+
+                    {/* Three-dot actions menu — opens fixed popup */}
+                    <div onMouseDown={e => e.stopPropagation()}>
                       <motion.button
                         whileHover={{ background: "#f3f4f6" }} whileTap={{ scale: 0.9 }}
-                        onClick={() => setOpenMenu(openMenu === task.id ? null : task.id)}
+                        onClick={e => {
+                          const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                          setPopup(popup?.taskId === task.id && popup.type === "menu"
+                            ? null
+                            : { type: "menu", taskId: task.id, top: rect.bottom + 6, left: rect.right - 152 });
+                        }}
                         style={{
                           width: 28, height: 28, borderRadius: 7, border: "none", background: "transparent",
                           display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
@@ -427,57 +543,6 @@ export default function TaskBoard({ initialTasks, profiles, currentUser }: Props
                       >
                         <MoreHorizontal size={14} color="#6b7280" />
                       </motion.button>
-
-                      <AnimatePresence>
-                        {openMenu === task.id && (
-                          <motion.div
-                            initial={{ opacity: 0, scale: 0.9, y: -4 }}
-                            animate={{ opacity: 1, scale: 1, y: 0 }}
-                            exit={{ opacity: 0, scale: 0.9, y: -4 }}
-                            transition={{ duration: 0.15 }}
-                            style={{
-                              position: "absolute", right: 0, top: 32, zIndex: 50,
-                              background: "white", border: "1px solid #e5e7eb",
-                              borderRadius: 12, boxShadow: "0 8px 24px rgba(0,0,0,0.1)",
-                              minWidth: 160, overflow: "hidden",
-                            }}
-                          >
-                            {canManage && (
-                              <button onClick={() => openEdit(task)} style={{ width: "100%", padding: "10px 14px", fontSize: 12, fontWeight: 500, color: "#374151", background: "none", border: "none", cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 8 }}>
-                                <Edit2 size={12} /> Edit Task
-                              </button>
-                            )}
-                            <div style={{ borderTop: "1px solid #f3f4f6", padding: "6px 0" }}>
-                              <p style={{ fontSize: 10, fontWeight: 700, color: "#9ca3af", padding: "4px 14px", letterSpacing: "0.05em", textTransform: "uppercase" }}>Ubah Status</p>
-                              {(Object.entries(STATUS_CFG) as [Task["status"], typeof STATUS_CFG[keyof typeof STATUS_CFG]][]).map(([key, cfg]) => (
-                                <button
-                                  key={key}
-                                  onClick={() => quickStatus(task.id, key)}
-                                  style={{
-                                    width: "100%", padding: "8px 14px", fontSize: 12, fontWeight: task.status === key ? 600 : 400,
-                                    color: task.status === key ? cfg.color : "#374151",
-                                    background: task.status === key ? cfg.bg : "none",
-                                    border: "none", cursor: "pointer", textAlign: "left",
-                                    display: "flex", alignItems: "center", gap: 8,
-                                  }}
-                                >
-                                  <cfg.Icon size={11} style={{ color: cfg.color }} /> {cfg.label}
-                                </button>
-                              ))}
-                            </div>
-                            {canManage && (
-                              <div style={{ borderTop: "1px solid #f3f4f6" }}>
-                                <button
-                                  onClick={() => { setDeleteId(task.id); setOpenMenu(null); }}
-                                  style={{ width: "100%", padding: "10px 14px", fontSize: 12, fontWeight: 500, color: "#ef4444", background: "none", border: "none", cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 8 }}
-                                >
-                                  <Trash2 size={12} /> Hapus Task
-                                </button>
-                              </div>
-                            )}
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
                     </div>
                   </motion.div>
                 );
@@ -486,6 +551,92 @@ export default function TaskBoard({ initialTasks, profiles, currentUser }: Props
           </AnimatePresence>
         </motion.div>
       </div>
+
+      {/* ── FIXED POPUP (status picker / menu) — escapes overflow:hidden ── */}
+      <AnimatePresence>
+        {popup && (() => {
+          const popupTask = tasks.find(t => t.id === popup.taskId);
+          if (!popupTask) return null;
+          return (
+            <motion.div
+              key={popup.type + popup.taskId}
+              initial={{ opacity: 0, scale: 0.93, y: -4 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.93, y: -4 }}
+              transition={{ duration: 0.14, ease: [0.22, 1, 0.36, 1] }}
+              onMouseDown={e => e.stopPropagation()}
+              style={{
+                position: "fixed", top: popup.top, left: popup.left, zIndex: 200,
+                background: "white", border: "1px solid #e5e7eb",
+                borderRadius: 10, boxShadow: "0 10px 32px rgba(0,0,0,0.14)",
+                minWidth: popup.type === "status" ? 172 : 152,
+                padding: 4,
+              }}
+            >
+              {popup.type === "status" ? (
+                <>
+                  <p style={{ fontSize: 10, fontWeight: 700, color: "#9ca3af", padding: "5px 8px 4px", letterSpacing: "0.07em", textTransform: "uppercase" }}>
+                    Ubah Status
+                  </p>
+                  {(Object.entries(STATUS_CFG) as [Task["status"], typeof STATUS_CFG[keyof typeof STATUS_CFG]][]).map(([key, cfg]) => {
+                    const Icon = cfg.Icon;
+                    const isCurrent = popupTask.status === key;
+                    return (
+                      <motion.button
+                        key={key}
+                        whileHover={{ background: isCurrent ? cfg.bg : "#f9fafb" }}
+                        onClick={() => { quickStatus(popup.taskId, key); setPopup(null); }}
+                        style={{
+                          width: "100%", display: "flex", alignItems: "center", gap: 8,
+                          padding: "7px 8px", borderRadius: 6, border: "none",
+                          background: isCurrent ? cfg.bg : "transparent",
+                          cursor: "pointer", textAlign: "left",
+                        }}
+                      >
+                        <span style={{
+                          width: 24, height: 24, borderRadius: 6, flexShrink: 0,
+                          background: cfg.bg, display: "flex", alignItems: "center", justifyContent: "center",
+                          border: isCurrent ? `1.5px solid ${cfg.color}50` : `1.5px solid ${cfg.color}20`,
+                        }}>
+                          <Icon size={12} style={{ color: cfg.color }} strokeWidth={2.2} />
+                        </span>
+                        <span style={{ flex: 1, fontSize: 12, fontWeight: isCurrent ? 600 : 400, color: isCurrent ? cfg.color : "#374151" }}>
+                          {cfg.label}
+                        </span>
+                        {isCurrent && <Check size={12} style={{ color: cfg.color, flexShrink: 0 }} />}
+                      </motion.button>
+                    );
+                  })}
+                </>
+              ) : (
+                <>
+                  <motion.button
+                    whileHover={{ background: "#f9fafb" }}
+                    onClick={() => { openEdit(popupTask); setPopup(null); }}
+                    style={{ width: "100%", padding: "8px 10px", fontSize: 12, fontWeight: 500, color: "#374151", background: "none", border: "none", cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 8, borderRadius: 6 }}
+                  >
+                    <span style={{ width: 22, height: 22, borderRadius: 6, background: "#f3f4f6", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <Edit2 size={11} color="#6b7280" />
+                    </span>
+                    Edit Task
+                  </motion.button>
+                  <div style={{ height: 1, background: "#f3f4f6", margin: "3px 0" }} />
+                  <motion.button
+                    whileHover={{ background: "#fef2f2" }}
+                    onClick={() => { setDeleteId(popup.taskId); setPopup(null); }}
+                    style={{ width: "100%", padding: "8px 10px", fontSize: 12, fontWeight: 500, color: "#ef4444", background: "none", border: "none", cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 8, borderRadius: 6 }}
+                  >
+                    <span style={{ width: 22, height: 22, borderRadius: 6, background: "#fef2f2", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <Trash2 size={11} color="#ef4444" />
+                    </span>
+                    Hapus Task
+                  </motion.button>
+                </>
+              )}
+            </motion.div>
+          );
+        })()}
+      </AnimatePresence>
 
       {/* ── CREATE / EDIT MODAL ── */}
       <AnimatePresence>

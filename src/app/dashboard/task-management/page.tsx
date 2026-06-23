@@ -8,7 +8,7 @@ export default async function TaskManagementPage() {
 
   const [{ data: tasks }, { data: profiles }, { data: profile }] = await Promise.all([
     supabase.from("tasks").select("*").order("created_at", { ascending: false }),
-    supabase.from("profiles").select("id, full_name, role").order("full_name"),
+    supabase.from("profiles").select("id, full_name, role, avatar_url").order("full_name"),
     supabase.from("profiles").select("*").eq("id", user!.id).single(),
   ]);
 

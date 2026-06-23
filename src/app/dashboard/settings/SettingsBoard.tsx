@@ -9,6 +9,7 @@ import {
   Settings, Users, Plus, X, Check, Search,
   Edit2, Trash2, Shield, Mail, UserCircle,
 } from "lucide-react";
+import Avatar from "@/components/ui/Avatar";
 
 const ROLE_COLOR: Record<Role, { bg: string; text: string; border: string }> = {
   super_admin:     { bg: "#fef3c7", text: "#92400e", border: "#fde68a" },
@@ -23,15 +24,6 @@ const ROLE_COLOR: Record<Role, { bg: string; text: string; border: string }> = {
   kep_trainer:     { bg: "#fdf4ff", text: "#581c87", border: "#f0abfc" },
 };
 
-const AVATAR_COLORS = [
-  "#10b981", "#3b82f6", "#8b5cf6", "#f59e0b", "#ef4444",
-  "#06b6d4", "#84cc16", "#f97316", "#ec4899", "#6366f1",
-];
-
-function avatarColor(id: string) {
-  const sum = id.split("").reduce((s, c) => s + c.charCodeAt(0), 0);
-  return AVATAR_COLORS[sum % AVATAR_COLORS.length];
-}
 
 function fmtDate(s: string) {
   return new Date(s).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
@@ -235,7 +227,6 @@ export default function SettingsBoard({ currentUser, initialProfiles }: Props) {
                 const col = ROLE_COLOR[user.role] ?? ROLE_COLOR.staff_dokumen;
                 const isMe = user.id === currentUser.id;
                 const isSuperAdmin = user.role === "super_admin";
-                const color = avatarColor(user.id);
                 return (
                   <motion.div
                     key={user.id}
@@ -254,14 +245,7 @@ export default function SettingsBoard({ currentUser, initialProfiles }: Props) {
                   >
                     {/* Name */}
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <div style={{
-                        width: 34, height: 34, borderRadius: "50%", flexShrink: 0,
-                        background: `linear-gradient(135deg, ${color}, ${color}cc)`,
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        fontSize: 13, fontWeight: 700, color: "#fff",
-                      }}>
-                        {user.full_name?.charAt(0).toUpperCase() || "?"}
-                      </div>
+                      <Avatar id={user.id} name={user.full_name || "?"} avatarUrl={user.avatar_url} size={34} ringColor="#f3f4f6" />
                       <div>
                         <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
                           <p style={{ fontSize: 13, fontWeight: 600, color: "#111827" }}>{user.full_name || "—"}</p>
@@ -369,14 +353,7 @@ export default function SettingsBoard({ currentUser, initialProfiles }: Props) {
                 display: "flex", alignItems: "center", justifyContent: "space-between",
               }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <div style={{
-                    width: 36, height: 36, borderRadius: "50%",
-                    background: `linear-gradient(135deg, ${avatarColor(editingUser.id)}, ${avatarColor(editingUser.id)}cc)`,
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    fontSize: 14, fontWeight: 700, color: "#fff",
-                  }}>
-                    {editingUser.full_name?.charAt(0).toUpperCase() || "?"}
-                  </div>
+                  <Avatar id={editingUser.id} name={editingUser.full_name || "?"} avatarUrl={editingUser.avatar_url} size={36} ringColor="#e5e7eb" />
                   <div>
                     <h2 style={{ fontSize: 15, fontWeight: 700, color: "#111827" }}>Ubah Role</h2>
                     <p style={{ fontSize: 12, color: "#9ca3af" }}>{editingUser.full_name}</p>
