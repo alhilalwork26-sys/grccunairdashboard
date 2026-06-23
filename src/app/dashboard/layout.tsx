@@ -1,7 +1,9 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import Sidebar from "@/components/layout/Sidebar";
+import DashboardShell from "@/components/layout/DashboardShell";
 import type { UserProfile } from "@/types";
+
+export const dynamic = "force-dynamic";
 
 export default async function DashboardLayout({
   children,
@@ -13,7 +15,6 @@ export default async function DashboardLayout({
 
   if (!user) redirect("/login");
 
-  // Fetch profile
   const { data: profile } = await supabase
     .from("profiles")
     .select("*")
@@ -29,11 +30,8 @@ export default async function DashboardLayout({
   };
 
   return (
-    <div style={{ display: "flex", minHeight: "100vh", background: "#f9fafb" }}>
-      <Sidebar user={userProfile} />
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
-        {children}
-      </div>
-    </div>
+    <DashboardShell user={userProfile}>
+      {children}
+    </DashboardShell>
   );
 }

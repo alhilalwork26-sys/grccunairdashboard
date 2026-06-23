@@ -277,7 +277,7 @@ export default function CalendarBoard({ currentUser, initialEvents }: Props) {
                       <span style={{
                         fontSize: 13, fontWeight: isToday ? 800 : isSelected ? 700 : 500,
                         width: 26, height: 26, borderRadius: "50%",
-                        background: isToday ? "#8b5cf6" : "transparent",
+                        background: isToday ? "#8b5cf6" : isSelected ? "#ede9fe" : "transparent",
                         color: isToday ? "#fff" : isSelected ? "#6d28d9" : "#374151",
                         display: "flex", alignItems: "center", justifyContent: "center",
                       }}>

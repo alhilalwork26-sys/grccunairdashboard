@@ -30,3 +30,38 @@ body {
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.12); border-radius: 2px; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+.spin { animation: spin 0.8s linear infinite; }
+
+/* ── Responsive helpers ── */
+.phase-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.stats-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+.stats-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.hide-mobile { display: flex; }
+.show-mobile { display: none; }
+
+/* Desktop topbar: no left padding offset needed */
+.dashboard-topbar { padding-left: 24px !important; }
+
+@media (max-width: 768px) {
+  .phase-grid { grid-template-columns: 1fr; }
+  .stats-grid-3 { grid-template-columns: 1fr 1fr; }
+  .stats-grid-2 { grid-template-columns: 1fr; }
+  .hide-mobile { display: none !important; }
+  .show-mobile { display: flex !important; }
+  /* Mobile topbar: offset for hamburger button */
+  .dashboard-topbar { padding-left: 60px !important; }
+}

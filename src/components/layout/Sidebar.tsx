@@ -7,7 +7,7 @@ import {
   LayoutDashboard, CheckSquare, TrendingUp,
   Bell, CalendarDays, Settings, LogOut,
   ChevronLeft, ChevronRight, FolderOpen, Wallet,
-  GraduationCap, ClipboardCheck,
+  GraduationCap, ClipboardCheck, BarChart2, BellRing,
 } from "lucide-react";
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
@@ -15,23 +15,26 @@ import { useRouter } from "next/navigation";
 import type { UserProfile } from "@/types";
 
 const NAV = [
-  { label: "Dashboard",         href: "/dashboard",            icon: LayoutDashboard, phase: null },
-  { label: "Daily Progress",    href: "/dashboard/progress",   icon: TrendingUp,      phase: 1 },
-  { label: "Task Management",   href: "/dashboard/task-management", icon: CheckSquare, phase: 1 },
-  { label: "Announcement",      href: "/dashboard/announce",   icon: Bell,            phase: 1 },
-  { label: "Kalender",          href: "/dashboard/calendar",   icon: CalendarDays,    phase: 1 },
-  { label: "Dokumen",           href: "/dashboard/docs",       icon: FolderOpen,      phase: 1 },
-  { label: "Finance",           href: "/dashboard/finance",    icon: Wallet,          phase: 2 },
-  { label: "Training",          href: "/dashboard/training",   icon: GraduationCap,   phase: 2 },
-  { label: "Approval Center",   href: "/dashboard/approvals",  icon: ClipboardCheck,  phase: 2 },
-  { label: "Pengaturan",        href: "/dashboard/settings",   icon: Settings,        phase: 1 },
+  { label: "Dashboard",         href: "/dashboard",                  icon: LayoutDashboard },
+  { label: "Daily Progress",    href: "/dashboard/progress",         icon: TrendingUp      },
+  { label: "Task Management",   href: "/dashboard/task-management",  icon: CheckSquare     },
+  { label: "Announcement",      href: "/dashboard/announce",         icon: Bell            },
+  { label: "Kalender",          href: "/dashboard/calendar",         icon: CalendarDays    },
+  { label: "Dokumen",           href: "/dashboard/docs",             icon: FolderOpen      },
+  { label: "Finance",           href: "/dashboard/finance",          icon: Wallet          },
+  { label: "Training",          href: "/dashboard/training",         icon: GraduationCap   },
+  { label: "Approval Center",   href: "/dashboard/approvals",        icon: ClipboardCheck  },
+  { label: "Laporan",           href: "/dashboard/report",           icon: BarChart2       },
+  { label: "Notifikasi",        href: "/dashboard/notifications",    icon: BellRing        },
+  { label: "Pengaturan",        href: "/dashboard/settings",         icon: Settings        },
 ];
 
-const PHASE_COLOR = { 1: "#10b981", 2: "#3b82f6", 3: "#f59e0b" } as const;
+interface SidebarProps {
+  user: UserProfile | null;
+  onClose?: () => void;
+}
 
-interface SidebarProps { user: UserProfile | null }
-
-export default function Sidebar({ user }: SidebarProps) {
+export default function Sidebar({ user, onClose }: SidebarProps) {
   const pathname  = usePathname();
   const router    = useRouter();
   const [collapsed, setCollapsed] = useState(false);
@@ -60,7 +63,7 @@ export default function Sidebar({ user }: SidebarProps) {
       }}
     >
       {/* Logo */}
-      <div style={{ padding: "20px 16px 16px", display: "flex", alignItems: "center", gap: 10, borderBottom: "1px solid #f3f4f6" }}>
+      <div style={{ padding: "20px 16px 16px", display: "flex", alignItems: "center", gap: 10, borderBottom: "1px solid #f3f4f6", justifyContent: "space-between" }}>
         <div
           style={{
             width: 36, height: 36, borderRadius: 10, flexShrink: 0,
@@ -74,20 +77,28 @@ export default function Sidebar({ user }: SidebarProps) {
             <circle cx="9.5" cy="9.2" r="1.6" fill="white"/>
           </svg>
         </div>
-        <AnimatePresence>
-          {!collapsed && (
-            <motion.div
-              initial={{ opacity: 0, x: -8 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -8 }}
-              transition={{ duration: 0.18 }}
-              style={{ overflow: "hidden", whiteSpace: "nowrap" }}
-            >
-              <p style={{ fontSize: 15, fontWeight: 700, color: "#111827", letterSpacing: "-0.02em", lineHeight: 1 }}>GRCC</p>
-              <p style={{ fontSize: 10, color: "#9ca3af", fontFamily: "monospace", marginTop: 2 }}>UNAIR · v2.1.0</p>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1 }}>
+          <AnimatePresence>
+            {!collapsed && (
+              <motion.div
+                initial={{ opacity: 0, x: -8 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -8 }}
+                transition={{ duration: 0.18 }}
+                style={{ overflow: "hidden", whiteSpace: "nowrap" }}
+              >
+                <p style={{ fontSize: 15, fontWeight: 700, color: "#111827", letterSpacing: "-0.02em", lineHeight: 1 }}>GRCC</p>
+                <p style={{ fontSize: 10, color: "#9ca3af", fontFamily: "monospace", marginTop: 2 }}>UNAIR · v2.1.0</p>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+        {onClose && (
+          <motion.button whileTap={{ scale: 0.9 }} onClick={onClose}
+            style={{ padding: 4, border: "none", background: "transparent", cursor: "pointer", display: "flex", flexShrink: 0 }}>
+            <ChevronLeft size={18} color="#9ca3af" />
+          </motion.button>
+        )}
       </div>
 
       {/* Nav */}
@@ -96,7 +107,7 @@ export default function Sidebar({ user }: SidebarProps) {
           const active = pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href));
           const Icon = item.icon;
           return (
-            <Link key={item.href} href={item.href} style={{ textDecoration: "none" }}>
+            <Link key={item.href} href={item.href} style={{ textDecoration: "none" }} onClick={onClose}>
               <motion.div
                 whileHover={{ x: collapsed ? 0 : 2 }}
                 whileTap={{ scale: 0.98 }}
@@ -144,22 +155,6 @@ export default function Sidebar({ user }: SidebarProps) {
                     </motion.span>
                   )}
                 </AnimatePresence>
-                {!collapsed && item.phase && (
-                  <motion.span
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    style={{
-                      marginLeft: "auto", fontSize: 9, fontWeight: 700,
-                      padding: "2px 6px", borderRadius: 20,
-                      background: `${PHASE_COLOR[item.phase as keyof typeof PHASE_COLOR]}18`,
-                      color: PHASE_COLOR[item.phase as keyof typeof PHASE_COLOR],
-                      letterSpacing: "0.04em", position: "relative",
-                    }}
-                  >
-                    P{item.phase}
-                  </motion.span>
-                )}
               </motion.div>
             </Link>
           );

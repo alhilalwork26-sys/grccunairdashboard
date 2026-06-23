@@ -43,7 +43,7 @@ function floatVariants(dur: number, delay: number): Variants {
         duration: dur,
         delay,
         repeat: Infinity,
-        ease: "easeInOut",
+        ease: "easeInOut" as const,
       },
     },
   };

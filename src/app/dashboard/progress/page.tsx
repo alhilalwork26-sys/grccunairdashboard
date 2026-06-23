@@ -2,6 +2,8 @@ import { createClient } from "@/lib/supabase/server";
 import ProgressBoard from "./ProgressBoard";
 import type { UserProfile } from "@/types";
 
+export const dynamic = "force-dynamic";
+
 export default async function DailyProgressPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
