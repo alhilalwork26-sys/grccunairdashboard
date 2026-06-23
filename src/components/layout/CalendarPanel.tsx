@@ -1,11 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, type Variants } from "framer-motion";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 
 const DAYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
 const MONTHS = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
+const EASE_OUT: [number, number, number, number] = [0.22, 1, 0.36, 1];
 
 const EVENTS: Record<string, { title: string; time: string; color: string }[]> = {
   "2026-06-22": [
@@ -66,9 +67,9 @@ export default function CalendarPanel() {
   const selectedKey = dateKey(selected.getFullYear(), selected.getMonth(), selected.getDate());
   const todayEvents = EVENTS[selectedKey] ?? [];
 
-  const slideVariants = {
+  const slideVariants: Variants = {
     enter: (dir: number) => ({ x: dir > 0 ? 40 : -40, opacity: 0 }),
-    center: { x: 0, opacity: 1, transition: { duration: 0.28, ease: [0.22, 1, 0.36, 1] } },
+    center: { x: 0, opacity: 1, transition: { duration: 0.28, ease: EASE_OUT } },
     exit:  (dir: number) => ({ x: dir > 0 ? -40 : 40, opacity: 0, transition: { duration: 0.2 } }),
   };
 

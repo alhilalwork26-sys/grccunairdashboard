@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, type Variants } from "framer-motion";
 import {
   Eye, EyeOff, ArrowRight, Loader2,
   CheckSquare, CalendarDays, BarChart3,
@@ -33,7 +33,7 @@ const DOTS = [
 ];
 
 /* Unique float animation per bubble */
-function floatVariants(dur: number, delay: number) {
+function floatVariants(dur: number, delay: number): Variants {
   return {
     animate: {
       y: [0, -18, 4, -10, 0],
