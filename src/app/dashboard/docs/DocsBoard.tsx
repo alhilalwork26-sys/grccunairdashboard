@@ -55,9 +55,11 @@ const EMPTY_FORM = { title: "", description: "", category: "Umum", is_locked: fa
 interface Props {
   currentUser: UserProfile;
   initialDocs: Document[];
+  totalCount: number;
+  pageSize: number;
 }
 
-export default function DocsBoard({ currentUser, initialDocs }: Props) {
+export default function DocsBoard({ currentUser, initialDocs, totalCount, pageSize }: Props) {
   const supabase = createClient();
   const canManage = ["super_admin", "manager", "program_admin"].includes(currentUser.role);
 
@@ -77,7 +79,23 @@ export default function DocsBoard({ currentUser, initialDocs }: Props) {
   const [lockShake, setLockShake] = useState(false);
   const [showUploadPass, setShowUploadPass] = useState(false);
   const [showLockPass, setShowLockPass] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [serverTotal, setServerTotal] = useState(totalCount);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  const hasMore = docs.length < serverTotal;
+
+  const handleLoadMore = async () => {
+    setLoadingMore(true);
+    const { data, count } = await supabase
+      .from("documents")
+      .select("*, profiles(full_name, role)", { count: "exact" })
+      .order("created_at", { ascending: false })
+      .range(docs.length, docs.length + pageSize - 1);
+    if (data) setDocs(prev => [...prev, ...data]);
+    if (count != null) setServerTotal(count);
+    setLoadingMore(false);
+  };
 
   const showToast = (msg: string, ok = true) => {
     setToast({ msg, ok });
@@ -136,6 +154,7 @@ export default function DocsBoard({ currentUser, initialDocs }: Props) {
     if (dbError) showToast("Gagal menyimpan data: " + dbError.message, false);
     else {
       setDocs(prev => [data, ...prev]);
+      setServerTotal(t => t + 1);
       showToast(`${file.name} berhasil diupload`);
       setShowModal(false);
       setForm(EMPTY_FORM);
@@ -185,7 +204,7 @@ export default function DocsBoard({ currentUser, initialDocs }: Props) {
     await supabase.storage.from("documents").remove([doc.file_path]);
     const { error } = await supabase.from("documents").delete().eq("id", id);
     if (error) showToast("Gagal menghapus", false);
-    else { setDocs(prev => prev.filter(d => d.id !== id)); showToast("Dokumen dihapus"); }
+    else { setDocs(prev => prev.filter(d => d.id !== id)); setServerTotal(t => t - 1); showToast("Dokumen dihapus"); }
     setDeleteId(null);
   };
 
@@ -215,7 +234,9 @@ export default function DocsBoard({ currentUser, initialDocs }: Props) {
           </div>
           <div>
             <h1 style={{ fontSize: 18, fontWeight: 700, color: "#111827", letterSpacing: "-0.02em" }}>Dokumen</h1>
-            <p style={{ fontSize: 12, color: "#9ca3af", marginTop: 1 }}>{docs.length} file tersimpan</p>
+            <p style={{ fontSize: 12, color: "#9ca3af", marginTop: 1 }}>
+              {docs.length} dari {serverTotal} file tersimpan
+            </p>
           </div>
         </div>
         {canManage && (
@@ -428,6 +449,44 @@ export default function DocsBoard({ currentUser, initialDocs }: Props) {
                 );
               })}
             </AnimatePresence>
+          </div>
+        )}
+
+        {/* Load more */}
+        {filtered.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, paddingBottom: 8 }}>
+            {search === "" && catFilter === "all" && hasMore && (
+              <motion.button
+                whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+                onClick={handleLoadMore}
+                disabled={loadingMore}
+                style={{
+                  display: "flex", alignItems: "center", gap: 8,
+                  padding: "10px 24px", border: "1.5px solid #e5e7eb", borderRadius: 12,
+                  background: "#fff", cursor: loadingMore ? "not-allowed" : "pointer",
+                  fontSize: 13, fontWeight: 600, color: "#374151",
+                  boxShadow: "0 1px 4px rgba(0,0,0,0.05)",
+                }}
+              >
+                {loadingMore ? (
+                  <>
+                    <motion.div
+                      animate={{ rotate: 360 }}
+                      transition={{ repeat: Infinity, duration: 0.8, ease: "linear" }}
+                      style={{ width: 14, height: 14, border: "2px solid #e5e7eb", borderTopColor: "#f59e0b", borderRadius: "50%" }}
+                    />
+                    Memuat...
+                  </>
+                ) : (
+                  <>Muat {Math.min(pageSize, serverTotal - docs.length)} dokumen lagi</>
+                )}
+              </motion.button>
+            )}
+            <p style={{ fontSize: 11, color: "#d1d5db" }}>
+              {search !== "" || catFilter !== "all"
+                ? `${filtered.length} hasil dari ${docs.length} dokumen yang dimuat`
+                : `${docs.length} dari ${serverTotal} dokumen dimuat`}
+            </p>
           </div>
         )}
       </div>
