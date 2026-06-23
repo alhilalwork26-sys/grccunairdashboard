@@ -106,6 +106,7 @@ export default function FinanceBoard({ currentUser, initialTransactions, initial
   const payProofFileRef                     = useRef<HTMLInputElement>(null);
 
   // Card expand / image expand / row hover
+  const [expandedGroupKey, setExpandedGroupKey] = useState<string | null>(null);
   const [expandedCard, setExpandedCard]     = useState<string | null>(null);
   const [expandedImg, setExpandedImg]       = useState<string | null>(null);
   const [hoveredRow, setHoveredRow]         = useState<string | null>(null);
@@ -140,6 +141,18 @@ export default function FinanceBoard({ currentUser, initialTransactions, initial
     if (reimbSearch && !r.title.toLowerCase().includes(reimbSearch.toLowerCase())) return false;
     return true;
   });
+
+  // ── Group by requester + minute (batch submissions land within the same minute) ──
+  const reimbGroups = (() => {
+    const map = new Map<string, { key: string; requesterId: string; requesterName: string; date: string; items: Reimbursement[] }>();
+    for (const r of filteredReimb) {
+      const minute = r.created_at.slice(0, 16);
+      const gKey   = `${r.requested_by ?? "anon"}_${minute}`;
+      if (!map.has(gKey)) map.set(gKey, { key: gKey, requesterId: r.requested_by ?? "", requesterName: (r.requester as any)?.full_name ?? "—", date: r.created_at.slice(0, 10), items: [] });
+      map.get(gKey)!.items.push(r);
+    }
+    return [...map.values()];
+  })();
 
   // ── CRUD: Transactions ──
   const handleSaveTrx = async () => {
@@ -520,201 +533,308 @@ export default function FinanceBoard({ currentUser, initialTransactions, initial
                 </div>
               </div>
 
-              {/* Table */}
-              <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 12, overflow: "hidden" }}>
+              {/* Card list */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {filteredReimb.length === 0 ? (
-                  <div style={{ padding: "60px 40px", textAlign: "center" }}>
-                    <Receipt size={36} style={{ color: "#e5e7eb", margin: "0 auto 12px" }} />
-                    <p style={{ fontSize: 14, fontWeight: 600, color: "#374151" }}>
+                  <div style={{ background: "#fff", border: "2px dashed #e5e7eb", borderRadius: 16, padding: "60px 40px", textAlign: "center" }}>
+                    <Receipt size={40} style={{ color: "#e5e7eb", margin: "0 auto 14px" }} />
+                    <p style={{ fontSize: 15, fontWeight: 600, color: "#374151" }}>
                       {reimbSearch || reimbStatusFilter !== "all" ? "Tidak ada yang cocok" : "Belum ada pengajuan reimbursement"}
                     </p>
                     {!reimbSearch && reimbStatusFilter === "all" && (
                       <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
                         onClick={() => { setReimbRows([newReimbRow()]); setShowReimbModal(true); }}
-                        style={{ marginTop: 16, background: "linear-gradient(135deg, #6366f1, #4f46e5)", color: "#fff", border: "none", borderRadius: 10, padding: "10px 22px", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+                        style={{ marginTop: 18, background: "linear-gradient(135deg, #6366f1, #4f46e5)", color: "#fff", border: "none", borderRadius: 10, padding: "10px 22px", fontSize: 13, fontWeight: 600, cursor: "pointer", boxShadow: "0 4px 12px rgba(99,102,241,0.3)" }}>
                         Ajukan Sekarang
                       </motion.button>
                     )}
                   </div>
                 ) : (
-                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                    <thead>
-                      <tr style={{ background: "#f9fafb", borderBottom: "1px solid #e5e7eb" }}>
-                        {["Status", "Keperluan", "Kategori", "Tgl Keluar", "Pengaju", "Jumlah", "Aksi"].map(h => (
-                          <th key={h} style={{ padding: "10px 14px", fontSize: 11, fontWeight: 700, color: "#6b7280", textAlign: "left", letterSpacing: "0.03em", whiteSpace: "nowrap" }}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredReimb.map((r, i) => {
+                  <AnimatePresence mode="popLayout">
+                    {reimbGroups.map((group, gi) => {
+                      const isOwn = group.requesterId === currentUser.id;
+
+                      /* ── Single reimbursement ── */
+                      if (group.items.length === 1) {
+                        const r         = group.items[0];
                         const st        = STATUS_REIMB[r.status];
                         const requester = (r.requester as any)?.full_name || "—";
                         const reviewer  = (r.reviewer  as any)?.full_name || null;
-                        const isOwn     = r.requested_by === currentUser.id;
+                        const accentColor = r.status === "approved" ? "#10b981" : r.status === "rejected" ? "#ef4444" : "#f59e0b";
                         const isPaid    = !!r.paid_at;
-                        const isOpen    = expandedCard === r.id;
-                        const isHovered = hoveredRow === r.id;
-                        const rowBg     = isHovered ? "#f5f3ff" : isOpen ? "#fafafa" : i % 2 === 0 ? "#fff" : "#fdfdfd";
 
                         return (
-                          <Fragment key={r.id}>
-                            <tr
-                              onClick={() => { setExpandedCard(isOpen ? null : r.id); setExpandedImg(null); }}
-                              onMouseEnter={() => setHoveredRow(r.id)}
-                              onMouseLeave={() => setHoveredRow(null)}
-                              style={{ borderBottom: isOpen ? "none" : "1px solid #f3f4f6", cursor: "pointer", background: rowBg, transition: "background 0.1s" }}>
-                              {/* Status */}
-                              <td style={{ padding: "10px 14px", whiteSpace: "nowrap" }}>
-                                <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 20, background: st.bg, color: st.color, border: `1px solid ${st.border}` }}>
-                                  {st.icon} {st.label}
-                                </span>
-                                {isPaid && <span style={{ marginLeft: 4, fontSize: 10, fontWeight: 700, color: "#059669", background: "#f0fdf4", border: "1px solid #a7f3d0", borderRadius: 20, padding: "1px 6px" }}>Dibayar</span>}
-                              </td>
-                              {/* Keperluan */}
-                              <td style={{ padding: "10px 14px", maxWidth: 220 }}>
-                                <p style={{ fontSize: 13, fontWeight: 600, color: "#111827", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.title}</p>
-                                {r.description && <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.description}</p>}
-                              </td>
-                              {/* Kategori */}
-                              <td style={{ padding: "10px 14px", fontSize: 12, color: "#6b7280", whiteSpace: "nowrap" }}>{r.category || "—"}</td>
-                              {/* Tgl */}
-                              <td style={{ padding: "10px 14px", fontSize: 12, color: "#6b7280", whiteSpace: "nowrap" }}>{r.expense_date ? fmtDateShort(r.expense_date) : "—"}</td>
-                              {/* Pengaju */}
-                              <td style={{ padding: "10px 14px", fontSize: 12, color: "#374151", whiteSpace: "nowrap" }}>{requester}</td>
-                              {/* Jumlah */}
-                              <td style={{ padding: "10px 14px", whiteSpace: "nowrap" }}>
-                                <span style={{ fontSize: 13, fontWeight: 800, color: r.status === "approved" ? "#059669" : r.status === "rejected" ? "#9ca3af" : "#111827", letterSpacing: "-0.02em" }}>
-                                  {fmtRupiah(r.amount)}
-                                </span>
-                              </td>
-                              {/* Aksi */}
-                              <td style={{ padding: "10px 14px", whiteSpace: "nowrap" }} onClick={e => e.stopPropagation()}>
-                                <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                                  {canApprove && r.status === "pending" && (
-                                    <button onClick={() => { setReviewTarget(r); setReviewNote(""); }}
-                                      style={{ display: "inline-flex", alignItems: "center", gap: 3, padding: "4px 9px", border: "1px solid #c4b5fd", borderRadius: 6, background: "#f5f3ff", cursor: "pointer", fontSize: 11, fontWeight: 700, color: "#6d28d9" }}>
-                                      <Eye size={10} /> Review
-                                    </button>
+                          <motion.div key={r.id} layout
+                            initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.97 }}
+                            transition={{ delay: gi * 0.04 }}
+                            style={{ background: "#fff", border: "1px solid #f0f0f0", borderLeft: `3px solid ${accentColor}`, borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 4px rgba(0,0,0,0.05)" }}>
+                            <div style={{ padding: "16px 20px 14px" }}>
+                              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 10 }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: 20, background: st.bg, color: st.color, border: `1px solid ${st.border}` }}>
+                                    {st.icon} {st.label}
+                                  </span>
+                                  {r.category && (
+                                    <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 11, fontWeight: 500, padding: "3px 8px", borderRadius: 20, background: "#f3f4f6", color: "#6b7280" }}>
+                                      <Tag size={9} /> {r.category}
+                                    </span>
                                   )}
-                                  {canApprove && r.status !== "pending" && !isPaid && (
-                                    <button onClick={() => handleReview(r.id, "pending")}
-                                      style={{ display: "inline-flex", alignItems: "center", gap: 3, padding: "4px 8px", border: "1px solid #fde68a", borderRadius: 6, background: "#fff", cursor: "pointer", fontSize: 11, fontWeight: 600, color: "#d97706" }}>
-                                      <RotateCcw size={10} />
-                                    </button>
+                                  {isPaid && (
+                                    <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 20, background: "#f0fdf4", color: "#059669", border: "1px solid #a7f3d0" }}>
+                                      <Banknote size={10} /> Sudah Dibayar
+                                    </span>
                                   )}
-                                  {canPayOut && r.status === "approved" && !isPaid && (
-                                    <button onClick={() => { setPayProofTarget(r); setPayProofFile(null); }}
-                                      style={{ display: "inline-flex", alignItems: "center", gap: 3, padding: "4px 9px", border: "1px solid #a7f3d0", borderRadius: 6, background: "#f0fdf4", cursor: "pointer", fontSize: 11, fontWeight: 700, color: "#059669" }}>
-                                      <Upload size={10} /> Bayar
-                                    </button>
+                                  {isOwn && !isPaid && (
+                                    <span style={{ fontSize: 9, fontWeight: 700, color: "#6366f1", background: "#eef2ff", border: "1px solid #c7d2fe", borderRadius: 20, padding: "2px 7px" }}>Milikmu</span>
                                   )}
-                                  {isOwn && r.status === "pending" && (
-                                    <button onClick={() => setDeleteReimbId(r.id)}
-                                      style={{ display: "inline-flex", alignItems: "center", padding: "4px 6px", border: "1px solid #fecaca", borderRadius: 6, background: "#fff", cursor: "pointer" }}>
-                                      <Trash2 size={10} color="#dc2626" />
-                                    </button>
-                                  )}
-                                  <button style={{ display: "inline-flex", alignItems: "center", padding: "4px", background: "none", border: "none", cursor: "pointer" }}>
-                                    {isOpen ? <ChevronUp size={12} color="#9ca3af" /> : <ChevronDown size={12} color="#9ca3af" />}
-                                  </button>
                                 </div>
-                              </td>
-                            </tr>
-
-                            {/* Expanded detail row */}
-                            {isOpen && (
-                              <tr style={{ borderBottom: "1px solid #f3f4f6" }}>
-                                <td colSpan={7} style={{ padding: "0 14px 14px", background: "#fafafa" }}>
-                                  <div style={{ display: "flex", gap: 28 }}>
-                                    {/* Timeline */}
-                                    <div style={{ minWidth: 220 }}>
-                                      <TimelineStep done color="#6366f1" label={`Diajukan oleh ${requester}`} date={fmtDate(r.created_at)} last={r.status === "pending"} />
-                                      {r.status !== "pending" && (
-                                        <TimelineStep done color={r.status === "approved" ? "#10b981" : "#ef4444"}
-                                          label={r.status === "approved" ? `Disetujui${reviewer ? ` oleh ${reviewer}` : ""}` : `Ditolak${reviewer ? ` oleh ${reviewer}` : ""}`}
-                                          date={r.reviewed_at ? fmtDate(r.reviewed_at) : ""}
-                                          last={r.status !== "approved" || isPaid} />
-                                      )}
-                                      {r.status === "approved" && (
-                                        <TimelineStep done={isPaid} color="#10b981"
-                                          label={isPaid ? "Sudah Dibayar" : "Menunggu Pembayaran"}
-                                          date={r.paid_at ? fmtDate(r.paid_at) : ""} last />
+                                <p style={{ fontSize: 15, fontWeight: 800, color: r.status === "approved" ? "#059669" : r.status === "rejected" ? "#9ca3af" : "#111827", letterSpacing: "-0.02em", lineHeight: 1, flexShrink: 0 }}>
+                                  {fmtRupiah(r.amount)}
+                                </p>
+                              </div>
+                              <p style={{ fontSize: 14, fontWeight: 700, color: "#111827", lineHeight: 1.35, marginBottom: r.description ? 4 : 0 }}>{r.title}</p>
+                              {r.description && <p style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.55 }}>{r.description}</p>}
+                              {r.review_note && (
+                                <div style={{ marginTop: 10, padding: "8px 11px", background: r.status === "approved" ? "#f0fdf4" : "#fef2f2", border: `1px solid ${r.status === "approved" ? "#a7f3d0" : "#fecaca"}`, borderRadius: 8, fontSize: 11.5, color: r.status === "approved" ? "#059669" : "#dc2626", lineHeight: 1.5 }}>
+                                  <strong>Catatan{reviewer ? ` dari ${reviewer}` : ""}:</strong> {r.review_note}
+                                </div>
+                              )}
+                              {(r.receipt_path || r.payment_proof_url) && (
+                                <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                                  {r.receipt_path && (
+                                    <div>
+                                      {isImg(r.receipt_path) ? (
+                                        <>
+                                          <button onClick={() => setExpandedImg(expandedImg === r.receipt_path ? null : r.receipt_path!)}
+                                            style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 10px", borderRadius: 7, border: "1px solid #e5e7eb", background: "#f9fafb", fontSize: 11, fontWeight: 600, color: "#374151", cursor: "pointer" }}>
+                                            <ImageIcon size={11} color="#6366f1" /> Bukti Pengajuan
+                                            {expandedImg === r.receipt_path ? <ChevronUp size={10} color="#9ca3af" /> : <ChevronDown size={10} color="#9ca3af" />}
+                                          </button>
+                                          {expandedImg === r.receipt_path && (
+                                            <div style={{ marginTop: 6, borderRadius: 8, overflow: "hidden", border: "1px solid #e5e7eb", maxWidth: 280 }}>
+                                              <img src={r.receipt_path} alt="Bukti" style={{ width: "100%", maxHeight: 180, objectFit: "contain", display: "block", background: "#f9fafb" }} />
+                                            </div>
+                                          )}
+                                        </>
+                                      ) : (
+                                        <a href={r.receipt_path} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 10px", borderRadius: 7, border: "1px solid #e5e7eb", background: "#f9fafb", fontSize: 11, fontWeight: 600, color: "#374151", textDecoration: "none" }}>
+                                          <FileText size={11} color="#6366f1" /> Bukti Pengajuan (PDF)
+                                        </a>
                                       )}
                                     </div>
-
-                                    {/* Right: note + attachments */}
-                                    <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8, paddingTop: 2 }}>
-                                      {r.review_note && (
-                                        <div style={{ padding: "6px 10px", background: r.status === "approved" ? "#f0fdf4" : "#fef2f2", border: `1px solid ${r.status === "approved" ? "#a7f3d0" : "#fecaca"}`, borderRadius: 7, fontSize: 11.5, color: r.status === "approved" ? "#059669" : "#dc2626" }}>
-                                          <strong>Catatan{reviewer ? ` dari ${reviewer}` : ""}:</strong> {r.review_note}
-                                        </div>
-                                      )}
-                                      {(r.receipt_path || r.payment_proof_url) && (
-                                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                                          {r.receipt_path && (
-                                            isImg(r.receipt_path) ? (
-                                              <div>
-                                                <button onClick={() => setExpandedImg(expandedImg === r.receipt_path ? null : r.receipt_path!)}
-                                                  style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 9px", borderRadius: 6, border: "1px solid #e5e7eb", background: "#f9fafb", fontSize: 11, fontWeight: 600, color: "#374151", cursor: "pointer" }}>
-                                                  <ImageIcon size={10} color="#6366f1" /> Bukti Pengajuan {expandedImg === r.receipt_path ? <ChevronUp size={9} /> : <ChevronDown size={9} />}
-                                                </button>
-                                                {expandedImg === r.receipt_path && (
-                                                  <div style={{ marginTop: 5, borderRadius: 7, overflow: "hidden", border: "1px solid #e5e7eb", maxWidth: 220 }}>
-                                                    <img src={r.receipt_path} alt="Bukti" style={{ width: "100%", maxHeight: 150, objectFit: "contain", display: "block", background: "#f9fafb" }} />
-                                                  </div>
-                                                )}
-                                              </div>
-                                            ) : (
-                                              <a href={r.receipt_path} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 9px", borderRadius: 6, border: "1px solid #e5e7eb", background: "#f9fafb", fontSize: 11, fontWeight: 600, color: "#374151", textDecoration: "none" }}>
-                                                <FileText size={10} color="#6366f1" /> Bukti Pengajuan (PDF)
-                                              </a>
-                                            )
+                                  )}
+                                  {r.payment_proof_url && (
+                                    <div>
+                                      {isImg(r.payment_proof_url) ? (
+                                        <>
+                                          <button onClick={() => setExpandedImg(expandedImg === r.payment_proof_url ? null : r.payment_proof_url!)}
+                                            style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 10px", borderRadius: 7, border: "1px solid #a7f3d0", background: "#f0fdf4", fontSize: 11, fontWeight: 600, color: "#059669", cursor: "pointer" }}>
+                                            <ImageIcon size={11} color="#10b981" /> Bukti Pembayaran
+                                            {expandedImg === r.payment_proof_url ? <ChevronUp size={10} color="#9ca3af" /> : <ChevronDown size={10} color="#9ca3af" />}
+                                          </button>
+                                          {expandedImg === r.payment_proof_url && (
+                                            <div style={{ marginTop: 6, borderRadius: 8, overflow: "hidden", border: "1px solid #a7f3d0", maxWidth: 280 }}>
+                                              <img src={r.payment_proof_url} alt="Bukti Bayar" style={{ width: "100%", maxHeight: 180, objectFit: "contain", display: "block", background: "#f0fdf4" }} />
+                                            </div>
                                           )}
-                                          {r.payment_proof_url && (
-                                            isImg(r.payment_proof_url) ? (
-                                              <div>
-                                                <button onClick={() => setExpandedImg(expandedImg === r.payment_proof_url ? null : r.payment_proof_url!)}
-                                                  style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 9px", borderRadius: 6, border: "1px solid #a7f3d0", background: "#f0fdf4", fontSize: 11, fontWeight: 600, color: "#059669", cursor: "pointer" }}>
-                                                  <ImageIcon size={10} color="#10b981" /> Bukti Pembayaran {expandedImg === r.payment_proof_url ? <ChevronUp size={9} /> : <ChevronDown size={9} />}
-                                                </button>
-                                                {expandedImg === r.payment_proof_url && (
-                                                  <div style={{ marginTop: 5, borderRadius: 7, overflow: "hidden", border: "1px solid #a7f3d0", maxWidth: 220 }}>
-                                                    <img src={r.payment_proof_url} alt="Bukti Bayar" style={{ width: "100%", maxHeight: 150, objectFit: "contain", display: "block", background: "#f0fdf4" }} />
-                                                  </div>
-                                                )}
-                                              </div>
-                                            ) : (
-                                              <a href={r.payment_proof_url} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 9px", borderRadius: 6, border: "1px solid #a7f3d0", background: "#f0fdf4", fontSize: 11, fontWeight: 600, color: "#059669", textDecoration: "none" }}>
-                                                <FileText size={10} color="#10b981" /> Bukti Pembayaran (PDF)
-                                              </a>
-                                            )
-                                          )}
-                                        </div>
+                                        </>
+                                      ) : (
+                                        <a href={r.payment_proof_url} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 10px", borderRadius: 7, border: "1px solid #a7f3d0", background: "#f0fdf4", fontSize: 11, fontWeight: 600, color: "#059669", textDecoration: "none" }}>
+                                          <FileText size={11} color="#10b981" /> Bukti Pembayaran (PDF)
+                                        </a>
                                       )}
                                     </div>
-                                  </div>
-                                </td>
-                              </tr>
-                            )}
-                          </Fragment>
+                                  )}
+                                </div>
+                              )}
+                              <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid #f3f4f6" }}>
+                                <TimelineStep done color="#6366f1" label={`Diajukan oleh ${requester}`} date={fmtDate(r.created_at)} last={r.status === "pending" && !r.reviewed_at} />
+                                {r.status !== "pending" && (
+                                  <TimelineStep done color={r.status === "approved" ? "#10b981" : "#ef4444"}
+                                    label={r.status === "approved" ? `Disetujui${reviewer ? ` oleh ${reviewer}` : ""}` : `Ditolak${reviewer ? ` oleh ${reviewer}` : ""}`}
+                                    date={r.reviewed_at ? fmtDate(r.reviewed_at) : ""}
+                                    last={r.status !== "approved" || isPaid} />
+                                )}
+                                {r.status === "approved" && (
+                                  <TimelineStep done={isPaid} color="#10b981"
+                                    label={isPaid ? "Sudah Dibayar" : "Menunggu Pembayaran"}
+                                    date={r.paid_at ? fmtDate(r.paid_at) : ""} last />
+                                )}
+                              </div>
+                            </div>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 20px", borderTop: "1px solid #f3f4f6", background: "#fafafa", gap: 12, flexWrap: "wrap" }}>
+                              <div style={{ fontSize: 11, color: "#9ca3af" }}>
+                                {r.expense_date && (
+                                  <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
+                                    <CalendarDays size={10} /> Tgl pengeluaran: <strong style={{ color: "#374151" }}>{fmtDateShort(r.expense_date)}</strong>
+                                  </span>
+                                )}
+                              </div>
+                              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                {canApprove && r.status === "pending" && (
+                                  <motion.button whileHover={{ background: "#ede9fe" }} whileTap={{ scale: 0.97 }}
+                                    onClick={() => { setReviewTarget(r); setReviewNote(""); }}
+                                    style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "5px 12px", border: "1px solid #c4b5fd", borderRadius: 7, background: "#f5f3ff", cursor: "pointer", fontSize: 11, fontWeight: 700, color: "#6d28d9", whiteSpace: "nowrap", transition: "background 0.12s" }}>
+                                    <Eye size={11} /> Review
+                                  </motion.button>
+                                )}
+                                {canApprove && r.status !== "pending" && !isPaid && (
+                                  <motion.button whileHover={{ background: "#fffbeb" }} whileTap={{ scale: 0.97 }}
+                                    onClick={() => handleReview(r.id, "pending")}
+                                    style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "5px 10px", border: "1px solid #fde68a", borderRadius: 7, background: "#fff", cursor: "pointer", fontSize: 11, fontWeight: 600, color: "#d97706", whiteSpace: "nowrap", transition: "background 0.12s" }}>
+                                    <RotateCcw size={11} /> Tinjau Ulang
+                                  </motion.button>
+                                )}
+                                {canPayOut && r.status === "approved" && !isPaid && (
+                                  <motion.button whileHover={{ background: "#f0fdf4" }} whileTap={{ scale: 0.97 }}
+                                    onClick={() => { setPayProofTarget(r); setPayProofFile(null); }}
+                                    style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "5px 12px", border: "1px solid #a7f3d0", borderRadius: 7, background: "#fff", cursor: "pointer", fontSize: 11, fontWeight: 700, color: "#059669", whiteSpace: "nowrap", transition: "background 0.12s" }}>
+                                    <Upload size={11} /> Bukti Bayar
+                                  </motion.button>
+                                )}
+                                {isOwn && r.status === "pending" && (
+                                  <motion.button whileHover={{ background: "#fef2f2" }} whileTap={{ scale: 0.97 }}
+                                    onClick={() => setDeleteReimbId(r.id)}
+                                    style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "5px 10px", border: "1px solid #fecaca", borderRadius: 7, background: "#fff", cursor: "pointer", fontSize: 11, fontWeight: 600, color: "#dc2626", whiteSpace: "nowrap", transition: "background 0.12s" }}>
+                                    <Trash2 size={11} /> Batalkan
+                                  </motion.button>
+                                )}
+                              </div>
+                            </div>
+                          </motion.div>
                         );
-                      })}
-                    </tbody>
-                    {/* Total footer */}
-                    <tfoot>
-                      <tr style={{ background: "#f9fafb", borderTop: "2px solid #e5e7eb" }}>
-                        <td colSpan={5} style={{ padding: "10px 14px", fontSize: 12, fontWeight: 600, color: "#6b7280" }}>
-                          {filteredReimb.length} item · {filteredReimb.filter(r => r.status === "approved").length} disetujui
-                        </td>
-                        <td style={{ padding: "10px 14px" }}>
-                          <span style={{ fontSize: 14, fontWeight: 800, color: "#111827", letterSpacing: "-0.02em" }}>
-                            {fmtRupiah(filteredReimb.reduce((s, r) => s + r.amount, 0))}
-                          </span>
-                        </td>
-                        <td />
-                      </tr>
-                    </tfoot>
-                  </table>
+                      }
+
+                      /* ── Grouped (batch) reimbursements ── */
+                      const totalAmt   = group.items.reduce((s, r) => s + r.amount, 0);
+                      const pendingCnt = group.items.filter(r => r.status === "pending").length;
+                      const approvCnt  = group.items.filter(r => r.status === "approved").length;
+                      const rejectCnt  = group.items.filter(r => r.status === "rejected").length;
+
+                      return (
+                        <motion.div key={group.key} layout
+                          initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.97 }}
+                          transition={{ delay: gi * 0.04 }}
+                          style={{ background: "#fff", border: "1px solid #e0e7ff", borderLeft: "3px solid #6366f1", borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 4px rgba(0,0,0,0.05)" }}>
+
+                          {/* Body */}
+                          <div style={{ padding: "16px 20px 14px" }}>
+                            {/* Header */}
+                            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 6 }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                                <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: 20, background: "#eef2ff", color: "#4f46e5", border: "1px solid #c7d2fe" }}>
+                                  {group.items.length} Reimbursement
+                                </span>
+                                {isOwn && <span style={{ fontSize: 9, fontWeight: 700, color: "#6366f1", background: "#eef2ff", border: "1px solid #c7d2fe", borderRadius: 20, padding: "2px 7px" }}>Milikmu</span>}
+                                {pendingCnt > 0 && <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 20, background: "#fffbeb", color: "#d97706", border: "1px solid #fde68a" }}>{pendingCnt} menunggu</span>}
+                                {approvCnt  > 0 && <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 20, background: "#f0fdf4", color: "#059669", border: "1px solid #a7f3d0" }}>{approvCnt} disetujui</span>}
+                                {rejectCnt  > 0 && <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 20, background: "#fef2f2", color: "#dc2626", border: "1px solid #fecaca" }}>{rejectCnt} ditolak</span>}
+                              </div>
+                              <p style={{ fontSize: 15, fontWeight: 800, color: "#111827", letterSpacing: "-0.02em", lineHeight: 1, flexShrink: 0 }}>
+                                {fmtRupiah(totalAmt)}
+                              </p>
+                            </div>
+                            <p style={{ fontSize: 11, color: "#9ca3af", marginBottom: 12 }}>
+                              {group.requesterName} · Diajukan {fmtDateShort(group.date)}
+                            </p>
+
+                            {/* Item list */}
+                            <div style={{ background: "#f9fafb", borderRadius: 10, border: "1px solid #f0f0f0", overflow: "hidden" }}>
+                              {group.items.map((item, idx) => {
+                                const st       = STATUS_REIMB[item.status];
+                                const isPaid   = !!item.paid_at;
+                                const reviewer = (item.reviewer as any)?.full_name || null;
+                                return (
+                                  <div key={item.id}>
+                                    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", background: idx % 2 === 0 ? "#f9fafb" : "#fff", borderTop: idx > 0 ? "1px solid #f0f0f0" : "none" }}>
+                                      <span style={{ fontSize: 11, fontWeight: 700, color: "#d1d5db", flexShrink: 0, minWidth: 16, textAlign: "right" }}>{idx + 1}.</span>
+                                      <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 20, background: st.bg, color: st.color, border: `1px solid ${st.border}`, flexShrink: 0, whiteSpace: "nowrap" }}>
+                                        {st.icon} {st.label}
+                                      </span>
+                                      <div style={{ flex: 1, minWidth: 0 }}>
+                                        <p style={{ fontSize: 12, fontWeight: 600, color: "#111827", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</p>
+                                        {item.category && <p style={{ fontSize: 10, color: "#9ca3af", marginTop: 1 }}>{item.category}</p>}
+                                      </div>
+                                      <span style={{ fontSize: 12, fontWeight: 700, color: item.status === "approved" ? "#059669" : item.status === "rejected" ? "#9ca3af" : "#374151", flexShrink: 0, letterSpacing: "-0.02em" }}>
+                                        {fmtRupiah(item.amount)}
+                                      </span>
+                                      {/* Per-item actions */}
+                                      <div style={{ display: "flex", alignItems: "center", gap: 3, flexShrink: 0 }}>
+                                        {item.receipt_path && (
+                                          isImg(item.receipt_path) ? (
+                                            <button onClick={() => setExpandedImg(expandedImg === item.receipt_path ? null : item.receipt_path!)}
+                                              title="Lihat Bukti"
+                                              style={{ display: "inline-flex", alignItems: "center", padding: "3px 6px", borderRadius: 5, border: "1px solid #e5e7eb", background: expandedImg === item.receipt_path ? "#eef2ff" : "#fff", cursor: "pointer" }}>
+                                              <ImageIcon size={10} color="#6366f1" />
+                                            </button>
+                                          ) : (
+                                            <a href={item.receipt_path} target="_blank" rel="noopener noreferrer" title="Buka PDF"
+                                              style={{ display: "inline-flex", alignItems: "center", padding: "3px 6px", borderRadius: 5, border: "1px solid #e5e7eb", background: "#fff" }}>
+                                              <FileText size={10} color="#6366f1" />
+                                            </a>
+                                          )
+                                        )}
+                                        {canApprove && item.status === "pending" && (
+                                          <button onClick={() => { setReviewTarget(item); setReviewNote(""); }}
+                                            style={{ display: "inline-flex", alignItems: "center", gap: 3, padding: "3px 8px", border: "1px solid #c4b5fd", borderRadius: 5, background: "#f5f3ff", cursor: "pointer", fontSize: 10, fontWeight: 700, color: "#6d28d9" }}>
+                                            <Eye size={9} /> Review
+                                          </button>
+                                        )}
+                                        {canApprove && item.status !== "pending" && !isPaid && (
+                                          <button onClick={() => handleReview(item.id, "pending")} title="Tinjau Ulang"
+                                            style={{ display: "inline-flex", alignItems: "center", padding: "3px 6px", border: "1px solid #fde68a", borderRadius: 5, background: "#fff", cursor: "pointer" }}>
+                                            <RotateCcw size={9} color="#d97706" />
+                                          </button>
+                                        )}
+                                        {canPayOut && item.status === "approved" && !isPaid && (
+                                          <button onClick={() => { setPayProofTarget(item); setPayProofFile(null); }}
+                                            style={{ display: "inline-flex", alignItems: "center", gap: 3, padding: "3px 8px", border: "1px solid #a7f3d0", borderRadius: 5, background: "#f0fdf4", cursor: "pointer", fontSize: 10, fontWeight: 700, color: "#059669" }}>
+                                            <Upload size={9} /> Bayar
+                                          </button>
+                                        )}
+                                        {isOwn && item.status === "pending" && (
+                                          <button onClick={() => setDeleteReimbId(item.id)} title="Batalkan"
+                                            style={{ display: "inline-flex", alignItems: "center", padding: "3px 6px", border: "1px solid #fecaca", borderRadius: 5, background: "#fff", cursor: "pointer" }}>
+                                            <Trash2 size={9} color="#dc2626" />
+                                          </button>
+                                        )}
+                                      </div>
+                                    </div>
+                                    {/* Inline image preview */}
+                                    {expandedImg === item.receipt_path && item.receipt_path && (
+                                      <div style={{ padding: "0 12px 10px", background: idx % 2 === 0 ? "#f9fafb" : "#fff" }}>
+                                        <div style={{ borderRadius: 8, overflow: "hidden", border: "1px solid #e5e7eb", maxWidth: 260 }}>
+                                          <img src={item.receipt_path} alt="Bukti" style={{ width: "100%", maxHeight: 160, objectFit: "contain", display: "block", background: "#f9fafb" }} />
+                                        </div>
+                                      </div>
+                                    )}
+                                    {/* Review note */}
+                                    {item.review_note && (
+                                      <div style={{ margin: "0 12px 8px", padding: "6px 10px", background: item.status === "approved" ? "#f0fdf4" : "#fef2f2", border: `1px solid ${item.status === "approved" ? "#a7f3d0" : "#fecaca"}`, borderRadius: 7, fontSize: 11, color: item.status === "approved" ? "#059669" : "#dc2626" }}>
+                                        <strong>Catatan{reviewer ? ` dari ${reviewer}` : ""}:</strong> {item.review_note}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+
+                            {/* Shared timeline */}
+                            <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid #f3f4f6" }}>
+                              <TimelineStep done color="#6366f1" label={`Diajukan oleh ${group.requesterName}`} date={fmtDate(group.items[0].created_at)} last />
+                            </div>
+                          </div>
+
+                          {/* Footer */}
+                          <div style={{ padding: "8px 20px", borderTop: "1px solid #f3f4f6", background: "#fafafa" }}>
+                            <span style={{ fontSize: 11, color: "#9ca3af" }}>
+                              {group.items.length} item · Total {fmtRupiah(totalAmt)}
+                            </span>
+                          </div>
+                        </motion.div>
+                      );
+                    })}
+                  </AnimatePresence>
                 )}
               </div>
             </motion.div>
@@ -969,10 +1089,27 @@ export default function FinanceBoard({ currentUser, initialTransactions, initial
               </div>
               <div style={{ padding: "20px 24px", display: "flex", flexDirection: "column", gap: 14 }}>
                 {reviewTarget.receipt_path && (
-                  <a href={reviewTarget.receipt_path} target="_blank" rel="noopener noreferrer"
-                    style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", background: "#f5f3ff", border: "1px solid #c4b5fd", borderRadius: 10, fontSize: 12, fontWeight: 600, color: "#6d28d9", textDecoration: "none" }}>
-                    <Paperclip size={14} /> Lihat Bukti yang Dilampirkan <ExternalLink size={11} color="#9ca3af" />
-                  </a>
+                  <div>
+                    {isImg(reviewTarget.receipt_path) ? (
+                      <>
+                        <button onClick={() => setExpandedImg(expandedImg === reviewTarget.receipt_path ? null : reviewTarget.receipt_path!)}
+                          style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "10px 14px", background: "#f5f3ff", border: "1px solid #c4b5fd", borderRadius: 10, fontSize: 12, fontWeight: 600, color: "#6d28d9", cursor: "pointer" }}>
+                          <Paperclip size={14} /> Lihat Bukti yang Dilampirkan
+                          {expandedImg === reviewTarget.receipt_path ? <ChevronUp size={12} style={{ marginLeft: "auto" }} color="#9ca3af" /> : <ChevronDown size={12} style={{ marginLeft: "auto" }} color="#9ca3af" />}
+                        </button>
+                        {expandedImg === reviewTarget.receipt_path && (
+                          <div style={{ marginTop: 8, borderRadius: 10, overflow: "hidden", border: "1px solid #c4b5fd" }}>
+                            <img src={reviewTarget.receipt_path} alt="Bukti" style={{ width: "100%", maxHeight: 220, objectFit: "contain", display: "block", background: "#fafafa" }} />
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <a href={reviewTarget.receipt_path} target="_blank" rel="noopener noreferrer"
+                        style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", background: "#f5f3ff", border: "1px solid #c4b5fd", borderRadius: 10, fontSize: 12, fontWeight: 600, color: "#6d28d9", textDecoration: "none" }}>
+                        <Paperclip size={14} /> Lihat Bukti yang Dilampirkan <ExternalLink size={11} color="#9ca3af" style={{ marginLeft: "auto" }} />
+                      </a>
+                    )}
+                  </div>
                 )}
                 <div>
                   <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}>Catatan (opsional)</label>
