@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, Fragment } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { createClient } from "@/lib/supabase/client";
 import type { UserProfile, FinanceTransaction, Reimbursement } from "@/types";
@@ -26,6 +26,7 @@ function fmtDate(s: string) {
 function fmtDateShort(s: string) {
   return new Date(s + "T00:00:00").toLocaleDateString("id-ID", { day: "numeric", month: "short" });
 }
+const isImg = (url?: string | null) => !!url && !url.toLowerCase().endsWith(".pdf");
 
 const STATUS_TRX: Record<string, { label: string; color: string; bg: string }> = {
   pending:   { label: "Pending",    color: "#f59e0b", bg: "#fffbeb" },
@@ -39,7 +40,12 @@ const STATUS_REIMB: Record<string, { label: string; color: string; bg: string; b
 };
 
 const EMPTY_TRX   = { title: "", amount: "", type: "expense" as "income" | "expense", category: "Operasional", date: new Date().toISOString().split("T")[0], description: "", status: "confirmed" as FinanceTransaction["status"] };
-const EMPTY_REIMB = { title: "", amount: "", description: "", category: "Transport", expense_date: new Date().toISOString().split("T")[0] };
+const newReimbRow = () => ({
+  key: typeof crypto !== "undefined" ? crypto.randomUUID() : Math.random().toString(36).slice(2),
+  title: "", amount: "", category: "Transport",
+  expense_date: new Date().toISOString().split("T")[0],
+  description: "", file: null as File | null,
+});
 
 function TimelineStep({ done, color, label, date, last }: { done: boolean; color: string; label: string; date: string; last?: boolean }) {
   return (
@@ -85,13 +91,13 @@ export default function FinanceBoard({ currentUser, initialTransactions, initial
 
   // Reimbursement state
   const [showReimbModal, setShowReimbModal] = useState(false);
-  const [reimbForm, setReimbForm]           = useState(EMPTY_REIMB);
+  const [reimbRows, setReimbRows]           = useState<ReturnType<typeof newReimbRow>[]>([newReimbRow()]);
   const [reimbStatusFilter, setReimbStatusFilter] = useState<"all" | "pending" | "approved" | "rejected">("all");
   const [reimbSearch, setReimbSearch]       = useState("");
-  const [receiptFile, setReceiptFile]       = useState<File | null>(null);
+  const [fileTargetKey, setFileTargetKey]   = useState<string | null>(null);
   const [uploadingReceipt, setUploadingReceipt] = useState(false);
   const [deleteReimbId, setDeleteReimbId]   = useState<string | null>(null);
-  const receiptFileRef                      = useRef<HTMLInputElement>(null);
+  const batchFileRef                        = useRef<HTMLInputElement>(null);
 
   // Payment proof upload
   const [payProofTarget, setPayProofTarget] = useState<Reimbursement | null>(null);
@@ -99,8 +105,10 @@ export default function FinanceBoard({ currentUser, initialTransactions, initial
   const [uploadingPayProof, setUploadingPayProof] = useState(false);
   const payProofFileRef                     = useRef<HTMLInputElement>(null);
 
-  // Inline image expand
+  // Card expand / image expand / row hover
+  const [expandedCard, setExpandedCard]     = useState<string | null>(null);
   const [expandedImg, setExpandedImg]       = useState<string | null>(null);
+  const [hoveredRow, setHoveredRow]         = useState<string | null>(null);
 
   // Review
   const [reviewTarget, setReviewTarget] = useState<Reimbursement | null>(null);
@@ -164,41 +172,45 @@ export default function FinanceBoard({ currentUser, initialTransactions, initial
     setDeleteTrxId(null);
   };
 
-  // ── CRUD: Reimbursements ──
-  const handleSubmitReimb = async () => {
-    if (!reimbForm.title.trim() || !reimbForm.amount) return;
+  // ── CRUD: Reimbursements (batch) ──
+  const handleSubmitReimbBatch = async () => {
+    const validRows = reimbRows.filter(r => r.title.trim() && r.amount);
+    if (validRows.length === 0) return;
     setSubmitting(true);
+    const inserted: Reimbursement[] = [];
 
-    let receipt_path: string | null = null;
-
-    if (receiptFile) {
-      setUploadingReceipt(true);
-      const ext  = receiptFile.name.split(".").pop();
-      const path = `${currentUser.id}/${Date.now()}.${ext}`;
-      const { error: upErr } = await supabase.storage.from("receipts").upload(path, receiptFile, { upsert: false, contentType: receiptFile.type });
-      if (upErr) { showToast("Gagal upload bukti: " + upErr.message, false); setSubmitting(false); setUploadingReceipt(false); return; }
-      const { data: { publicUrl } } = supabase.storage.from("receipts").getPublicUrl(path);
-      receipt_path = publicUrl;
-      setUploadingReceipt(false);
+    for (const row of validRows) {
+      let receipt_path: string | null = null;
+      if (row.file) {
+        setUploadingReceipt(true);
+        const ext  = row.file.name.split(".").pop();
+        const path = `${currentUser.id}/${Date.now()}_${row.key.slice(0, 8)}.${ext}`;
+        const { error: upErr } = await supabase.storage.from("receipts").upload(path, row.file, { upsert: false, contentType: row.file.type });
+        if (upErr) { showToast(`Gagal upload bukti "${row.title}": ${upErr.message}`, false); continue; }
+        const { data: { publicUrl } } = supabase.storage.from("receipts").getPublicUrl(path);
+        receipt_path = publicUrl;
+        setUploadingReceipt(false);
+      }
+      const { data, error } = await supabase.from("reimbursements").insert({
+        title:        row.title.trim(),
+        amount:       Number(row.amount.replace(/\D/g, "")),
+        description:  row.description.trim() || null,
+        category:     row.category || null,
+        expense_date: row.expense_date || null,
+        receipt_path,
+        requested_by: currentUser.id,
+      }).select("*, requester:profiles!reimbursements_requested_by_fkey(full_name, role)").single();
+      if (!error && data) inserted.push(data);
     }
 
-    const { data, error } = await supabase.from("reimbursements").insert({
-      title:        reimbForm.title.trim(),
-      amount:       Number(String(reimbForm.amount).replace(/\D/g, "")),
-      description:  reimbForm.description.trim() || null,
-      category:     reimbForm.category || null,
-      expense_date: reimbForm.expense_date || null,
-      receipt_path,
-      requested_by: currentUser.id,
-    }).select("*, requester:profiles!reimbursements_requested_by_fkey(full_name, role)").single();
-
-    if (error) showToast(error.message, false);
-    else { setReimbursements(prev => [data, ...prev]); showToast("Reimbursement diajukan"); }
-
+    if (inserted.length > 0) {
+      setReimbursements(prev => [...inserted.reverse(), ...prev]);
+      showToast(`${inserted.length} reimbursement berhasil diajukan`);
+    }
     setSubmitting(false);
-    setReimbForm(EMPTY_REIMB);
-    setReceiptFile(null);
-    if (receiptFileRef.current) receiptFileRef.current.value = "";
+    setUploadingReceipt(false);
+    setReimbRows([newReimbRow()]);
+    if (batchFileRef.current) batchFileRef.current.value = "";
     setShowReimbModal(false);
   };
 
@@ -289,7 +301,7 @@ export default function FinanceBoard({ currentUser, initialTransactions, initial
           )}
           {tab === "reimbursement" && (
             <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
-              onClick={() => { setReimbForm(EMPTY_REIMB); setReceiptFile(null); setShowReimbModal(true); }}
+              onClick={() => { setReimbRows([newReimbRow()]); setShowReimbModal(true); }}
               style={{ display: "flex", alignItems: "center", gap: 7, background: "linear-gradient(135deg, #6366f1, #4f46e5)", color: "#fff", border: "none", borderRadius: 10, padding: "9px 16px", cursor: "pointer", fontSize: 13, fontWeight: 600, boxShadow: "0 4px 14px rgba(99,102,241,0.35)" }}>
               <Plus size={15} /> Ajukan Reimbursement
             </motion.button>
@@ -508,205 +520,203 @@ export default function FinanceBoard({ currentUser, initialTransactions, initial
                 </div>
               </div>
 
-              {/* Card list */}
-              {filteredReimb.length === 0 ? (
-                <div style={{ background: "#fff", border: "2px dashed #e5e7eb", borderRadius: 16, padding: "60px 40px", textAlign: "center" }}>
-                  <Receipt size={40} style={{ color: "#e5e7eb", margin: "0 auto 14px" }} />
-                  <p style={{ fontSize: 15, fontWeight: 600, color: "#374151" }}>
-                    {reimbSearch || reimbStatusFilter !== "all" ? "Tidak ada yang cocok" : "Belum ada pengajuan reimbursement"}
-                  </p>
-                  {!reimbSearch && reimbStatusFilter === "all" && (
-                    <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
-                      onClick={() => { setReimbForm(EMPTY_REIMB); setReceiptFile(null); setShowReimbModal(true); }}
-                      style={{ marginTop: 18, background: "linear-gradient(135deg, #6366f1, #4f46e5)", color: "#fff", border: "none", borderRadius: 10, padding: "10px 22px", fontSize: 13, fontWeight: 600, cursor: "pointer", boxShadow: "0 4px 12px rgba(99,102,241,0.3)" }}>
-                      Ajukan Sekarang
-                    </motion.button>
-                  )}
-                </div>
-              ) : (
-                <AnimatePresence mode="popLayout">
-                  {filteredReimb.map((r, i) => {
-                    const st      = STATUS_REIMB[r.status];
-                    const requester = (r.requester as any)?.full_name || "—";
-                    const reviewer  = (r.reviewer  as any)?.full_name || null;
-                    const isOwn   = r.requested_by === currentUser.id;
-                    const isPdf   = r.receipt_path?.toLowerCase().endsWith(".pdf");
-                    const accentColor = r.status === "approved" ? "#10b981" : r.status === "rejected" ? "#ef4444" : "#f59e0b";
-                    const isImg = (url?: string | null) => url && !url.toLowerCase().endsWith(".pdf");
-                    const isPaid = !!r.paid_at;
+              {/* Table */}
+              <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 12, overflow: "hidden" }}>
+                {filteredReimb.length === 0 ? (
+                  <div style={{ padding: "60px 40px", textAlign: "center" }}>
+                    <Receipt size={36} style={{ color: "#e5e7eb", margin: "0 auto 12px" }} />
+                    <p style={{ fontSize: 14, fontWeight: 600, color: "#374151" }}>
+                      {reimbSearch || reimbStatusFilter !== "all" ? "Tidak ada yang cocok" : "Belum ada pengajuan reimbursement"}
+                    </p>
+                    {!reimbSearch && reimbStatusFilter === "all" && (
+                      <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
+                        onClick={() => { setReimbRows([newReimbRow()]); setShowReimbModal(true); }}
+                        style={{ marginTop: 16, background: "linear-gradient(135deg, #6366f1, #4f46e5)", color: "#fff", border: "none", borderRadius: 10, padding: "10px 22px", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+                        Ajukan Sekarang
+                      </motion.button>
+                    )}
+                  </div>
+                ) : (
+                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                    <thead>
+                      <tr style={{ background: "#f9fafb", borderBottom: "1px solid #e5e7eb" }}>
+                        {["Status", "Keperluan", "Kategori", "Tgl Keluar", "Pengaju", "Jumlah", "Aksi"].map(h => (
+                          <th key={h} style={{ padding: "10px 14px", fontSize: 11, fontWeight: 700, color: "#6b7280", textAlign: "left", letterSpacing: "0.03em", whiteSpace: "nowrap" }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredReimb.map((r, i) => {
+                        const st        = STATUS_REIMB[r.status];
+                        const requester = (r.requester as any)?.full_name || "—";
+                        const reviewer  = (r.reviewer  as any)?.full_name || null;
+                        const isOwn     = r.requested_by === currentUser.id;
+                        const isPaid    = !!r.paid_at;
+                        const isOpen    = expandedCard === r.id;
+                        const isHovered = hoveredRow === r.id;
+                        const rowBg     = isHovered ? "#f5f3ff" : isOpen ? "#fafafa" : i % 2 === 0 ? "#fff" : "#fdfdfd";
 
-                    return (
-                      <motion.div key={r.id} layout
-                        initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.97 }}
-                        transition={{ delay: i * 0.04 }}
-                        style={{
-                          background: "#fff",
-                          border: "1px solid #f0f0f0",
-                          borderLeft: `3px solid ${accentColor}`,
-                          borderRadius: 14,
-                          overflow: "hidden",
-                          boxShadow: "0 1px 4px rgba(0,0,0,0.05)",
-                        }}>
-
-                        {/* ── Body ── */}
-                        <div style={{ padding: "16px 20px 14px" }}>
-                          {/* Top row: badges + amount */}
-                          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 10 }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                              <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: 20, background: st.bg, color: st.color, border: `1px solid ${st.border}` }}>
-                                {st.icon} {st.label}
-                              </span>
-                              {r.category && (
-                                <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 11, fontWeight: 500, padding: "3px 8px", borderRadius: 20, background: "#f3f4f6", color: "#6b7280" }}>
-                                  <Tag size={9} /> {r.category}
+                        return (
+                          <Fragment key={r.id}>
+                            <tr
+                              onClick={() => { setExpandedCard(isOpen ? null : r.id); setExpandedImg(null); }}
+                              onMouseEnter={() => setHoveredRow(r.id)}
+                              onMouseLeave={() => setHoveredRow(null)}
+                              style={{ borderBottom: isOpen ? "none" : "1px solid #f3f4f6", cursor: "pointer", background: rowBg, transition: "background 0.1s" }}>
+                              {/* Status */}
+                              <td style={{ padding: "10px 14px", whiteSpace: "nowrap" }}>
+                                <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 20, background: st.bg, color: st.color, border: `1px solid ${st.border}` }}>
+                                  {st.icon} {st.label}
                                 </span>
-                              )}
-                              {isPaid && (
-                                <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 20, background: "#f0fdf4", color: "#059669", border: "1px solid #a7f3d0" }}>
-                                  <Banknote size={10} /> Sudah Dibayar
+                                {isPaid && <span style={{ marginLeft: 4, fontSize: 10, fontWeight: 700, color: "#059669", background: "#f0fdf4", border: "1px solid #a7f3d0", borderRadius: 20, padding: "1px 6px" }}>Dibayar</span>}
+                              </td>
+                              {/* Keperluan */}
+                              <td style={{ padding: "10px 14px", maxWidth: 220 }}>
+                                <p style={{ fontSize: 13, fontWeight: 600, color: "#111827", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.title}</p>
+                                {r.description && <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.description}</p>}
+                              </td>
+                              {/* Kategori */}
+                              <td style={{ padding: "10px 14px", fontSize: 12, color: "#6b7280", whiteSpace: "nowrap" }}>{r.category || "—"}</td>
+                              {/* Tgl */}
+                              <td style={{ padding: "10px 14px", fontSize: 12, color: "#6b7280", whiteSpace: "nowrap" }}>{r.expense_date ? fmtDateShort(r.expense_date) : "—"}</td>
+                              {/* Pengaju */}
+                              <td style={{ padding: "10px 14px", fontSize: 12, color: "#374151", whiteSpace: "nowrap" }}>{requester}</td>
+                              {/* Jumlah */}
+                              <td style={{ padding: "10px 14px", whiteSpace: "nowrap" }}>
+                                <span style={{ fontSize: 13, fontWeight: 800, color: r.status === "approved" ? "#059669" : r.status === "rejected" ? "#9ca3af" : "#111827", letterSpacing: "-0.02em" }}>
+                                  {fmtRupiah(r.amount)}
                                 </span>
-                              )}
-                              {isOwn && !isPaid && (
-                                <span style={{ fontSize: 9, fontWeight: 700, color: "#6366f1", background: "#eef2ff", border: "1px solid #c7d2fe", borderRadius: 20, padding: "2px 7px" }}>Milikmu</span>
-                              )}
-                            </div>
-                            <p style={{ fontSize: 15, fontWeight: 800, color: r.status === "approved" ? "#059669" : r.status === "rejected" ? "#9ca3af" : "#111827", letterSpacing: "-0.02em", lineHeight: 1, flexShrink: 0 }}>
-                              {fmtRupiah(r.amount)}
-                            </p>
-                          </div>
-
-                          {/* Title + description */}
-                          <p style={{ fontSize: 14, fontWeight: 700, color: "#111827", lineHeight: 1.35, marginBottom: r.description ? 4 : 0 }}>{r.title}</p>
-                          {r.description && <p style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.55 }}>{r.description}</p>}
-
-                          {/* Review note */}
-                          {r.review_note && (
-                            <div style={{ marginTop: 10, padding: "8px 11px", background: r.status === "approved" ? "#f0fdf4" : "#fef2f2", border: `1px solid ${r.status === "approved" ? "#a7f3d0" : "#fecaca"}`, borderRadius: 8, fontSize: 11.5, color: r.status === "approved" ? "#059669" : "#dc2626", lineHeight: 1.5 }}>
-                              <strong>Catatan{reviewer ? ` dari ${reviewer}` : ""}:</strong> {r.review_note}
-                            </div>
-                          )}
-
-                          {/* ── Inline images ── */}
-                          {(r.receipt_path || r.payment_proof_url) && (
-                            <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
-                              {/* Receipt */}
-                              {r.receipt_path && (
-                                <div style={{ flex: 1, minWidth: 160 }}>
-                                  <p style={{ fontSize: 10, fontWeight: 600, color: "#9ca3af", marginBottom: 5, textTransform: "uppercase", letterSpacing: "0.05em" }}>Bukti Pengajuan</p>
-                                  {isImg(r.receipt_path) ? (
-                                    <div style={{ position: "relative", borderRadius: 8, overflow: "hidden", border: "1px solid #e5e7eb", cursor: "pointer" }} onClick={() => setExpandedImg(expandedImg === r.receipt_path ? null : r.receipt_path!)}>
-                                      <img src={r.receipt_path} alt="Bukti" style={{ width: "100%", maxHeight: expandedImg === r.receipt_path ? 400 : 120, objectFit: expandedImg === r.receipt_path ? "contain" : "cover", display: "block", transition: "max-height 0.25s ease", background: "#f9fafb" }} />
-                                      <div style={{ position: "absolute", bottom: 4, right: 4, background: "rgba(0,0,0,0.5)", borderRadius: 4, padding: "2px 5px", display: "flex", alignItems: "center", gap: 3 }}>
-                                        {expandedImg === r.receipt_path ? <ChevronUp size={10} color="#fff" /> : <ChevronDown size={10} color="#fff" />}
-                                        <span style={{ fontSize: 9, color: "#fff", fontWeight: 600 }}>{expandedImg === r.receipt_path ? "Perkecil" : "Perbesar"}</span>
-                                      </div>
-                                    </div>
-                                  ) : (
-                                    <a href={r.receipt_path} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "7px 11px", borderRadius: 8, border: "1px solid #e5e7eb", background: "#f9fafb", fontSize: 12, fontWeight: 600, color: "#374151", textDecoration: "none" }}>
-                                      <FileText size={13} color="#6366f1" /> Buka PDF
-                                    </a>
+                              </td>
+                              {/* Aksi */}
+                              <td style={{ padding: "10px 14px", whiteSpace: "nowrap" }} onClick={e => e.stopPropagation()}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                  {canApprove && r.status === "pending" && (
+                                    <button onClick={() => { setReviewTarget(r); setReviewNote(""); }}
+                                      style={{ display: "inline-flex", alignItems: "center", gap: 3, padding: "4px 9px", border: "1px solid #c4b5fd", borderRadius: 6, background: "#f5f3ff", cursor: "pointer", fontSize: 11, fontWeight: 700, color: "#6d28d9" }}>
+                                      <Eye size={10} /> Review
+                                    </button>
                                   )}
-                                </div>
-                              )}
-
-                              {/* Payment proof */}
-                              {r.payment_proof_url && (
-                                <div style={{ flex: 1, minWidth: 160 }}>
-                                  <p style={{ fontSize: 10, fontWeight: 600, color: "#059669", marginBottom: 5, textTransform: "uppercase", letterSpacing: "0.05em" }}>Bukti Pembayaran</p>
-                                  {isImg(r.payment_proof_url) ? (
-                                    <div style={{ position: "relative", borderRadius: 8, overflow: "hidden", border: "1px solid #a7f3d0", cursor: "pointer" }} onClick={() => setExpandedImg(expandedImg === r.payment_proof_url ? null : r.payment_proof_url!)}>
-                                      <img src={r.payment_proof_url} alt="Bukti Bayar" style={{ width: "100%", maxHeight: expandedImg === r.payment_proof_url ? 400 : 120, objectFit: expandedImg === r.payment_proof_url ? "contain" : "cover", display: "block", transition: "max-height 0.25s ease", background: "#f0fdf4" }} />
-                                      <div style={{ position: "absolute", bottom: 4, right: 4, background: "rgba(0,0,0,0.5)", borderRadius: 4, padding: "2px 5px", display: "flex", alignItems: "center", gap: 3 }}>
-                                        {expandedImg === r.payment_proof_url ? <ChevronUp size={10} color="#fff" /> : <ChevronDown size={10} color="#fff" />}
-                                        <span style={{ fontSize: 9, color: "#fff", fontWeight: 600 }}>{expandedImg === r.payment_proof_url ? "Perkecil" : "Perbesar"}</span>
-                                      </div>
-                                    </div>
-                                  ) : (
-                                    <a href={r.payment_proof_url} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "7px 11px", borderRadius: 8, border: "1px solid #a7f3d0", background: "#f0fdf4", fontSize: 12, fontWeight: 600, color: "#059669", textDecoration: "none" }}>
-                                      <FileText size={13} color="#10b981" /> Buka PDF
-                                    </a>
+                                  {canApprove && r.status !== "pending" && !isPaid && (
+                                    <button onClick={() => handleReview(r.id, "pending")}
+                                      style={{ display: "inline-flex", alignItems: "center", gap: 3, padding: "4px 8px", border: "1px solid #fde68a", borderRadius: 6, background: "#fff", cursor: "pointer", fontSize: 11, fontWeight: 600, color: "#d97706" }}>
+                                      <RotateCcw size={10} />
+                                    </button>
                                   )}
+                                  {canPayOut && r.status === "approved" && !isPaid && (
+                                    <button onClick={() => { setPayProofTarget(r); setPayProofFile(null); }}
+                                      style={{ display: "inline-flex", alignItems: "center", gap: 3, padding: "4px 9px", border: "1px solid #a7f3d0", borderRadius: 6, background: "#f0fdf4", cursor: "pointer", fontSize: 11, fontWeight: 700, color: "#059669" }}>
+                                      <Upload size={10} /> Bayar
+                                    </button>
+                                  )}
+                                  {isOwn && r.status === "pending" && (
+                                    <button onClick={() => setDeleteReimbId(r.id)}
+                                      style={{ display: "inline-flex", alignItems: "center", padding: "4px 6px", border: "1px solid #fecaca", borderRadius: 6, background: "#fff", cursor: "pointer" }}>
+                                      <Trash2 size={10} color="#dc2626" />
+                                    </button>
+                                  )}
+                                  <button style={{ display: "inline-flex", alignItems: "center", padding: "4px", background: "none", border: "none", cursor: "pointer" }}>
+                                    {isOpen ? <ChevronUp size={12} color="#9ca3af" /> : <ChevronDown size={12} color="#9ca3af" />}
+                                  </button>
                                 </div>
-                              )}
-                            </div>
-                          )}
+                              </td>
+                            </tr>
 
-                          {/* ── Timeline ── */}
-                          <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid #f3f4f6" }}>
-                            <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
-                              {/* Step 1: Diajukan */}
-                              <TimelineStep done color="#6366f1" label={`Diajukan oleh ${requester}`} date={fmtDate(r.created_at)} last={r.status === "pending" && !r.reviewed_at} />
-                              {/* Step 2: Review */}
-                              {r.status !== "pending" && (
-                                <TimelineStep
-                                  done color={r.status === "approved" ? "#10b981" : "#ef4444"}
-                                  label={r.status === "approved" ? `Disetujui${reviewer ? ` oleh ${reviewer}` : ""}` : `Ditolak${reviewer ? ` oleh ${reviewer}` : ""}`}
-                                  date={r.reviewed_at ? fmtDate(r.reviewed_at) : ""}
-                                  last={r.status !== "approved" || isPaid}
-                                />
-                              )}
-                              {/* Step 3: Dibayar */}
-                              {r.status === "approved" && (
-                                <TimelineStep
-                                  done={isPaid} color="#10b981"
-                                  label={isPaid ? "Sudah Dibayar" : "Menunggu Pembayaran"}
-                                  date={r.paid_at ? fmtDate(r.paid_at) : ""}
-                                  last
-                                />
-                              )}
-                            </div>
-                          </div>
-                        </div>
+                            {/* Expanded detail row */}
+                            {isOpen && (
+                              <tr style={{ borderBottom: "1px solid #f3f4f6" }}>
+                                <td colSpan={7} style={{ padding: "0 14px 14px", background: "#fafafa" }}>
+                                  <div style={{ display: "flex", gap: 28 }}>
+                                    {/* Timeline */}
+                                    <div style={{ minWidth: 220 }}>
+                                      <TimelineStep done color="#6366f1" label={`Diajukan oleh ${requester}`} date={fmtDate(r.created_at)} last={r.status === "pending"} />
+                                      {r.status !== "pending" && (
+                                        <TimelineStep done color={r.status === "approved" ? "#10b981" : "#ef4444"}
+                                          label={r.status === "approved" ? `Disetujui${reviewer ? ` oleh ${reviewer}` : ""}` : `Ditolak${reviewer ? ` oleh ${reviewer}` : ""}`}
+                                          date={r.reviewed_at ? fmtDate(r.reviewed_at) : ""}
+                                          last={r.status !== "approved" || isPaid} />
+                                      )}
+                                      {r.status === "approved" && (
+                                        <TimelineStep done={isPaid} color="#10b981"
+                                          label={isPaid ? "Sudah Dibayar" : "Menunggu Pembayaran"}
+                                          date={r.paid_at ? fmtDate(r.paid_at) : ""} last />
+                                      )}
+                                    </div>
 
-                        {/* ── Footer ── */}
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 20px", borderTop: "1px solid #f3f4f6", background: "#fafafa", gap: 12, flexWrap: "wrap" }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 11, color: "#9ca3af" }}>
-                            {r.expense_date && (
-                              <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
-                                <CalendarDays size={10} /> Tgl pengeluaran: <strong style={{ color: "#374151" }}>{fmtDateShort(r.expense_date)}</strong>
-                              </span>
+                                    {/* Right: note + attachments */}
+                                    <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8, paddingTop: 2 }}>
+                                      {r.review_note && (
+                                        <div style={{ padding: "6px 10px", background: r.status === "approved" ? "#f0fdf4" : "#fef2f2", border: `1px solid ${r.status === "approved" ? "#a7f3d0" : "#fecaca"}`, borderRadius: 7, fontSize: 11.5, color: r.status === "approved" ? "#059669" : "#dc2626" }}>
+                                          <strong>Catatan{reviewer ? ` dari ${reviewer}` : ""}:</strong> {r.review_note}
+                                        </div>
+                                      )}
+                                      {(r.receipt_path || r.payment_proof_url) && (
+                                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                                          {r.receipt_path && (
+                                            isImg(r.receipt_path) ? (
+                                              <div>
+                                                <button onClick={() => setExpandedImg(expandedImg === r.receipt_path ? null : r.receipt_path!)}
+                                                  style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 9px", borderRadius: 6, border: "1px solid #e5e7eb", background: "#f9fafb", fontSize: 11, fontWeight: 600, color: "#374151", cursor: "pointer" }}>
+                                                  <ImageIcon size={10} color="#6366f1" /> Bukti Pengajuan {expandedImg === r.receipt_path ? <ChevronUp size={9} /> : <ChevronDown size={9} />}
+                                                </button>
+                                                {expandedImg === r.receipt_path && (
+                                                  <div style={{ marginTop: 5, borderRadius: 7, overflow: "hidden", border: "1px solid #e5e7eb", maxWidth: 220 }}>
+                                                    <img src={r.receipt_path} alt="Bukti" style={{ width: "100%", maxHeight: 150, objectFit: "contain", display: "block", background: "#f9fafb" }} />
+                                                  </div>
+                                                )}
+                                              </div>
+                                            ) : (
+                                              <a href={r.receipt_path} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 9px", borderRadius: 6, border: "1px solid #e5e7eb", background: "#f9fafb", fontSize: 11, fontWeight: 600, color: "#374151", textDecoration: "none" }}>
+                                                <FileText size={10} color="#6366f1" /> Bukti Pengajuan (PDF)
+                                              </a>
+                                            )
+                                          )}
+                                          {r.payment_proof_url && (
+                                            isImg(r.payment_proof_url) ? (
+                                              <div>
+                                                <button onClick={() => setExpandedImg(expandedImg === r.payment_proof_url ? null : r.payment_proof_url!)}
+                                                  style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 9px", borderRadius: 6, border: "1px solid #a7f3d0", background: "#f0fdf4", fontSize: 11, fontWeight: 600, color: "#059669", cursor: "pointer" }}>
+                                                  <ImageIcon size={10} color="#10b981" /> Bukti Pembayaran {expandedImg === r.payment_proof_url ? <ChevronUp size={9} /> : <ChevronDown size={9} />}
+                                                </button>
+                                                {expandedImg === r.payment_proof_url && (
+                                                  <div style={{ marginTop: 5, borderRadius: 7, overflow: "hidden", border: "1px solid #a7f3d0", maxWidth: 220 }}>
+                                                    <img src={r.payment_proof_url} alt="Bukti Bayar" style={{ width: "100%", maxHeight: 150, objectFit: "contain", display: "block", background: "#f0fdf4" }} />
+                                                  </div>
+                                                )}
+                                              </div>
+                                            ) : (
+                                              <a href={r.payment_proof_url} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 9px", borderRadius: 6, border: "1px solid #a7f3d0", background: "#f0fdf4", fontSize: 11, fontWeight: 600, color: "#059669", textDecoration: "none" }}>
+                                                <FileText size={10} color="#10b981" /> Bukti Pembayaran (PDF)
+                                              </a>
+                                            )
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </td>
+                              </tr>
                             )}
-                          </div>
-                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                            {/* Review */}
-                            {canApprove && r.status === "pending" && (
-                              <motion.button whileHover={{ background: "#ede9fe" }} whileTap={{ scale: 0.97 }}
-                                onClick={() => { setReviewTarget(r); setReviewNote(""); }}
-                                style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "5px 12px", border: "1px solid #c4b5fd", borderRadius: 7, background: "#f5f3ff", cursor: "pointer", fontSize: 11, fontWeight: 700, color: "#6d28d9", whiteSpace: "nowrap", transition: "background 0.12s" }}>
-                                <Eye size={11} /> Review
-                              </motion.button>
-                            )}
-                            {/* Reset to pending */}
-                            {canApprove && r.status !== "pending" && !isPaid && (
-                              <motion.button whileHover={{ background: "#fffbeb" }} whileTap={{ scale: 0.97 }}
-                                onClick={() => handleReview(r.id, "pending")}
-                                style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "5px 10px", border: "1px solid #fde68a", borderRadius: 7, background: "#fff", cursor: "pointer", fontSize: 11, fontWeight: 600, color: "#d97706", whiteSpace: "nowrap", transition: "background 0.12s" }}>
-                                <RotateCcw size={11} /> Tinjau Ulang
-                              </motion.button>
-                            )}
-                            {/* Upload bukti bayar */}
-                            {canPayOut && r.status === "approved" && !isPaid && (
-                              <motion.button whileHover={{ background: "#f0fdf4" }} whileTap={{ scale: 0.97 }}
-                                onClick={() => { setPayProofTarget(r); setPayProofFile(null); }}
-                                style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "5px 12px", border: "1px solid #a7f3d0", borderRadius: 7, background: "#fff", cursor: "pointer", fontSize: 11, fontWeight: 700, color: "#059669", whiteSpace: "nowrap", transition: "background 0.12s" }}>
-                                <Upload size={11} /> Bukti Bayar
-                              </motion.button>
-                            )}
-                            {/* Batalkan own pending */}
-                            {isOwn && r.status === "pending" && (
-                              <motion.button whileHover={{ background: "#fef2f2" }} whileTap={{ scale: 0.97 }}
-                                onClick={() => setDeleteReimbId(r.id)}
-                                style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "5px 10px", border: "1px solid #fecaca", borderRadius: 7, background: "#fff", cursor: "pointer", fontSize: 11, fontWeight: 600, color: "#dc2626", whiteSpace: "nowrap", transition: "background 0.12s" }}>
-                                <Trash2 size={11} /> Batalkan
-                              </motion.button>
-                            )}
-                          </div>
-                        </div>
-                      </motion.div>
-                    );
-                  })}
-                </AnimatePresence>
-              )}
+                          </Fragment>
+                        );
+                      })}
+                    </tbody>
+                    {/* Total footer */}
+                    <tfoot>
+                      <tr style={{ background: "#f9fafb", borderTop: "2px solid #e5e7eb" }}>
+                        <td colSpan={5} style={{ padding: "10px 14px", fontSize: 12, fontWeight: 600, color: "#6b7280" }}>
+                          {filteredReimb.length} item · {filteredReimb.filter(r => r.status === "approved").length} disetujui
+                        </td>
+                        <td style={{ padding: "10px 14px" }}>
+                          <span style={{ fontSize: 14, fontWeight: 800, color: "#111827", letterSpacing: "-0.02em" }}>
+                            {fmtRupiah(filteredReimb.reduce((s, r) => s + r.amount, 0))}
+                          </span>
+                        </td>
+                        <td />
+                      </tr>
+                    </tfoot>
+                  </table>
+                )}
+              </div>
             </motion.div>
           )}
 
@@ -786,105 +796,158 @@ export default function FinanceBoard({ currentUser, initialTransactions, initial
         )}
       </AnimatePresence>
 
-      {/* Reimb Modal */}
+      {/* Reimb Modal — tabel multi-baris */}
       <AnimatePresence>
         {showReimbModal && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            style={{ position: "fixed", inset: 0, zIndex: 50, background: "rgba(0,0,0,0.45)", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}
+            style={{ position: "fixed", inset: 0, zIndex: 50, background: "rgba(0,0,0,0.5)", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center", padding: "20px" }}
             onClick={e => { if (e.target === e.currentTarget) setShowReimbModal(false); }}>
             <motion.div initial={{ opacity: 0, scale: 0.94, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.94, y: 8 }}
               transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
-              style={{ background: "#fff", borderRadius: 20, width: "100%", maxWidth: 480, boxShadow: "0 25px 60px rgba(0,0,0,0.18)", maxHeight: "90vh", overflow: "auto" }}>
-              <div style={{ padding: "20px 24px 16px", borderBottom: "1px solid #f3f4f6", display: "flex", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, background: "#fff", zIndex: 1 }}>
+              style={{ background: "#fff", borderRadius: 20, width: "100%", maxWidth: 860, boxShadow: "0 25px 60px rgba(0,0,0,0.2)", maxHeight: "90vh", display: "flex", flexDirection: "column" }}>
+
+              {/* Header */}
+              <div style={{ padding: "18px 24px 14px", borderBottom: "1px solid #f3f4f6", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
                 <div>
                   <h2 style={{ fontSize: 16, fontWeight: 700, color: "#111827" }}>Ajukan Reimbursement</h2>
-                  <p style={{ fontSize: 12, color: "#9ca3af", marginTop: 2 }}>Isi detail pengeluaran yang akan diganti</p>
+                  <p style={{ fontSize: 12, color: "#9ca3af", marginTop: 1 }}>Isi satu atau beberapa pengeluaran sekaligus, lalu submit bersama</p>
                 </div>
-                <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.95 }} onClick={() => setShowReimbModal(false)}
-                  style={{ padding: 6, border: "none", background: "#f3f4f6", borderRadius: 8, cursor: "pointer" }}><X size={16} color="#6b7280" /></motion.button>
+                <button onClick={() => setShowReimbModal(false)} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}>
+                  <X size={18} color="#9ca3af" />
+                </button>
               </div>
 
-              <div style={{ padding: "20px 24px", display: "flex", flexDirection: "column", gap: 14 }}>
-                {/* Title */}
-                <div>
-                  <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}>Keperluan *</label>
-                  <input type="text" placeholder="Contoh: Transport ke klien..." value={reimbForm.title}
-                    onChange={e => setReimbForm(f => ({ ...f, title: e.target.value }))}
-                    style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 13, outline: "none", boxSizing: "border-box", fontFamily: "inherit" }}
-                    onFocus={e => (e.target.style.borderColor = "#6366f1")} onBlur={e => (e.target.style.borderColor = "#e5e7eb")} />
-                </div>
+              {/* Table */}
+              <div style={{ flex: 1, overflow: "auto", padding: "16px 24px 0" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
+                  <colgroup>
+                    <col style={{ width: 28 }} />
+                    <col style={{ width: "26%" }} />
+                    <col style={{ width: "14%" }} />
+                    <col style={{ width: "13%" }} />
+                    <col style={{ width: "12%" }} />
+                    <col style={{ width: "18%" }} />
+                    <col style={{ width: 80 }} />
+                    <col style={{ width: 32 }} />
+                  </colgroup>
+                  <thead>
+                    <tr style={{ borderBottom: "2px solid #f3f4f6" }}>
+                      {["#", "Keperluan *", "Jumlah (Rp) *", "Kategori", "Tgl Keluar", "Keterangan", "Bukti", ""].map(h => (
+                        <th key={h} style={{ padding: "6px 6px 8px", fontSize: 11, fontWeight: 700, color: "#6b7280", textAlign: "left", letterSpacing: "0.03em" }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {reimbRows.map((row, i) => (
+                      <tr key={row.key} style={{ borderBottom: "1px solid #f9fafb" }}>
+                        {/* No */}
+                        <td style={{ padding: "6px 6px", fontSize: 12, color: "#9ca3af", fontWeight: 600, textAlign: "center" }}>{i + 1}</td>
+                        {/* Keperluan */}
+                        <td style={{ padding: "5px 4px" }}>
+                          <input type="text" placeholder="Nama pengeluaran..." value={row.title}
+                            onChange={e => setReimbRows(rows => rows.map(r => r.key === row.key ? { ...r, title: e.target.value } : r))}
+                            style={{ width: "100%", padding: "7px 9px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 12, outline: "none", boxSizing: "border-box", fontFamily: "inherit" }}
+                            onFocus={e => (e.target.style.borderColor = "#6366f1")} onBlur={e => (e.target.style.borderColor = "#e5e7eb")} />
+                        </td>
+                        {/* Jumlah */}
+                        <td style={{ padding: "5px 4px" }}>
+                          <input type="text" placeholder="0" value={row.amount}
+                            onChange={e => setReimbRows(rows => rows.map(r => r.key === row.key ? { ...r, amount: e.target.value.replace(/\D/g, "") } : r))}
+                            style={{ width: "100%", padding: "7px 9px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 12, outline: "none", boxSizing: "border-box", fontFamily: "inherit" }}
+                            onFocus={e => (e.target.style.borderColor = "#6366f1")} onBlur={e => (e.target.style.borderColor = "#e5e7eb")} />
+                          {row.amount && <p style={{ fontSize: 10, color: "#6366f1", marginTop: 1, paddingLeft: 9 }}>{fmtRupiah(Number(row.amount))}</p>}
+                        </td>
+                        {/* Kategori */}
+                        <td style={{ padding: "5px 4px" }}>
+                          <select value={row.category} onChange={e => setReimbRows(rows => rows.map(r => r.key === row.key ? { ...r, category: e.target.value } : r))}
+                            style={{ width: "100%", padding: "7px 6px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 12, outline: "none", background: "#f9fafb", boxSizing: "border-box" }}>
+                            {REIMB_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                          </select>
+                        </td>
+                        {/* Tanggal */}
+                        <td style={{ padding: "5px 4px" }}>
+                          <input type="date" value={row.expense_date}
+                            onChange={e => setReimbRows(rows => rows.map(r => r.key === row.key ? { ...r, expense_date: e.target.value } : r))}
+                            style={{ width: "100%", padding: "7px 6px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 11, outline: "none", boxSizing: "border-box", fontFamily: "inherit" }}
+                            onFocus={e => (e.target.style.borderColor = "#6366f1")} onBlur={e => (e.target.style.borderColor = "#e5e7eb")} />
+                        </td>
+                        {/* Keterangan */}
+                        <td style={{ padding: "5px 4px" }}>
+                          <input type="text" placeholder="Opsional..." value={row.description}
+                            onChange={e => setReimbRows(rows => rows.map(r => r.key === row.key ? { ...r, description: e.target.value } : r))}
+                            style={{ width: "100%", padding: "7px 9px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 12, outline: "none", boxSizing: "border-box", fontFamily: "inherit" }}
+                            onFocus={e => (e.target.style.borderColor = "#6366f1")} onBlur={e => (e.target.style.borderColor = "#e5e7eb")} />
+                        </td>
+                        {/* Bukti */}
+                        <td style={{ padding: "5px 4px" }}>
+                          {row.file ? (
+                            <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "5px 7px", background: "#f0fdf4", border: "1px solid #a7f3d0", borderRadius: 7 }}>
+                              <Paperclip size={11} color="#10b981" />
+                              <span style={{ fontSize: 10, color: "#059669", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.file.name}</span>
+                              <button onClick={() => setReimbRows(rows => rows.map(r => r.key === row.key ? { ...r, file: null } : r))}
+                                style={{ background: "none", border: "none", cursor: "pointer", padding: 0, display: "flex", flexShrink: 0 }}>
+                                <X size={11} color="#9ca3af" />
+                              </button>
+                            </div>
+                          ) : (
+                            <button onClick={() => { setFileTargetKey(row.key); setTimeout(() => batchFileRef.current?.click(), 0); }}
+                              style={{ width: "100%", padding: "6px 4px", border: "1.5px dashed #c4b5fd", borderRadius: 7, background: "#faf5ff", cursor: "pointer", fontSize: 11, fontWeight: 600, color: "#7c3aed", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
+                              <Upload size={11} /> Upload
+                            </button>
+                          )}
+                        </td>
+                        {/* Hapus baris */}
+                        <td style={{ padding: "5px 4px", textAlign: "center" }}>
+                          {reimbRows.length > 1 && (
+                            <button onClick={() => setReimbRows(rows => rows.filter(r => r.key !== row.key))}
+                              style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "inline-flex", borderRadius: 6 }}>
+                              <Trash2 size={13} color="#d1d5db" />
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
 
-                {/* Amount */}
-                <div>
-                  <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}>Jumlah (Rp) *</label>
-                  <input type="text" placeholder="0" value={reimbForm.amount}
-                    onChange={e => setReimbForm(f => ({ ...f, amount: e.target.value.replace(/\D/g, "") }))}
-                    style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 13, outline: "none", boxSizing: "border-box", fontFamily: "inherit" }}
-                    onFocus={e => (e.target.style.borderColor = "#6366f1")} onBlur={e => (e.target.style.borderColor = "#e5e7eb")} />
-                  {reimbForm.amount && <p style={{ fontSize: 11, color: "#6366f1", marginTop: 3 }}>{fmtRupiah(Number(reimbForm.amount))}</p>}
-                </div>
+                {/* Hidden file input */}
+                <input ref={batchFileRef} type="file" accept="image/jpeg,image/png,image/webp,application/pdf" style={{ display: "none" }}
+                  onChange={e => {
+                    const f = e.target.files?.[0];
+                    if (f && fileTargetKey) {
+                      setReimbRows(rows => rows.map(r => r.key === fileTargetKey ? { ...r, file: f } : r));
+                      setFileTargetKey(null);
+                    }
+                    e.target.value = "";
+                  }} />
+              </div>
 
-                {/* Category + Expense Date */}
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                  <div>
-                    <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}>Kategori</label>
-                    <select value={reimbForm.category} onChange={e => setReimbForm(f => ({ ...f, category: e.target.value }))}
-                      style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 13, outline: "none", background: "#f9fafb", boxSizing: "border-box" }}>
-                      {REIMB_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
+              {/* Footer */}
+              <div style={{ padding: "14px 24px 20px", borderTop: "1px solid #f3f4f6", flexShrink: 0 }}>
+                {/* Tambah baris + total */}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+                  <button onClick={() => setReimbRows(rows => [...rows, newReimbRow()])}
+                    style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "7px 14px", border: "1.5px dashed #c4b5fd", borderRadius: 8, background: "#faf5ff", cursor: "pointer", fontSize: 12, fontWeight: 600, color: "#6366f1" }}>
+                    <Plus size={13} /> Tambah Baris
+                  </button>
+                  <div style={{ textAlign: "right" }}>
+                    <p style={{ fontSize: 11, color: "#9ca3af" }}>{reimbRows.filter(r => r.title.trim() && r.amount).length} item valid</p>
+                    <p style={{ fontSize: 15, fontWeight: 800, color: "#111827", letterSpacing: "-0.02em" }}>
+                      Total: {fmtRupiah(reimbRows.reduce((s, r) => s + (Number(r.amount) || 0), 0))}
+                    </p>
                   </div>
-                  <div>
-                    <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}>Tanggal Pengeluaran</label>
-                    <input type="date" value={reimbForm.expense_date} onChange={e => setReimbForm(f => ({ ...f, expense_date: e.target.value }))}
-                      style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 13, outline: "none", boxSizing: "border-box", fontFamily: "inherit" }}
-                      onFocus={e => (e.target.style.borderColor = "#6366f1")} onBlur={e => (e.target.style.borderColor = "#e5e7eb")} />
-                  </div>
                 </div>
-
-                {/* Description */}
-                <div>
-                  <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}>Keterangan</label>
-                  <textarea rows={2} placeholder="Jelaskan keperluan lebih detail..." value={reimbForm.description}
-                    onChange={e => setReimbForm(f => ({ ...f, description: e.target.value }))}
-                    style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 13, outline: "none", resize: "vertical", fontFamily: "inherit", lineHeight: 1.6, boxSizing: "border-box" }}
-                    onFocus={e => (e.target.style.borderColor = "#6366f1")} onBlur={e => (e.target.style.borderColor = "#e5e7eb")} />
-                </div>
-
-                {/* Receipt upload */}
-                <div>
-                  <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}>
-                    Bukti / Struk <span style={{ fontWeight: 400, color: "#9ca3af" }}>(opsional)</span>
-                  </label>
-                  {receiptFile ? (
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", background: "#f0fdf4", border: "1.5px solid #a7f3d0", borderRadius: 10 }}>
-                      <Paperclip size={14} color="#10b981" />
-                      <span style={{ fontSize: 12, color: "#059669", fontWeight: 500, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{receiptFile.name}</span>
-                      <button onClick={() => { setReceiptFile(null); if (receiptFileRef.current) receiptFileRef.current.value = ""; }}
-                        style={{ background: "none", border: "none", cursor: "pointer", padding: 2, display: "flex" }}>
-                        <X size={14} color="#9ca3af" />
-                      </button>
-                    </div>
-                  ) : (
-                    <motion.button whileHover={{ background: "#f5f3ff" }} whileTap={{ scale: 0.99 }}
-                      onClick={() => receiptFileRef.current?.click()}
-                      style={{ width: "100%", padding: "12px", border: "1.5px dashed #c4b5fd", borderRadius: 10, background: "#faf5ff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, fontSize: 12, fontWeight: 600, color: "#7c3aed", transition: "background 0.15s" }}>
-                      <Upload size={14} /> Upload Foto / PDF Struk
-                    </motion.button>
-                  )}
-                  <input ref={receiptFileRef} type="file" accept="image/jpeg,image/png,image/webp,application/pdf" style={{ display: "none" }}
-                    onChange={e => setReceiptFile(e.target.files?.[0] ?? null)} />
-                  <p style={{ fontSize: 10, color: "#9ca3af", marginTop: 5 }}>Foto struk / nota / PDF · maks 10MB</p>
-                </div>
-
-                <motion.button whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.98 }} onClick={handleSubmitReimb}
-                  disabled={submitting || !reimbForm.title.trim() || !reimbForm.amount}
-                  style={{ width: "100%", padding: "13px", border: "none", borderRadius: 12, fontSize: 14, fontWeight: 700, cursor: submitting ? "not-allowed" : "pointer", background: submitting || !reimbForm.title.trim() || !reimbForm.amount ? "#d1d5db" : "linear-gradient(135deg, #6366f1, #4f46e5)", color: "#fff", transition: "all 0.2s", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                <motion.button whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.98 }}
+                  onClick={handleSubmitReimbBatch}
+                  disabled={submitting || reimbRows.filter(r => r.title.trim() && r.amount).length === 0}
+                  style={{ width: "100%", padding: "13px", border: "none", borderRadius: 12, fontSize: 14, fontWeight: 700, cursor: submitting ? "not-allowed" : "pointer", background: reimbRows.filter(r => r.title.trim() && r.amount).length === 0 ? "#d1d5db" : "linear-gradient(135deg, #6366f1, #4f46e5)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
                   {submitting
                     ? <><Loader2 size={15} style={{ animation: "spin 0.7s linear infinite" }} /> {uploadingReceipt ? "Mengupload bukti..." : "Mengajukan..."}</>
-                    : "Ajukan Reimbursement"
+                    : `Ajukan ${reimbRows.filter(r => r.title.trim() && r.amount).length || ""} Reimbursement`
                   }
                 </motion.button>
               </div>
+
             </motion.div>
           </motion.div>
         )}
