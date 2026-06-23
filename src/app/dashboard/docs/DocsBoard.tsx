@@ -5,9 +5,9 @@ import { motion, AnimatePresence } from "framer-motion";
 import { createClient } from "@/lib/supabase/client";
 import type { UserProfile, Document } from "@/types";
 import {
-  FolderOpen, Plus, X, Check, Search, Download,
+  FolderOpen, X, Check, Search, Download,
   Trash2, FileText, Image, FileArchive, File,
-  Upload, Filter,
+  Upload, Lock, Eye, EyeOff, KeyRound, ShieldAlert,
 } from "lucide-react";
 
 const CATEGORIES = ["Umum", "Keuangan", "Marketing", "Pelatihan", "HR", "Legal", "Lainnya"];
@@ -50,7 +50,7 @@ function fmtDate(s: string) {
   return new Date(s).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
 }
 
-const EMPTY_FORM = { title: "", description: "", category: "Umum" };
+const EMPTY_FORM = { title: "", description: "", category: "Umum", is_locked: false, password: "" };
 
 interface Props {
   currentUser: UserProfile;
@@ -71,6 +71,12 @@ export default function DocsBoard({ currentUser, initialDocs }: Props) {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
+  const [lockTarget, setLockTarget] = useState<Document | null>(null);
+  const [lockInput, setLockInput] = useState("");
+  const [lockError, setLockError] = useState(false);
+  const [lockShake, setLockShake] = useState(false);
+  const [showUploadPass, setShowUploadPass] = useState(false);
+  const [showLockPass, setShowLockPass] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const showToast = (msg: string, ok = true) => {
@@ -87,6 +93,7 @@ export default function DocsBoard({ currentUser, initialDocs }: Props) {
 
   const handleUpload = async () => {
     if (!file || !form.title.trim()) return;
+    if (form.is_locked && !form.password.trim()) return;
     setUploading(true);
     setUploadProgress(10);
 
@@ -118,6 +125,8 @@ export default function DocsBoard({ currentUser, initialDocs }: Props) {
         file_type: file.type,
         category: form.category,
         uploaded_by: currentUser.id,
+        is_locked: form.is_locked,
+        password_hash: form.is_locked ? btoa(form.password) : null,
       })
       .select("*, profiles(full_name, role)")
       .single();
@@ -137,6 +146,17 @@ export default function DocsBoard({ currentUser, initialDocs }: Props) {
   };
 
   const handleDownload = async (doc: Document) => {
+    if (doc.is_locked) {
+      setLockTarget(doc);
+      setLockInput("");
+      setLockError(false);
+      setShowLockPass(false);
+      return;
+    }
+    await doDownload(doc);
+  };
+
+  const doDownload = async (doc: Document) => {
     const { data, error } = await supabase.storage.from("documents").createSignedUrl(doc.file_path, 60);
     if (error || !data) { showToast("Gagal membuat link download", false); return; }
     const a = document.createElement("a");
@@ -144,6 +164,19 @@ export default function DocsBoard({ currentUser, initialDocs }: Props) {
     a.download = doc.file_name;
     a.click();
     showToast(`Mengunduh ${doc.file_name}`);
+  };
+
+  const handlePasswordSubmit = async () => {
+    if (!lockTarget) return;
+    if (btoa(lockInput) !== lockTarget.password_hash) {
+      setLockError(true);
+      setLockShake(true);
+      setTimeout(() => setLockShake(false), 600);
+      return;
+    }
+    const target = lockTarget;
+    setLockTarget(null);
+    await doDownload(target);
   };
 
   const handleDelete = async (id: string) => {
@@ -295,28 +328,49 @@ export default function DocsBoard({ currentUser, initialDocs }: Props) {
                     exit={{ opacity: 0, scale: 0.93 }}
                     transition={{ delay: i * 0.04, duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
                     style={{
-                      background: "#fff", border: "1px solid #f3f4f6", borderRadius: 14,
-                      padding: 16, display: "flex", flexDirection: "column", gap: 10,
-                      boxShadow: "0 1px 4px rgba(0,0,0,0.04)",
+                      background: doc.is_locked ? "#fffbfb" : "#fff",
+                      border: doc.is_locked ? "1px solid #fecaca" : "1px solid #f3f4f6",
+                      borderRadius: 14, padding: 16, display: "flex", flexDirection: "column", gap: 10,
+                      boxShadow: doc.is_locked ? "0 1px 8px rgba(239,68,68,0.07)" : "0 1px 4px rgba(0,0,0,0.04)",
                     }}
                   >
                     {/* File icon */}
                     <div style={{
-                      width: "100%", height: 72, borderRadius: 10,
-                      background: `${fileColor}12`,
+                      position: "relative", width: "100%", height: 72, borderRadius: 10,
+                      background: doc.is_locked ? "#fff1f1" : `${fileColor}12`,
                       display: "flex", alignItems: "center", justifyContent: "center",
                     }}>
-                      <span style={{ color: fileColor }}>{getFileIcon(doc.file_type)}</span>
+                      <span style={{ color: doc.is_locked ? "#ef4444" : fileColor, opacity: doc.is_locked ? 0.4 : 1 }}>
+                        {getFileIcon(doc.file_type)}
+                      </span>
+                      {doc.is_locked && (
+                        <div style={{
+                          position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center",
+                        }}>
+                          <div style={{
+                            background: "linear-gradient(135deg, #ef4444, #dc2626)",
+                            borderRadius: 10, padding: "6px 10px",
+                            display: "flex", alignItems: "center", gap: 5,
+                            boxShadow: "0 4px 12px rgba(239,68,68,0.35)",
+                          }}>
+                            <Lock size={13} color="#fff" />
+                            <span style={{ fontSize: 10, fontWeight: 800, color: "#fff", letterSpacing: "0.05em" }}>RAHASIA</span>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     {/* Info */}
                     <div style={{ flex: 1 }}>
-                      <p style={{
-                        fontSize: 13, fontWeight: 700, color: "#111827",
-                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                      }}>
-                        {doc.title}
-                      </p>
+                      <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                        <p style={{
+                          fontSize: 13, fontWeight: 700, color: "#111827",
+                          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1,
+                        }}>
+                          {doc.title}
+                        </p>
+                        {doc.is_locked && <Lock size={11} color="#ef4444" style={{ flexShrink: 0 }} />}
+                      </div>
                       {doc.description && (
                         <p style={{
                           fontSize: 11, color: "#9ca3af", marginTop: 2,
@@ -346,11 +400,16 @@ export default function DocsBoard({ currentUser, initialDocs }: Props) {
                         onClick={() => handleDownload(doc)}
                         style={{
                           flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
-                          padding: "8px", border: "1px solid #e5e7eb", borderRadius: 8,
-                          background: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 600, color: "#374151",
+                          padding: "8px",
+                          border: doc.is_locked ? "1px solid #fca5a5" : "1px solid #e5e7eb",
+                          borderRadius: 8,
+                          background: doc.is_locked ? "#fff5f5" : "#fff",
+                          cursor: "pointer", fontSize: 12, fontWeight: 600,
+                          color: doc.is_locked ? "#dc2626" : "#374151",
                         }}
                       >
-                        <Download size={13} /> Download
+                        {doc.is_locked ? <Lock size={13} /> : <Download size={13} />}
+                        {doc.is_locked ? "Buka Kunci" : "Download"}
                       </motion.button>
                       {(canManage || doc.uploaded_by === currentUser.id) && (
                         <motion.button
@@ -481,6 +540,104 @@ export default function DocsBoard({ currentUser, initialDocs }: Props) {
                   />
                 </div>
 
+                {/* Rahasia toggle */}
+                <div style={{
+                  border: form.is_locked ? "1.5px solid #fca5a5" : "1.5px solid #e5e7eb",
+                  borderRadius: 12, padding: "12px 14px",
+                  background: form.is_locked ? "#fff5f5" : "#f9fafb",
+                  transition: "all 0.2s",
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <div style={{
+                        width: 30, height: 30, borderRadius: 8,
+                        background: form.is_locked ? "linear-gradient(135deg,#ef4444,#dc2626)" : "#f3f4f6",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        transition: "all 0.2s",
+                      }}>
+                        {form.is_locked
+                          ? <Lock size={14} color="#fff" />
+                          : <Lock size={14} color="#9ca3af" />}
+                      </div>
+                      <div>
+                        <p style={{ fontSize: 12, fontWeight: 700, color: form.is_locked ? "#dc2626" : "#374151" }}>
+                          Dokumen Rahasia
+                        </p>
+                        <p style={{ fontSize: 10, color: "#9ca3af", marginTop: 1 }}>
+                          Dilindungi password saat diunduh
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setForm(f => ({ ...f, is_locked: !f.is_locked, password: "" }))}
+                      style={{
+                        width: 44, height: 24, borderRadius: 12, border: "none", cursor: "pointer",
+                        background: form.is_locked ? "#ef4444" : "#d1d5db",
+                        position: "relative", transition: "background 0.2s", flexShrink: 0,
+                      }}
+                    >
+                      <motion.div
+                        animate={{ x: form.is_locked ? 20 : 0 }}
+                        transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                        style={{
+                          position: "absolute", top: 2, left: 2,
+                          width: 20, height: 20, borderRadius: 10,
+                          background: "#fff", boxShadow: "0 1px 4px rgba(0,0,0,0.2)",
+                        }}
+                      />
+                    </button>
+                  </div>
+
+                  <AnimatePresence>
+                    {form.is_locked && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: "auto", opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                        style={{ overflow: "hidden" }}
+                      >
+                        <div style={{ marginTop: 12 }}>
+                          <label style={{ fontSize: 11, fontWeight: 600, color: "#dc2626", display: "block", marginBottom: 5 }}>
+                            Password <span style={{ color: "#ef4444" }}>*</span>
+                          </label>
+                          <div style={{ position: "relative" }}>
+                            <KeyRound size={13} color="#ef4444" style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)" }} />
+                            <input
+                              type={showUploadPass ? "text" : "password"}
+                              placeholder="Buat password rahasia..."
+                              value={form.password}
+                              onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
+                              style={{
+                                width: "100%", padding: "9px 36px 9px 30px",
+                                border: "1.5px solid #fca5a5", borderRadius: 8,
+                                fontSize: 13, outline: "none", boxSizing: "border-box",
+                                fontFamily: "inherit", background: "#fff",
+                              }}
+                              onFocus={e => (e.target.style.borderColor = "#ef4444")}
+                              onBlur={e => (e.target.style.borderColor = "#fca5a5")}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowUploadPass(p => !p)}
+                              style={{
+                                position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)",
+                                border: "none", background: "transparent", cursor: "pointer", padding: 2,
+                              }}
+                            >
+                              {showUploadPass ? <EyeOff size={13} color="#9ca3af" /> : <Eye size={13} color="#9ca3af" />}
+                            </button>
+                          </div>
+                          <p style={{ fontSize: 10, color: "#9ca3af", marginTop: 4 }}>
+                            Password diperlukan setiap kali dokumen ini diunduh
+                          </p>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+
                 {/* Progress bar */}
                 {uploading && (
                   <div>
@@ -498,10 +655,10 @@ export default function DocsBoard({ currentUser, initialDocs }: Props) {
                 <motion.button
                   whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.98 }}
                   onClick={handleUpload}
-                  disabled={uploading || !file || !form.title.trim()}
+                  disabled={uploading || !file || !form.title.trim() || (form.is_locked && !form.password.trim())}
                   style={{
                     width: "100%", padding: "12px",
-                    background: uploading || !file || !form.title.trim() ? "#d1d5db" : "linear-gradient(135deg, #f59e0b, #d97706)",
+                    background: uploading || !file || !form.title.trim() || (form.is_locked && !form.password.trim()) ? "#d1d5db" : "linear-gradient(135deg, #f59e0b, #d97706)",
                     color: "#fff", border: "none", borderRadius: 12,
                     fontSize: 14, fontWeight: 700, cursor: uploading || !file ? "not-allowed" : "pointer",
                     boxShadow: "0 4px 14px rgba(245,158,11,0.3)", transition: "all 0.2s",
@@ -543,6 +700,166 @@ export default function DocsBoard({ currentUser, initialDocs }: Props) {
                   Hapus
                 </motion.button>
               </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Password prompt modal */}
+      <AnimatePresence>
+        {lockTarget && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            style={{
+              position: "fixed", inset: 0, zIndex: 70,
+              background: "rgba(0,0,0,0.55)", backdropFilter: "blur(8px)",
+              display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
+            }}
+            onClick={e => { if (e.target === e.currentTarget) setLockTarget(null); }}
+          >
+            <motion.div
+              animate={lockShake ? {
+                x: [0, -10, 10, -8, 8, -5, 5, 0],
+                transition: { duration: 0.5, ease: "easeInOut" },
+              } : {}}
+            >
+              <motion.div
+                initial={{ opacity: 0, scale: 0.88, y: 16 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.9, y: 10 }}
+                transition={{ duration: 0.26, ease: [0.22, 1, 0.36, 1] }}
+                style={{
+                  background: "#fff", borderRadius: 22, width: "100%", maxWidth: 400,
+                  boxShadow: "0 30px 70px rgba(0,0,0,0.22)", overflow: "hidden",
+                }}
+              >
+                {/* Header gradient */}
+                <div style={{
+                  background: "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)",
+                  padding: "28px 24px 22px", textAlign: "center", position: "relative",
+                }}>
+                  <motion.div
+                    initial={{ scale: 0, rotate: -20 }}
+                    animate={{ scale: 1, rotate: 0 }}
+                    transition={{ delay: 0.1, type: "spring", stiffness: 400, damping: 20 }}
+                    style={{
+                      width: 60, height: 60, borderRadius: 18,
+                      background: "rgba(255,255,255,0.15)",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      margin: "0 auto 12px", border: "2px solid rgba(255,255,255,0.25)",
+                    }}
+                  >
+                    <Lock size={26} color="#fff" />
+                  </motion.div>
+                  <p style={{ fontSize: 16, fontWeight: 800, color: "#fff", marginBottom: 4 }}>Dokumen Rahasia</p>
+                  <p style={{ fontSize: 12, color: "rgba(255,255,255,0.8)", maxWidth: 260, margin: "0 auto" }}>
+                    Masukkan password untuk mengunduh
+                  </p>
+                  <button
+                    onClick={() => setLockTarget(null)}
+                    style={{
+                      position: "absolute", top: 14, right: 14,
+                      background: "rgba(255,255,255,0.15)", border: "none", borderRadius: 8,
+                      padding: 6, cursor: "pointer", display: "flex",
+                    }}
+                  >
+                    <X size={15} color="#fff" />
+                  </button>
+                </div>
+
+                <div style={{ padding: "22px 24px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
+                  {/* Doc info */}
+                  <div style={{
+                    background: "#fff5f5", border: "1px solid #fecaca", borderRadius: 10,
+                    padding: "10px 12px", display: "flex", alignItems: "center", gap: 8,
+                  }}>
+                    <div style={{
+                      width: 32, height: 32, borderRadius: 8, background: "#fee2e2",
+                      display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+                    }}>
+                      <ShieldAlert size={14} color="#ef4444" />
+                    </div>
+                    <div>
+                      <p style={{ fontSize: 12, fontWeight: 700, color: "#111827" }}>{lockTarget.title}</p>
+                      <p style={{ fontSize: 10, color: "#9ca3af" }}>{lockTarget.file_name} · {fmtSize(lockTarget.file_size)}</p>
+                    </div>
+                  </div>
+
+                  {/* Password input */}
+                  <div>
+                    <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}>
+                      Password
+                    </label>
+                    <div style={{ position: "relative" }}>
+                      <KeyRound size={14} color={lockError ? "#ef4444" : "#9ca3af"} style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)" }} />
+                      <input
+                        type={showLockPass ? "text" : "password"}
+                        placeholder="Masukkan password..."
+                        value={lockInput}
+                        autoFocus
+                        onChange={e => { setLockInput(e.target.value); setLockError(false); }}
+                        onKeyDown={e => { if (e.key === "Enter") handlePasswordSubmit(); }}
+                        style={{
+                          width: "100%", padding: "11px 36px 11px 32px",
+                          border: `1.5px solid ${lockError ? "#ef4444" : "#e5e7eb"}`,
+                          borderRadius: 10, fontSize: 13, outline: "none",
+                          boxSizing: "border-box", fontFamily: "inherit",
+                          background: lockError ? "#fff5f5" : "#fff",
+                          transition: "border-color 0.15s, background 0.15s",
+                        }}
+                        onFocus={e => { if (!lockError) e.target.style.borderColor = "#ef4444"; }}
+                        onBlur={e => { if (!lockError) e.target.style.borderColor = "#e5e7eb"; }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowLockPass(p => !p)}
+                        style={{
+                          position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)",
+                          border: "none", background: "transparent", cursor: "pointer", padding: 2,
+                        }}
+                      >
+                        {showLockPass ? <EyeOff size={14} color="#9ca3af" /> : <Eye size={14} color="#9ca3af" />}
+                      </button>
+                    </div>
+                    <AnimatePresence>
+                      {lockError && (
+                        <motion.p
+                          initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                          style={{ fontSize: 11, color: "#ef4444", marginTop: 5, fontWeight: 600 }}
+                        >
+                          Password salah. Coba lagi.
+                        </motion.p>
+                      )}
+                    </AnimatePresence>
+                  </div>
+
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button
+                      onClick={() => setLockTarget(null)}
+                      style={{
+                        flex: 1, padding: "11px", border: "1px solid #e5e7eb", borderRadius: 10,
+                        background: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600, color: "#374151",
+                      }}
+                    >
+                      Batal
+                    </button>
+                    <motion.button
+                      whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
+                      onClick={handlePasswordSubmit}
+                      style={{
+                        flex: 2, padding: "11px",
+                        background: "linear-gradient(135deg, #ef4444, #dc2626)",
+                        border: "none", borderRadius: 10, cursor: "pointer",
+                        fontSize: 13, fontWeight: 700, color: "#fff",
+                        display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                        boxShadow: "0 4px 14px rgba(239,68,68,0.35)",
+                      }}
+                    >
+                      <Download size={14} /> Buka & Unduh
+                    </motion.button>
+                  </div>
+                </div>
+              </motion.div>
             </motion.div>
           </motion.div>
         )}

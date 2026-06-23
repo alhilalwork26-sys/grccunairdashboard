@@ -76,6 +76,8 @@ export interface Document {
   uploaded_by?: string | null;
   created_at: string;
   updated_at: string;
+  is_locked?: boolean | null;
+  password_hash?: string | null;
   profiles?: { full_name: string; role: string } | null;
 }
 
