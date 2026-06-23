@@ -30,23 +30,22 @@ export async function inviteUser(email: string, fullName: string, role: Role) {
     return { error: "Service role key belum dikonfigurasi. Isi SUPABASE_SERVICE_ROLE_KEY di .env.local." };
   }
   const admin = createAdminClient();
-  const { data, error } = await admin.auth.admin.createUser({
-    email,
-    email_confirm: true,
-    user_metadata: { full_name: fullName },
-    password: Math.random().toString(36).slice(-10) + "A1!",
+
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+
+  // Kirim email undangan resmi — user akan terima link untuk set password
+  const { data, error } = await admin.auth.admin.inviteUserByEmail(email, {
+    data: { full_name: fullName },
+    redirectTo: `${siteUrl}/dashboard`,
   });
   if (error) return { error: error.message };
+
+  // Buat profil langsung dengan role yang ditentukan
   const { error: profileError } = await admin
     .from("profiles")
     .upsert({ id: data.user.id, email, full_name: fullName, role });
   if (profileError) return { error: profileError.message };
 
-  const { error: resetError } = await admin.auth.admin.generateLink({
-    type: "magiclink",
-    email,
-  });
-  if (resetError) console.warn("Could not send magic link:", resetError.message);
   return { error: null, userId: data.user.id };
 }
 
