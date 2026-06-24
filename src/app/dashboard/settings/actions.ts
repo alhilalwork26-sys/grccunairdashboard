@@ -59,3 +59,21 @@ export async function deleteUser(userId: string) {
   if (error) return { error: error.message };
   return { error: null };
 }
+
+export async function toggleUserStatus(userId: string, activate: boolean) {
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!serviceKey || serviceKey === "PASTE_SERVICE_ROLE_KEY_HERE") {
+    return { error: "Service role key belum dikonfigurasi." };
+  }
+  const admin = createAdminClient();
+  const { error: authError } = await admin.auth.admin.updateUserById(userId, {
+    ban_duration: activate ? "none" : "876000h",
+  });
+  if (authError) return { error: authError.message };
+  const { error: dbError } = await admin
+    .from("profiles")
+    .update({ is_active: activate })
+    .eq("id", userId);
+  if (dbError) return { error: dbError.message };
+  return { error: null };
+}

@@ -4,10 +4,10 @@ import { useState, useTransition } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { UserProfile, Role } from "@/types";
 import { ROLE_LABELS } from "@/types";
-import { updateUserRole, inviteUser, deleteUser } from "./actions";
+import { updateUserRole, inviteUser, deleteUser, toggleUserStatus } from "./actions";
 import {
   Settings, Users, Plus, X, Check, Search,
-  Edit2, Trash2, Shield, Mail, UserCircle,
+  Edit2, Trash2, Shield, Mail, UserCircle, Power,
 } from "lucide-react";
 import Avatar from "@/components/ui/Avatar";
 
@@ -87,6 +87,20 @@ export default function SettingsBoard({ currentUser, initialProfiles }: Props) {
       setProfiles(prev => prev.filter(p => p.id !== id));
       showToast("User berhasil dihapus");
       setDeleteId(null);
+    });
+  };
+
+  const handleToggleStatus = (userId: string, currentActive: boolean) => {
+    const newActive = !currentActive;
+    setProfiles(prev => prev.map(p => p.id === userId ? { ...p, is_active: newActive } : p));
+    startTransition(async () => {
+      const { error } = await toggleUserStatus(userId, newActive);
+      if (error) {
+        setProfiles(prev => prev.map(p => p.id === userId ? { ...p, is_active: currentActive } : p));
+        showToast(error, false);
+        return;
+      }
+      showToast(newActive ? "User berhasil diaktifkan" : "User berhasil dinonaktifkan");
     });
   };
 
@@ -204,11 +218,11 @@ export default function SettingsBoard({ currentUser, initialProfiles }: Props) {
         <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #e5e7eb", overflow: "hidden" }}>
           {/* Table header */}
           <div style={{
-            display: "grid", gridTemplateColumns: "2fr 2fr 1.5fr 1fr 100px",
+            display: "grid", gridTemplateColumns: "2fr 2fr 1.5fr 90px 1fr 140px",
             padding: "11px 20px", background: "#f9fafb",
             borderBottom: "1px solid #f3f4f6",
           }}>
-            {["Nama", "Email", "Role", "Bergabung", "Aksi"].map(h => (
+            {["Nama", "Email", "Role", "Status", "Bergabung", "Aksi"].map(h => (
               <p key={h} style={{ fontSize: 11, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.05em" }}>
                 {h}
               </p>
@@ -236,11 +250,12 @@ export default function SettingsBoard({ currentUser, initialProfiles }: Props) {
                     exit={{ opacity: 0, scale: 0.97 }}
                     transition={{ delay: i * 0.03, duration: 0.22 }}
                     style={{
-                      display: "grid", gridTemplateColumns: "2fr 2fr 1.5fr 1fr 100px",
+                      display: "grid", gridTemplateColumns: "2fr 2fr 1.5fr 90px 1fr 140px",
                       padding: "14px 20px", alignItems: "center",
                       borderBottom: "1px solid #f9fafb",
                       background: isMe ? "#f9fafb" : "#fff",
-                      transition: "background 0.15s",
+                      opacity: user.is_active === false ? 0.55 : 1,
+                      transition: "background 0.15s, opacity 0.2s",
                     }}
                   >
                     {/* Name */}
@@ -284,6 +299,29 @@ export default function SettingsBoard({ currentUser, initialProfiles }: Props) {
                       </span>
                     </div>
 
+                    {/* Status */}
+                    <div>
+                      {user.is_active === false ? (
+                        <span style={{
+                          fontSize: 11, fontWeight: 600, padding: "3px 9px", borderRadius: 20,
+                          background: "#fee2e2", color: "#dc2626", border: "1px solid #fecaca",
+                          display: "inline-flex", alignItems: "center", gap: 4,
+                        }}>
+                          <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#dc2626", display: "inline-block" }} />
+                          Nonaktif
+                        </span>
+                      ) : (
+                        <span style={{
+                          fontSize: 11, fontWeight: 600, padding: "3px 9px", borderRadius: 20,
+                          background: "#f0fdf4", color: "#16a34a", border: "1px solid #bbf7d0",
+                          display: "inline-flex", alignItems: "center", gap: 4,
+                        }}>
+                          <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#16a34a", display: "inline-block" }} />
+                          Aktif
+                        </span>
+                      )}
+                    </div>
+
                     {/* Date */}
                     <p style={{ fontSize: 12, color: "#9ca3af" }}>{fmtDate(user.created_at)}</p>
 
@@ -302,7 +340,19 @@ export default function SettingsBoard({ currentUser, initialProfiles }: Props) {
                           >
                             <Edit2 size={13} color="#6b7280" />
                           </motion.button>
-                          {currentUser.role === "super_admin" && !isSuperAdmin && (
+                          {currentUser.role === "super_admin" && !isSuperAdmin && (<>
+                            <motion.button
+                              whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.95 }}
+                              onClick={() => handleToggleStatus(user.id, user.is_active !== false)}
+                              title={user.is_active === false ? "Aktifkan akun" : "Nonaktifkan akun"}
+                              style={{
+                                padding: 7,
+                                border: `1px solid ${user.is_active === false ? "#bbf7d0" : "#fde68a"}`,
+                                background: "#fff", borderRadius: 8, cursor: "pointer", display: "flex",
+                              }}
+                            >
+                              <Power size={13} color={user.is_active === false ? "#16a34a" : "#f59e0b"} />
+                            </motion.button>
                             <motion.button
                               whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.95 }}
                               onClick={() => setDeleteId(user.id)}
@@ -314,7 +364,7 @@ export default function SettingsBoard({ currentUser, initialProfiles }: Props) {
                             >
                               <Trash2 size={13} color="#ef4444" />
                             </motion.button>
-                          )}
+                          </>)}
                         </>
                       )}
                     </div>
