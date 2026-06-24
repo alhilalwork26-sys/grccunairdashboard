@@ -23,7 +23,7 @@ export default async function ChatPage() {
   // All other users for DM list
   const { data: allUsers } = await supabase
     .from("profiles")
-    .select("id, full_name, role, email, created_at")
+    .select("id, full_name, role, email, created_at, avatar_url")
     .neq("id", user.id)
     .order("full_name");
 
@@ -50,7 +50,7 @@ export default async function ChatPage() {
     if (directIds.length > 0) {
       const { data: others } = await supabase
         .from("chat_room_members")
-        .select("room_id, profile:profiles(id, full_name, role, email, created_at)")
+        .select("room_id, profile:profiles(id, full_name, role, email, created_at, avatar_url)")
         .in("room_id", directIds)
         .neq("user_id", user.id);
 

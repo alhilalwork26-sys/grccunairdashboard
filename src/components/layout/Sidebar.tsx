@@ -56,6 +56,7 @@ const CLEAR_MAP: Record<string, string> = {
   "/dashboard/kampanye":        "kampanye",
   "/dashboard/konten":          "konten",
   "/dashboard/brief":           "brief",
+  "/dashboard/chat":            "chat",
 };
 
 export default function Sidebar({ user, onClose }: SidebarProps) {
@@ -82,6 +83,10 @@ export default function Sidebar({ user, onClose }: SidebarProps) {
       const isSuperAdmin = role === "super_admin";
       const isKreatif    = role === "staff_kreatif";
 
+      const lastChatVisit = (typeof window !== "undefined"
+        ? localStorage.getItem(`lastVisit_chat_${user!.id}`)
+        : null) ?? "2000-01-01T00:00:00Z";
+
       const [
         { count: taskCount },
         { count: announceCount },
@@ -90,6 +95,7 @@ export default function Sidebar({ user, onClose }: SidebarProps) {
         { count: overdueCount },
         { count: kontenCount },
         { count: briefCount },
+        { count: chatCount },
       ] = await Promise.all([
         supabase.from("tasks").select("*", { count: "exact", head: true })
           .eq("assigned_to", user!.id).eq("status", "pending"),
@@ -112,6 +118,10 @@ export default function Sidebar({ user, onClose }: SidebarProps) {
           ? supabase.from("creative_briefs").select("*", { count: "exact", head: true })
               .eq("assigned_to", user!.id).in("status", ["open", "revision"])
           : Promise.resolve({ count: 0, error: null }),
+        // Unread chat messages (RLS auto-filters to accessible rooms)
+        supabase.from("chat_messages").select("*", { count: "exact", head: true })
+          .neq("sender_id", user!.id)
+          .gt("created_at", lastChatVisit),
       ]);
 
       const notifTotal = (overdueCount ?? 0)
@@ -126,6 +136,7 @@ export default function Sidebar({ user, onClose }: SidebarProps) {
         "notifications":   notifTotal,
         "konten":          isSuperAdmin  ? (kontenCount   ?? 0) : 0,
         "brief":           isKreatif     ? (briefCount    ?? 0) : 0,
+        "chat":            chatCount     ?? 0,
       });
     }
 
@@ -138,6 +149,7 @@ export default function Sidebar({ user, onClose }: SidebarProps) {
       .on("postgres_changes", { event: "*", schema: "public", table: "reimbursements" },  fetchAllBadges)
       .on("postgres_changes", { event: "*", schema: "public", table: "content_posts" },   fetchAllBadges)
       .on("postgres_changes", { event: "*", schema: "public", table: "creative_briefs" }, fetchAllBadges)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "chat_messages" }, fetchAllBadges)
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
@@ -151,6 +163,10 @@ export default function Sidebar({ user, onClose }: SidebarProps) {
     // Persist "last seen" for announcements
     if (key === "announce" && user?.id && typeof window !== "undefined") {
       localStorage.setItem(`lastSeen_announce_${user.id}`, new Date().toISOString());
+    }
+    // Persist "last visit" for chat
+    if (key === "chat" && user?.id && typeof window !== "undefined") {
+      localStorage.setItem(`lastVisit_chat_${user.id}`, new Date().toISOString());
     }
   }, [pathname, user?.id]);
 

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Hash, Send, Loader2, MessageSquare, Users } from "lucide-react";
+import { Hash, Send, Loader2, MessageSquare, Users, Trash2 } from "lucide-react";
 import Topbar from "@/components/layout/Topbar";
 import type { UserProfile } from "@/types";
 import { createClient } from "@/lib/supabase/client";
@@ -11,12 +11,9 @@ const GLOBAL_ROOM_ID = "00000000-0000-0000-0000-000000000001";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface ChatMessage {
-  id: string;
-  room_id: string;
-  sender_id: string;
-  content: string;
-  created_at: string;
-  sender?: { full_name: string; role: string } | null;
+  id: string; room_id: string; sender_id: string; content: string; created_at: string;
+  deleted_at?: string | null;
+  sender?: { full_name: string; role: string; avatar_url?: string } | null;
 }
 interface DmRoom { room_id: string; other_user: UserProfile }
 interface Props { currentUser: UserProfile; allUsers: UserProfile[]; dmRooms: DmRoom[] }
@@ -33,9 +30,17 @@ function fmtSep(iso: string) {
   if(d.toDateString()===y.toDateString()) return "Kemarin";
   return d.toLocaleDateString("id-ID",{day:"numeric",month:"long",year:"numeric"});
 }
+function lsKey(uid: string, rid: string) { return `chatLR_${uid}_${rid}`; }
+function getLastRead(uid: string, rid: string) {
+  if (typeof window === "undefined") return "2000-01-01T00:00:00Z";
+  return localStorage.getItem(lsKey(uid, rid)) ?? "2000-01-01T00:00:00Z";
+}
+function saveLastRead(uid: string, rid: string) {
+  if (typeof window !== "undefined") localStorage.setItem(lsKey(uid, rid), new Date().toISOString());
+}
 
 type Item = {type:"sep";label:string}|{type:"msg";msg:ChatMessage;isFirst:boolean;isOwn:boolean};
-function group(msgs: ChatMessage[], myId: string): Item[] {
+function buildItems(msgs: ChatMessage[], myId: string): Item[] {
   const out: Item[] = []; let ld="", ls="", lt=0;
   for(const m of msgs){
     const s=fmtSep(m.created_at);
@@ -49,11 +54,27 @@ function group(msgs: ChatMessage[], myId: string): Item[] {
 }
 
 // ─── Avatar ───────────────────────────────────────────────────────────────────
-function Av({name,uid,size=32}:{name:string;uid:string;size?:number}) {
+function Av({name,uid,size=32,url}:{name:string;uid:string;size?:number;url?:string|null}) {
+  if(url) return (
+    <img src={url} alt={name}
+      style={{width:size,height:size,borderRadius:"50%",objectFit:"cover",flexShrink:0,display:"block"}}
+      onError={e=>{(e.currentTarget as HTMLImageElement).style.display="none";}} />
+  );
   return (
     <div style={{width:size,height:size,borderRadius:"50%",background:uColor(uid),display:"flex",alignItems:"center",justifyContent:"center",fontSize:Math.round(size*.36),fontWeight:700,color:"#fff",flexShrink:0,userSelect:"none"}}>
       {uInit(name)}
     </div>
+  );
+}
+
+// ─── Unread badge ─────────────────────────────────────────────────────────────
+function Badge({count}:{count:number}) {
+  if(!count) return null;
+  return (
+    <motion.span initial={{scale:0}} animate={{scale:1}} exit={{scale:0}}
+      style={{minWidth:18,height:18,borderRadius:9,background:"#ef4444",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800,color:"#fff",padding:"0 5px",flexShrink:0}}>
+      {count>9?"9+":count}
+    </motion.span>
   );
 }
 
@@ -69,22 +90,43 @@ export default function ChatBoard({currentUser,allUsers,dmRooms:initDms}:Props) 
   const [loading,setLoading]   = useState(true);
   const [making,setMaking]     = useState<string|null>(null);
   const [focused,setFocused]   = useState(false);
+  const [unreads,setUnreads]   = useState<Record<string,number>>({});
+  const [hoveredMsg,setHoveredMsg] = useState<string|null>(null);
+  const [deleting,setDeleting]     = useState<string|null>(null);
 
-  const endRef  = useRef<HTMLDivElement>(null);
-  const taRef   = useRef<HTMLTextAreaElement>(null);
+  const endRef        = useRef<HTMLDivElement>(null);
+  const taRef         = useRef<HTMLTextAreaElement>(null);
+  const activeRoomRef = useRef(GLOBAL_ROOM_ID);
 
   const isGlobal = roomId===GLOBAL_ROOM_ID;
   const curDm    = dms.find(d=>d.room_id===roomId);
   const roomName = isGlobal ? "GRCC Team" : (curDm?.other_user.full_name??"DM");
   const roomSub  = isGlobal ? `${allUsers.length+1} anggota` : (curDm?.other_user.role?.replace(/_/g," ")??"");
 
-  const items = useMemo(()=>group(msgs,currentUser.id),[msgs,currentUser.id]);
+  const items = useMemo(()=>buildItems(msgs,currentUser.id),[msgs,currentUser.id]);
 
-  // ── Load + realtime ────────────────────────────────────────────────────────
+  // ── Switch room (clears unread + saves last-read timestamp) ───────────────
+  function switchRoom(rid: string) {
+    setRoomId(rid);
+    activeRoomRef.current = rid;
+    setUnreads(prev => ({ ...prev, [rid]: 0 }));
+    saveLastRead(currentUser.id, rid);
+  }
+
+  // ── Soft-delete a message ─────────────────────────────────────────────────
+  async function deleteMsg(id:string) {
+    setDeleting(id);
+    const now=new Date().toISOString();
+    await supabase.from("chat_messages").update({deleted_at:now}).eq("id",id).eq("sender_id",currentUser.id);
+    setMsgs(prev=>prev.map(m=>m.id===id?{...m,deleted_at:now}:m));
+    setDeleting(null); setHoveredMsg(null);
+  }
+
+  // ── Load messages + realtime for active room ───────────────────────────────
   useEffect(()=>{
     let ok=true;
     setLoading(true); setMsgs([]);
-    supabase.from("chat_messages").select("*,sender:profiles(id,full_name,role)")
+    supabase.from("chat_messages").select("*,sender:profiles(id,full_name,role,avatar_url)")
       .eq("room_id",roomId).order("created_at",{ascending:true}).limit(150)
       .then(({data})=>{ if(ok){setMsgs((data as ChatMessage[])??[]);setLoading(false);} });
 
@@ -92,48 +134,68 @@ export default function ChatBoard({currentUser,allUsers,dmRooms:initDms}:Props) 
       .on("postgres_changes",{event:"INSERT",schema:"public",table:"chat_messages",filter:`room_id=eq.${roomId}`},
         async(p)=>{
           if(!ok) return;
-          const {data}=await supabase.from("chat_messages").select("*,sender:profiles(id,full_name,role)").eq("id",(p.new as {id:string}).id).single();
+          const{data}=await supabase.from("chat_messages").select("*,sender:profiles(id,full_name,role,avatar_url)").eq("id",(p.new as {id:string}).id).single();
           if(data&&ok) setMsgs(prev=>prev.some(m=>m.id===(data as ChatMessage).id)?prev:[...prev,data as ChatMessage]);
+        })
+      .on("postgres_changes",{event:"UPDATE",schema:"public",table:"chat_messages",filter:`room_id=eq.${roomId}`},
+        (p)=>{
+          if(!ok) return;
+          const u=p.new as{id:string;deleted_at:string|null};
+          setMsgs(prev=>prev.map(m=>m.id===u.id?{...m,deleted_at:u.deleted_at}:m));
         })
       .subscribe();
     return ()=>{ ok=false; supabase.removeChannel(ch); };
-  },[roomId,supabase]);
+  },[roomId,supabase]); // eslint-disable-line
 
+  // ── Auto-scroll ────────────────────────────────────────────────────────────
   useEffect(()=>{ endRef.current?.scrollIntoView({behavior:"smooth"}); },[msgs]);
 
-  // ── New DM rooms arriving in real-time (so recipient sees without refresh) ──
+  // ── New DM rooms for current user in real-time ────────────────────────────
   useEffect(()=>{
     const ch=supabase.channel(`my-rooms:${currentUser.id}`)
-      .on("postgres_changes",{event:"INSERT",schema:"public",table:"chat_room_members",
-        filter:`user_id=eq.${currentUser.id}`},
+      .on("postgres_changes",{event:"INSERT",schema:"public",table:"chat_room_members",filter:`user_id=eq.${currentUser.id}`},
         async(p)=>{
           const rid=(p.new as {room_id:string}).room_id;
           if(rid===GLOBAL_ROOM_ID) return;
-          // Skip rooms we already know about
           setDms(prev=>{
             if(prev.some(d=>d.room_id===rid)) return prev;
-            // Fire async to get room + other user info
             (async()=>{
-              const {data:rm}=await supabase.from("chat_rooms")
-                .select("id,type").eq("id",rid).eq("type","direct").single();
+              const{data:rm}=await supabase.from("chat_rooms").select("id,type").eq("id",rid).eq("type","direct").single();
               if(!rm) return;
-              const {data:om}=await supabase.from("chat_room_members")
-                .select("profile:profiles(id,full_name,role,email,created_at)")
-                .eq("room_id",rid).neq("user_id",currentUser.id).single();
-              if(om?.profile){
-                setDms(cur=>cur.some(d=>d.room_id===rid)
-                  ?cur
-                  :[...cur,{room_id:rid,other_user:om.profile as unknown as UserProfile}]
-                );
-              }
+              const{data:om}=await supabase.from("chat_room_members")
+                .select("profile:profiles(id,full_name,role,email,created_at)").eq("room_id",rid).neq("user_id",currentUser.id).single();
+              if(om?.profile) setDms(cur=>cur.some(d=>d.room_id===rid)?cur:[...cur,{room_id:rid,other_user:om.profile as unknown as UserProfile}]);
             })();
             return prev;
           });
-        })
-      .subscribe();
-    return ()=>{supabase.removeChannel(ch);};
-  },[currentUser.id,supabase]);
+        }).subscribe();
+    return()=>{supabase.removeChannel(ch);};
+  },[currentUser.id,supabase]); // eslint-disable-line
 
+  // ── Load initial unread counts for all rooms ──────────────────────────────
+  useEffect(()=>{
+    const allRooms=[GLOBAL_ROOM_ID,...dms.map(d=>d.room_id)];
+    Promise.all(allRooms.map(async rid=>{
+      if(rid===activeRoomRef.current) return [rid,0] as [string,number];
+      const lr=getLastRead(currentUser.id,rid);
+      const{count}=await supabase.from("chat_messages").select("*",{count:"exact",head:true})
+        .eq("room_id",rid).neq("sender_id",currentUser.id).gt("created_at",lr);
+      return [rid, count??0] as [string,number];
+    })).then(entries=>setUnreads(Object.fromEntries(entries.filter(([,c])=>c>0))));
+  },[dms,currentUser.id,supabase]); // eslint-disable-line
+
+  // ── Global subscription: track unreads in non-active rooms ────────────────
+  useEffect(()=>{
+    const ch=supabase.channel("chat-unreads-global")
+      .on("postgres_changes",{event:"INSERT",schema:"public",table:"chat_messages"},p=>{
+        const m=p.new as{room_id:string;sender_id:string};
+        if(m.sender_id===currentUser.id||m.room_id===activeRoomRef.current) return;
+        setUnreads(prev=>({...prev,[m.room_id]:(prev[m.room_id]??0)+1}));
+      }).subscribe();
+    return()=>{supabase.removeChannel(ch);};
+  },[currentUser.id,supabase]); // eslint-disable-line
+
+  // ── Send ───────────────────────────────────────────────────────────────────
   async function send() {
     const text=input.trim(); if(!text||sending) return;
     setSending(true); setInput("");
@@ -142,81 +204,74 @@ export default function ChatBoard({currentUser,allUsers,dmRooms:initDms}:Props) 
     setSending(false); taRef.current?.focus();
   }
 
+  // ── Open / create DM ──────────────────────────────────────────────────────
   async function openDM(u:UserProfile) {
     const ex=dms.find(d=>d.other_user.id===u.id);
-    if(ex){setRoomId(ex.room_id);return;}
+    if(ex){switchRoom(ex.room_id);return;}
     setMaking(u.id);
-    // Generate UUID client-side: avoids RLS issue where INSERT...RETURNING
-    // fails because user isn't in chat_room_members yet at SELECT time.
     const newRoomId=crypto.randomUUID();
-    const {error}=await supabase.from("chat_rooms").insert({id:newRoomId,type:"direct"});
+    const{error}=await supabase.from("chat_rooms").insert({id:newRoomId,type:"direct"});
     if(error){setMaking(null);return;}
-    const {error:memErr}=await supabase.from("chat_room_members").insert([
+    const{error:memErr}=await supabase.from("chat_room_members").insert([
       {room_id:newRoomId,user_id:currentUser.id},
       {room_id:newRoomId,user_id:u.id},
     ]);
     if(memErr){setMaking(null);return;}
     setDms(prev=>[...prev,{room_id:newRoomId,other_user:u}]);
-    setRoomId(newRoomId); setMaking(null);
+    switchRoom(newRoomId); setMaking(null);
   }
+
+  // ── Total unread across all rooms (for Topbar badge display) ─────────────
+  const totalUnread = Object.values(unreads).reduce((s,c)=>s+c,0);
 
   // ─── RENDER ───────────────────────────────────────────────────────────────
   return (
     <div className="board-root" style={{display:"flex",flexDirection:"column",height:"100vh",background:"#f8fafc"}}>
-      <Topbar user={currentUser} title="Chat" />
+      <Topbar user={currentUser} title={`Chat${totalUnread>0?` (${totalUnread>9?"9+":totalUnread})`:"" }`} />
 
       <div style={{display:"flex",flex:1,overflow:"hidden"}}>
 
-        {/* ─── Left Panel (clean white) ──────────────────────────────── */}
+        {/* ─── Left Panel ─────────────────────────────────────────────── */}
         <div style={{width:224,flexShrink:0,background:"#fff",borderRight:"1px solid #f0f0f5",display:"flex",flexDirection:"column",overflow:"hidden"}}>
-
           <div style={{flex:1,overflowY:"auto",padding:"18px 10px 10px"}}>
 
-            {/* Channels */}
+            {/* Channel */}
             <p style={{fontSize:10,fontWeight:700,color:"#b0b7c3",textTransform:"uppercase",letterSpacing:"0.09em",padding:"0 8px",marginBottom:6}}>Channel</p>
-
-            <motion.button
-              onClick={()=>setRoomId(GLOBAL_ROOM_ID)}
-              whileTap={{scale:0.98}}
+            <motion.button onClick={()=>switchRoom(GLOBAL_ROOM_ID)} whileTap={{scale:.98}}
               style={{width:"100%",display:"flex",alignItems:"center",gap:8,padding:"8px 10px",borderRadius:10,border:"none",cursor:"pointer",textAlign:"left",marginBottom:16,
-                background:isGlobal?"linear-gradient(135deg,rgba(99,102,241,.1),rgba(139,92,246,.08))":"transparent",
-                transition:"background 0.15s",
-              }}
-            >
-              <div style={{width:28,height:28,borderRadius:8,background:isGlobal?"linear-gradient(135deg,#6366f1,#4f46e5)":"#f3f4f6",display:"flex",alignItems:"center",justifyContent:"center",transition:"background 0.15s",flexShrink:0}}>
+                background:isGlobal?"linear-gradient(135deg,rgba(99,102,241,.1),rgba(139,92,246,.08))":"transparent",transition:"background 0.15s"}}>
+              <div style={{width:28,height:28,borderRadius:8,background:isGlobal?"linear-gradient(135deg,#6366f1,#4f46e5)":"#f3f4f6",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"background 0.15s"}}>
                 <Hash size={13} color={isGlobal?"#fff":"#9ca3af"} strokeWidth={2.5} />
               </div>
               <span style={{fontSize:13,fontWeight:isGlobal?700:500,color:isGlobal?"#4f46e5":"#374151",flex:1}}>grcc-team</span>
-              {isGlobal && <div style={{width:7,height:7,borderRadius:"50%",background:"#6366f1",flexShrink:0}} />}
+              <AnimatePresence>
+                {unreads[GLOBAL_ROOM_ID]>0 && <Badge count={unreads[GLOBAL_ROOM_ID]} />}
+              </AnimatePresence>
             </motion.button>
 
-            {/* DMs */}
+            {/* Direct Messages */}
             <p style={{fontSize:10,fontWeight:700,color:"#b0b7c3",textTransform:"uppercase",letterSpacing:"0.09em",padding:"0 8px",marginBottom:6}}>Pesan Langsung</p>
-
             {allUsers.map((u,i)=>{
               const dm=dms.find(d=>d.other_user.id===u.id);
               const active=dm?.room_id===roomId;
+              const unread=dm?unreads[dm.room_id]??0:0;
               return (
                 <motion.button key={u.id}
                   initial={{opacity:0,x:-8}} animate={{opacity:1,x:0}} transition={{delay:i*.04,duration:.2}}
                   onClick={()=>openDM(u)} whileTap={{scale:.97}}
                   style={{width:"100%",display:"flex",alignItems:"center",gap:9,padding:"7px 10px",borderRadius:10,border:"none",cursor:"pointer",textAlign:"left",marginBottom:2,
-                    background:active?"linear-gradient(135deg,rgba(99,102,241,.1),rgba(139,92,246,.08))":"transparent",
-                    transition:"background 0.15s",
-                  }}
-                >
+                    background:active?"linear-gradient(135deg,rgba(99,102,241,.1),rgba(139,92,246,.08))":"transparent",transition:"background 0.15s"}}>
                   <div style={{position:"relative",flexShrink:0}}>
-                    <Av name={u.full_name} uid={u.id} size={28} />
+                    <Av name={u.full_name} uid={u.id} size={28} url={u.avatar_url} />
                     <div style={{position:"absolute",bottom:0,right:0,width:7,height:7,borderRadius:"50%",background:"#10b981",border:"1.5px solid #fff"}} />
                   </div>
-                  <span style={{fontSize:13,fontWeight:active?600:400,color:active?"#4f46e5":"#374151",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                  <span style={{fontSize:13,fontWeight:active||unread>0?600:400,color:active?"#4f46e5":unread>0?"#111827":"#374151",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
                     {u.full_name}
                   </span>
-                  {making===u.id&&(
-                    <motion.div animate={{rotate:360}} transition={{repeat:Infinity,duration:.7,ease:"linear"}}>
-                      <Loader2 size={12} color="#9ca3af" />
-                    </motion.div>
-                  )}
+                  {making===u.id
+                    ? <motion.div animate={{rotate:360}} transition={{repeat:Infinity,duration:.7,ease:"linear"}}><Loader2 size={12} color="#9ca3af" /></motion.div>
+                    : <AnimatePresence>{unread>0&&<Badge count={unread}/>}</AnimatePresence>
+                  }
                 </motion.button>
               );
             })}
@@ -226,7 +281,7 @@ export default function ChatBoard({currentUser,allUsers,dmRooms:initDms}:Props) 
           <div style={{padding:"10px 14px 14px",borderTop:"1px solid #f0f0f5"}}>
             <div style={{display:"flex",alignItems:"center",gap:9}}>
               <div style={{position:"relative",flexShrink:0}}>
-                <Av name={currentUser.full_name} uid={currentUser.id} size={30} />
+                <Av name={currentUser.full_name} uid={currentUser.id} size={30} url={currentUser.avatar_url} />
                 <div style={{position:"absolute",bottom:0,right:0,width:8,height:8,borderRadius:"50%",background:"#10b981",border:"2px solid #fff"}} />
               </div>
               <div style={{overflow:"hidden"}}>
@@ -248,26 +303,21 @@ export default function ChatBoard({currentUser,allUsers,dmRooms:initDms}:Props) 
                 ? <div style={{width:40,height:40,borderRadius:12,background:"linear-gradient(135deg,#6366f1,#4338ca)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow:"0 4px 12px rgba(99,102,241,.25)"}}>
                     <Hash size={18} color="#fff" strokeWidth={2.5} />
                   </div>
-                : <Av name={curDm?.other_user.full_name??"?"} uid={curDm?.other_user.id??""} size={40} />
+                : <Av name={curDm?.other_user.full_name??"?"} uid={curDm?.other_user.id??""} size={40} url={curDm?.other_user.avatar_url} />
               }
               <div>
                 <p style={{fontSize:16,fontWeight:700,color:"#111827",lineHeight:1}}>{roomName}</p>
                 <p style={{fontSize:12,color:"#9ca3af",marginTop:4,display:"flex",alignItems:"center",gap:4}}>
-                  {isGlobal && <Users size={11} />}
-                  {roomSub}
+                  {isGlobal && <Users size={11} />}{roomSub}
                 </p>
               </div>
             </div>
-
-            {/* Stacked member avatars */}
             {isGlobal && (
               <div style={{display:"flex",alignItems:"center"}}>
                 {[currentUser,...allUsers].slice(0,5).map((u,i)=>(
                   <motion.div key={u.id} initial={{scale:0}} animate={{scale:1}} transition={{delay:i*.05,type:"spring",stiffness:400}}
                     style={{marginLeft:i===0?0:-9,zIndex:5-i}} title={u.full_name}>
-                    <div style={{border:"2.5px solid #fff",borderRadius:"50%"}}>
-                      <Av name={u.full_name} uid={u.id} size={28} />
-                    </div>
+                    <div style={{border:"2.5px solid #fff",borderRadius:"50%"}}><Av name={u.full_name} uid={u.id} size={28} url={u.avatar_url} /></div>
                   </motion.div>
                 ))}
                 {allUsers.length>=5&&<div style={{width:28,height:28,borderRadius:"50%",background:"#f3f4f6",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,color:"#6b7280",marginLeft:-9,border:"2.5px solid #fff"}}>+{allUsers.length-4}</div>}
@@ -279,9 +329,7 @@ export default function ChatBoard({currentUser,allUsers,dmRooms:initDms}:Props) 
           <div style={{flex:1,overflowY:"auto",padding:"24px 28px 16px",display:"flex",flexDirection:"column",background:"#f8fafc"}}>
             {loading ? (
               <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center"}}>
-                <motion.div animate={{rotate:360}} transition={{repeat:Infinity,duration:.9,ease:"linear"}}>
-                  <Loader2 size={28} color="#c7d2fe" />
-                </motion.div>
+                <motion.div animate={{rotate:360}} transition={{repeat:Infinity,duration:.9,ease:"linear"}}><Loader2 size={28} color="#c7d2fe" /></motion.div>
               </div>
             ) : msgs.length===0 ? (
               <motion.div initial={{opacity:0,y:12}} animate={{opacity:1,y:0}}
@@ -306,43 +354,61 @@ export default function ChatBoard({currentUser,allUsers,dmRooms:initDms}:Props) 
                       <div style={{flex:1,height:1,background:"#e9ecf1"}} />
                     </motion.div>
                   );
-
-                  const {msg,isFirst,isOwn}=it;
+                  const{msg,isFirst,isOwn}=it;
                   const name=msg.sender?.full_name??"Unknown";
+                  const isDeleted=!!msg.deleted_at;
+                  const isHov=hoveredMsg===msg.id;
                   return (
                     <motion.div key={msg.id} layout
-                      initial={{opacity:0,y:16,scale:.97}}
-                      animate={{opacity:1,y:0,scale:1}}
+                      initial={{opacity:0,y:16,scale:.97}} animate={{opacity:1,y:0,scale:1}}
                       transition={{type:"spring",stiffness:520,damping:30}}
-                      style={{display:"flex",flexDirection:isOwn?"row-reverse":"row",alignItems:"flex-end",gap:10,marginTop:isFirst?16:3}}
-                    >
-                      {!isOwn&&(
-                        <div style={{width:32,flexShrink:0}}>
-                          {isFirst&&<Av name={name} uid={msg.sender_id} size={32} />}
-                        </div>
-                      )}
+                      onMouseEnter={()=>!isDeleted&&setHoveredMsg(msg.id)}
+                      onMouseLeave={()=>setHoveredMsg(null)}
+                      style={{display:"flex",flexDirection:isOwn?"row-reverse":"row",alignItems:"flex-end",gap:10,marginTop:isFirst?16:3,position:"relative"}}>
+                      {!isOwn&&<div style={{width:32,flexShrink:0}}>{isFirst&&<Av name={name} uid={msg.sender_id} size={32} url={msg.sender?.avatar_url} />}</div>}
                       <div style={{maxWidth:"58%",display:"flex",flexDirection:"column",alignItems:isOwn?"flex-end":"flex-start"}}>
-                        {isFirst&&!isOwn&&(
-                          <span style={{fontSize:11,fontWeight:600,color:"#6b7280",marginBottom:5,marginLeft:4}}>{name}</span>
-                        )}
-                        <div style={{
-                          padding:"10px 16px",
-                          background:isOwn?"linear-gradient(135deg,#6366f1 0%,#4338ca 100%)":"#fff",
-                          borderRadius:isOwn
-                            ?(isFirst?"20px 20px 5px 20px":"20px 5px 5px 20px")
-                            :(isFirst?"5px 20px 20px 20px":"5px 20px 20px 5px"),
-                          boxShadow:isOwn
-                            ?"0 4px 18px rgba(99,102,241,.28)"
-                            :"0 1px 4px rgba(0,0,0,.07),0 0 0 1px rgba(0,0,0,.04)",
-                          color:isOwn?"#fff":"#111827",
-                          fontSize:14,lineHeight:1.6,
-                          whiteSpace:"pre-wrap",wordBreak:"break-word",
-                        }}>
-                          {msg.content}
+                        {isFirst&&!isOwn&&<span style={{fontSize:11,fontWeight:600,color:"#6b7280",marginBottom:5,marginLeft:4}}>{name}</span>}
+
+                        {/* Bubble wrapper — holds bubble + delete button together */}
+                        <div style={{display:"flex",alignItems:"center",gap:6,flexDirection:isOwn?"row":"row-reverse"}}>
+                          {/* Delete button — only own, non-deleted, on hover */}
+                          <AnimatePresence>
+                            {isOwn&&!isDeleted&&isHov&&(
+                              <motion.button
+                                initial={{opacity:0,scale:.7}} animate={{opacity:1,scale:1}} exit={{opacity:0,scale:.7}}
+                                transition={{duration:.12}}
+                                onClick={()=>deleteMsg(msg.id)}
+                                disabled={deleting===msg.id}
+                                title="Hapus pesan"
+                                style={{width:28,height:28,borderRadius:8,border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",background:"#fee2e2",flexShrink:0}}>
+                                {deleting===msg.id
+                                  ? <motion.div animate={{rotate:360}} transition={{repeat:Infinity,duration:.6,ease:"linear"}}><Loader2 size={12} color="#ef4444"/></motion.div>
+                                  : <Trash2 size={12} color="#ef4444"/>
+                                }
+                              </motion.button>
+                            )}
+                          </AnimatePresence>
+
+                          {/* Bubble */}
+                          {isDeleted ? (
+                            <div style={{display:"flex",alignItems:"center",gap:6,padding:"8px 14px",
+                              background:"#f3f4f6",borderRadius:20,
+                              border:"1px dashed #d1d5db"}}>
+                              <Trash2 size={11} color="#9ca3af"/>
+                              <span style={{fontSize:12,color:"#9ca3af",fontStyle:"italic"}}>Pesan telah dihapus</span>
+                            </div>
+                          ) : (
+                            <div style={{padding:"10px 16px",
+                              background:isOwn?"linear-gradient(135deg,#6366f1 0%,#4338ca 100%)":"#fff",
+                              borderRadius:isOwn?(isFirst?"20px 20px 5px 20px":"20px 5px 5px 20px"):(isFirst?"5px 20px 20px 20px":"5px 20px 20px 5px"),
+                              boxShadow:isOwn?"0 4px 18px rgba(99,102,241,.28)":"0 1px 4px rgba(0,0,0,.07),0 0 0 1px rgba(0,0,0,.04)",
+                              color:isOwn?"#fff":"#111827",fontSize:14,lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>
+                              {msg.content}
+                            </div>
+                          )}
                         </div>
-                        <span style={{fontSize:10,color:"#a0aab4",marginTop:5,[isOwn?"marginRight":"marginLeft"]:4}}>
-                          {fmtTime(msg.created_at)}
-                        </span>
+
+                        <span style={{fontSize:10,color:"#a0aab4",marginTop:5,[isOwn?"marginRight":"marginLeft"]:4}}>{fmtTime(msg.created_at)}</span>
                       </div>
                     </motion.div>
                   );
@@ -357,29 +423,18 @@ export default function ChatBoard({currentUser,allUsers,dmRooms:initDms}:Props) 
             <motion.div
               animate={{boxShadow:focused?"0 0 0 3px rgba(99,102,241,.15)":"0 0 0 0px transparent",borderColor:focused?"#a5b4fc":"#e5e7eb"}}
               transition={{duration:.15}}
-              style={{display:"flex",alignItems:"flex-end",gap:10,background:focused?"#fff":"#f8fafc",borderRadius:16,border:"1.5px solid #e5e7eb",padding:"10px 10px 10px 18px"}}
-            >
+              style={{display:"flex",alignItems:"flex-end",gap:10,background:focused?"#fff":"#f8fafc",borderRadius:16,border:"1.5px solid #e5e7eb",padding:"10px 10px 10px 18px"}}>
               <textarea ref={taRef} value={input}
-                onChange={e=>{
-                  setInput(e.target.value);
-                  e.target.style.height="auto";
-                  e.target.style.height=`${Math.min(e.target.scrollHeight,120)}px`;
-                }}
+                onChange={e=>{setInput(e.target.value);e.target.style.height="auto";e.target.style.height=`${Math.min(e.target.scrollHeight,120)}px`;}}
                 onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();}}}
                 onFocus={()=>setFocused(true)} onBlur={()=>setFocused(false)}
-                placeholder={`Pesan ke ${isGlobal?"#grcc-team":roomName}…`}
-                rows={1}
-                style={{flex:1,border:"none",outline:"none",background:"transparent",fontSize:14,color:"#111827",resize:"none",fontFamily:"inherit",lineHeight:1.6,maxHeight:120,overflowY:"auto",paddingTop:1}}
-              />
-              <motion.button
-                whileHover={input.trim()?{scale:1.07}:{}}
-                whileTap={input.trim()?{scale:.92}:{}}
+                placeholder={`Pesan ke ${isGlobal?"#grcc-team":roomName}…`} rows={1}
+                style={{flex:1,border:"none",outline:"none",background:"transparent",fontSize:14,color:"#111827",resize:"none",fontFamily:"inherit",lineHeight:1.6,maxHeight:120,overflowY:"auto",paddingTop:1}} />
+              <motion.button whileHover={input.trim()?{scale:1.07}:{}} whileTap={input.trim()?{scale:.92}:{}}
                 onClick={send} disabled={!input.trim()||sending}
                 style={{width:38,height:38,borderRadius:12,border:"none",flexShrink:0,cursor:input.trim()?"pointer":"default",display:"flex",alignItems:"center",justifyContent:"center",
-                  background:input.trim()?"linear-gradient(135deg,#6366f1,#4338ca)":"#f0f0f5",
-                  transition:"background .15s",boxShadow:input.trim()?"0 4px 12px rgba(99,102,241,.3)":"none",
-                }}
-              >
+                  background:input.trim()?"linear-gradient(135deg,#6366f1,#4338ca)":"#f0f0f5",transition:"background .15s",
+                  boxShadow:input.trim()?"0 4px 12px rgba(99,102,241,.3)":"none"}}>
                 {sending
                   ? <motion.div animate={{rotate:360}} transition={{repeat:Infinity,duration:.7,ease:"linear"}}><Loader2 size={15} color={input.trim()?"#fff":"#9ca3af"} /></motion.div>
                   : <Send size={15} color={input.trim()?"#fff":"#9ca3af"} strokeWidth={2.2} style={{transform:"translateX(1px)"}} />
