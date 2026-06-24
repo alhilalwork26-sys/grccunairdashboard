@@ -35,6 +35,7 @@ const MODULES = [
   { id: "calendar",        label: "Kalender" },
   { id: "docs",            label: "Dokumen" },
   { id: "finance",         label: "Finance" },
+  { id: "rab",             label: "RAB" },
   { id: "training",        label: "Training" },
   { id: "approvals",       label: "Approval Center" },
   { id: "report",          label: "Laporan" },

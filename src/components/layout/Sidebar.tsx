@@ -8,7 +8,7 @@ import {
   Bell, CalendarDays, Settings, LogOut,
   ChevronLeft, ChevronRight, FolderOpen, Wallet,
   GraduationCap, ClipboardCheck, BarChart2, BellRing, User,
-  Megaphone, FileImage, Palette,
+  Megaphone, FileImage, Palette, FileText,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
@@ -27,6 +27,7 @@ const NAV = [
   { label: "Kalender",          href: "/dashboard/calendar",         icon: CalendarDays    },
   { label: "Dokumen",           href: "/dashboard/docs",             icon: FolderOpen      },
   { label: "Finance",           href: "/dashboard/finance",          icon: Wallet          },
+  { label: "RAB",               href: "/dashboard/rab",              icon: FileText        },
   { label: "Training",          href: "/dashboard/training",         icon: GraduationCap   },
   { label: "Approval Center",   href: "/dashboard/approvals",        icon: ClipboardCheck  },
   { label: "Laporan",           href: "/dashboard/report",           icon: BarChart2       },
@@ -42,6 +43,7 @@ interface SidebarProps {
 
 const APPROVE_ROLES  = ["super_admin", "manager", "kep_trainer", "program_admin", "kep_finance"];
 const REIMB_ROLES    = ["super_admin", "manager", "kep_finance"];
+const RAB_ROLES      = ["super_admin", "manager"];
 
 // Which pathname clears which badge key
 const CLEAR_MAP: Record<string, string> = {
@@ -159,14 +161,18 @@ export default function Sidebar({ user, onClose }: SidebarProps) {
 
   const w = collapsed ? 72 : 240;
 
-  // Filter nav by per-user module access (null = full access)
-  const visibleNav = user?.allowed_modules == null
+  // Filter nav by per-user module access (null = full access) + role-gated routes
+  const visibleNav = (user?.allowed_modules == null
     ? NAV
     : NAV.filter(item => {
         const parts = item.href.split("/").filter(Boolean);
         const moduleId = parts[parts.length - 1] || "dashboard";
         return (user.allowed_modules as string[]).includes(moduleId);
-      });
+      })
+  ).filter(item => {
+    if (item.href === "/dashboard/rab") return RAB_ROLES.includes(user?.role ?? "");
+    return true;
+  });
 
   // theme tokens
   const bg          = isDark ? "#1e293b" : "#ffffff";
