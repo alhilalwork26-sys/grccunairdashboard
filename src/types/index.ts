@@ -18,6 +18,7 @@ export interface UserProfile {
   avatar_url?: string;
   created_at: string;
   is_active?: boolean;
+  allowed_modules?: string[] | null;
 }
 
 export interface Task {
@@ -32,6 +33,25 @@ export interface Task {
   tags?: string[] | null;
   created_at: string;
   updated_at: string;
+  requires_proof?: boolean;
+  proof_url?: string | null;
+  completion_note?: string | null;
+  approved_by?: string | null;
+  approved_at?: string | null;
+  rejected_note?: string | null;
+}
+
+export interface TaskLog {
+  id: string;
+  task_id: string;
+  actor_id: string | null;
+  action: string;
+  from_status: string | null;
+  to_status: string | null;
+  note: string | null;
+  proof_url: string | null;
+  created_at: string;
+  actor?: { full_name: string; role: string } | null;
 }
 
 export interface DailyProgress {
@@ -117,6 +137,60 @@ export interface Reimbursement {
   updated_at: string;
   requester?: { full_name: string; role: string } | null;
   reviewer?: { full_name: string } | null;
+}
+
+export interface Campaign {
+  id: string;
+  nama: string;
+  deskripsi?: string | null;
+  tujuan?: string | null;
+  platform?: string[] | null;
+  periode_mulai?: string | null;
+  periode_selesai?: string | null;
+  budget?: number | null;
+  status: "planning" | "active" | "completed" | "cancelled";
+  created_by?: string | null;
+  created_at: string;
+  updated_at: string;
+  creator?: { full_name: string } | null;
+}
+
+export interface ContentPost {
+  id: string;
+  campaign_id?: string | null;
+  judul: string;
+  platform: string;
+  caption?: string | null;
+  hashtags?: string | null;
+  visual_url?: string | null;
+  scheduled_date?: string | null;
+  status: "draft" | "review" | "approved" | "rejected" | "posted";
+  rejection_note?: string | null;
+  approved_by?: string | null;
+  approved_at?: string | null;
+  created_by?: string | null;
+  created_at: string;
+  updated_at: string;
+  creator?: { full_name: string; role: string } | null;
+  campaign?: { nama: string } | null;
+}
+
+export interface CreativeBrief {
+  id: string;
+  judul: string;
+  deskripsi?: string | null;
+  platform?: string | null;
+  referensi_url?: string | null;
+  deadline?: string | null;
+  output_url?: string | null;
+  status: "open" | "in_progress" | "delivered" | "revision" | "done";
+  revision_note?: string | null;
+  requested_by?: string | null;
+  assigned_to?: string | null;
+  created_at: string;
+  updated_at: string;
+  requester?: { full_name: string; role: string } | null;
+  assignee?: { full_name: string; role: string } | null;
 }
 
 export const ROLE_LABELS: Record<Role, string> = {

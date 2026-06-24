@@ -164,7 +164,7 @@ export default function Topbar({ user, title }: TopbarProps) {
         </motion.button>
 
         {/* Notification bell */}
-        <NotificationDropdown />
+        <NotificationDropdown userRole={user?.role} />
 
         {/* User avatar + upload popover */}
         <div ref={menuRef} style={{ position: "relative", display: "flex", alignItems: "center", gap: 10 }}>

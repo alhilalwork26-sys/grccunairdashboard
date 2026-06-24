@@ -8,8 +8,9 @@ import {
   Bell, CalendarDays, Settings, LogOut,
   ChevronLeft, ChevronRight, FolderOpen, Wallet,
   GraduationCap, ClipboardCheck, BarChart2, BellRing, User,
+  Megaphone, FileImage, Palette,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import type { UserProfile } from "@/types";
@@ -20,6 +21,9 @@ const NAV = [
   { label: "Daily Progress",    href: "/dashboard/progress",         icon: TrendingUp      },
   { label: "Task Management",   href: "/dashboard/task-management",  icon: CheckSquare     },
   { label: "Announcement",      href: "/dashboard/announce",         icon: Bell            },
+  { label: "Kampanye",          href: "/dashboard/kampanye",         icon: Megaphone       },
+  { label: "Konten Plan",       href: "/dashboard/konten",           icon: FileImage       },
+  { label: "Brief Kreatif",     href: "/dashboard/brief",            icon: Palette         },
   { label: "Kalender",          href: "/dashboard/calendar",         icon: CalendarDays    },
   { label: "Dokumen",           href: "/dashboard/docs",             icon: FolderOpen      },
   { label: "Finance",           href: "/dashboard/finance",          icon: Wallet          },
@@ -36,11 +40,116 @@ interface SidebarProps {
   onClose?: () => void;
 }
 
+const APPROVE_ROLES  = ["super_admin", "manager", "kep_trainer", "program_admin", "kep_finance"];
+const REIMB_ROLES    = ["super_admin", "manager", "kep_finance"];
+
+// Which pathname clears which badge key
+const CLEAR_MAP: Record<string, string> = {
+  "/dashboard/task-management": "task-management",
+  "/dashboard/announce":        "announce",
+  "/dashboard/finance":         "finance",
+  "/dashboard/approvals":       "approvals",
+  "/dashboard/notifications":   "notifications",
+  "/dashboard/kampanye":        "kampanye",
+  "/dashboard/konten":          "konten",
+  "/dashboard/brief":           "brief",
+};
+
 export default function Sidebar({ user, onClose }: SidebarProps) {
   const pathname  = usePathname();
   const router    = useRouter();
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed]           = useState(false);
+  const [badges, setBadges]                 = useState<Record<string, number>>({});
   const { isDark } = useTheme();
+
+  // Fetch all badge counts in one go
+  useEffect(() => {
+    if (!user?.id) return;
+    const supabase  = createClient();
+    const role      = user.role ?? "";
+    const canApprove    = APPROVE_ROLES.includes(role);
+    const canSeeReimbs  = REIMB_ROLES.includes(role);
+
+    async function fetchAllBadges() {
+      const today          = new Date().toISOString().split("T")[0];
+      const lastSeenAnnounce = (typeof window !== "undefined"
+        ? localStorage.getItem(`lastSeen_announce_${user!.id}`)
+        : null) ?? "2000-01-01T00:00:00Z";
+
+      const isSuperAdmin = role === "super_admin";
+      const isKreatif    = role === "staff_kreatif";
+
+      const [
+        { count: taskCount },
+        { count: announceCount },
+        { count: approvalCount },
+        { count: financeCount },
+        { count: overdueCount },
+        { count: kontenCount },
+        { count: briefCount },
+      ] = await Promise.all([
+        supabase.from("tasks").select("*", { count: "exact", head: true })
+          .eq("assigned_to", user!.id).eq("status", "pending"),
+        supabase.from("announcements").select("*", { count: "exact", head: true })
+          .gt("created_at", lastSeenAnnounce),
+        canApprove
+          ? supabase.from("tasks").select("*", { count: "exact", head: true }).eq("status", "review")
+          : Promise.resolve({ count: 0, error: null }),
+        canSeeReimbs
+          ? supabase.from("reimbursements").select("*", { count: "exact", head: true }).eq("status", "pending")
+          : Promise.resolve({ count: 0, error: null }),
+        supabase.from("tasks").select("*", { count: "exact", head: true })
+          .eq("assigned_to", user!.id).lt("due_date", today).not("status", "eq", "done"),
+        // Konten in review — only super_admin approves
+        isSuperAdmin
+          ? supabase.from("content_posts").select("*", { count: "exact", head: true }).eq("status", "review")
+          : Promise.resolve({ count: 0, error: null }),
+        // Briefs waiting for staff_kreatif action
+        isKreatif
+          ? supabase.from("creative_briefs").select("*", { count: "exact", head: true })
+              .eq("assigned_to", user!.id).in("status", ["open", "revision"])
+          : Promise.resolve({ count: 0, error: null }),
+      ]);
+
+      const notifTotal = (overdueCount ?? 0)
+        + (canSeeReimbs ? (financeCount ?? 0) : 0)
+        + (canApprove   ? (approvalCount ?? 0) : 0);
+
+      setBadges({
+        "task-management": taskCount     ?? 0,
+        "announce":        announceCount ?? 0,
+        "finance":         canSeeReimbs  ? (financeCount  ?? 0) : 0,
+        "approvals":       canApprove    ? (approvalCount ?? 0) : 0,
+        "notifications":   notifTotal,
+        "konten":          isSuperAdmin  ? (kontenCount   ?? 0) : 0,
+        "brief":           isKreatif     ? (briefCount    ?? 0) : 0,
+      });
+    }
+
+    fetchAllBadges();
+
+    const channel = supabase
+      .channel("sidebar-badges")
+      .on("postgres_changes", { event: "*", schema: "public", table: "tasks" },         fetchAllBadges)
+      .on("postgres_changes", { event: "*", schema: "public", table: "announcements" },  fetchAllBadges)
+      .on("postgres_changes", { event: "*", schema: "public", table: "reimbursements" },  fetchAllBadges)
+      .on("postgres_changes", { event: "*", schema: "public", table: "content_posts" },   fetchAllBadges)
+      .on("postgres_changes", { event: "*", schema: "public", table: "creative_briefs" }, fetchAllBadges)
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [user?.id, user?.role]);
+
+  // Clear badge for the current page when navigating
+  useEffect(() => {
+    const key = CLEAR_MAP[pathname];
+    if (!key) return;
+    setBadges(prev => ({ ...prev, [key]: 0 }));
+    // Persist "last seen" for announcements
+    if (key === "announce" && user?.id && typeof window !== "undefined") {
+      localStorage.setItem(`lastSeen_announce_${user.id}`, new Date().toISOString());
+    }
+  }, [pathname, user?.id]);
 
   async function handleLogout() {
     const supabase = createClient();
@@ -49,6 +158,15 @@ export default function Sidebar({ user, onClose }: SidebarProps) {
   }
 
   const w = collapsed ? 72 : 240;
+
+  // Filter nav by per-user module access (null = full access)
+  const visibleNav = user?.allowed_modules == null
+    ? NAV
+    : NAV.filter(item => {
+        const parts = item.href.split("/").filter(Boolean);
+        const moduleId = parts[parts.length - 1] || "dashboard";
+        return (user.allowed_modules as string[]).includes(moduleId);
+      });
 
   // theme tokens
   const bg          = isDark ? "#1e293b" : "#ffffff";
@@ -119,9 +237,12 @@ export default function Sidebar({ user, onClose }: SidebarProps) {
 
       {/* Nav */}
       <nav style={{ flex: 1, padding: "12px 8px", display: "flex", flexDirection: "column", gap: 2, overflowY: "auto" }}>
-        {NAV.map((item) => {
+        {visibleNav.map((item) => {
           const active = pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href));
-          const Icon = item.icon;
+          const Icon   = item.icon;
+          // Map href to badge key
+          const badgeKey = item.href.split("/dashboard/")[1] ?? "";
+          const badge    = badges[badgeKey] ?? 0;
           return (
             <Link key={item.href} href={item.href} style={{ textDecoration: "none" }} onClick={onClose}>
               <motion.div
@@ -149,28 +270,59 @@ export default function Sidebar({ user, onClose }: SidebarProps) {
                     transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
                   />
                 )}
-                <Icon
-                  size={18}
-                  strokeWidth={active ? 2.2 : 1.7}
-                  style={{ color: active ? navActiveColor : textMuted, flexShrink: 0, position: "relative" }}
-                />
+                {/* Icon — with dot badge when collapsed */}
+                <div style={{ position: "relative", flexShrink: 0 }}>
+                  <Icon
+                    size={18}
+                    strokeWidth={active ? 2.2 : 1.7}
+                    style={{ color: active ? navActiveColor : textMuted, display: "block" }}
+                  />
+                  {collapsed && badge > 0 && (
+                    <motion.span
+                      initial={{ scale: 0 }} animate={{ scale: 1 }}
+                      style={{
+                        position: "absolute", top: -5, right: -6,
+                        minWidth: 15, height: 15, borderRadius: 8,
+                        background: "#ef4444", border: "2px solid white",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        fontSize: 8, fontWeight: 800, color: "#fff", padding: "0 2px",
+                      }}
+                    >
+                      {badge > 9 ? "9+" : badge}
+                    </motion.span>
+                  )}
+                </div>
+
+                {/* Label + pill badge when expanded */}
                 <AnimatePresence>
                   {!collapsed && (
                     <motion.span
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
+                      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                       transition={{ duration: 0.15 }}
                       style={{
                         fontSize: 13, fontWeight: active ? 600 : 500,
                         color: active ? navActiveColor : navText,
-                        position: "relative", whiteSpace: "nowrap",
+                        position: "relative", whiteSpace: "nowrap", flex: 1,
                       }}
                     >
                       {item.label}
                     </motion.span>
                   )}
                 </AnimatePresence>
+                {!collapsed && badge > 0 && (
+                  <motion.span
+                    initial={{ scale: 0 }} animate={{ scale: 1 }}
+                    style={{
+                      minWidth: 18, height: 18, borderRadius: 9,
+                      background: "#ef4444",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      fontSize: 10, fontWeight: 800, color: "#fff",
+                      padding: "0 5px", flexShrink: 0, position: "relative",
+                    }}
+                  >
+                    {badge > 9 ? "9+" : badge}
+                  </motion.span>
+                )}
               </motion.div>
             </Link>
           );

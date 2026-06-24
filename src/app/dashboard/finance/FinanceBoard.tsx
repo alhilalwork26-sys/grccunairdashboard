@@ -73,12 +73,14 @@ interface Props {
 export default function FinanceBoard({ currentUser, initialTransactions, initialReimbursements }: Props) {
   const supabase = createClient();
 
-  const canManageTrx = ["kep_finance", "staff_finance", "staff_dokumen"].includes(currentUser.role);
-  const canApprove   = ["super_admin", "manager", "kep_finance"].includes(currentUser.role);
-  const canPayOut    = ["super_admin", "manager", "kep_finance"].includes(currentUser.role);
-  const isViewOnly   = ["super_admin", "manager"].includes(currentUser.role) && !canManageTrx;
+  const isFinanceRole = ["super_admin", "manager", "kep_finance", "staff_finance", "staff_dokumen"].includes(currentUser.role);
+  const canManageTrx  = ["kep_finance", "staff_finance", "staff_dokumen"].includes(currentUser.role);
+  const canApprove    = ["super_admin", "manager", "kep_finance"].includes(currentUser.role);
+  const canPayOut     = ["super_admin", "manager", "kep_finance"].includes(currentUser.role);
+  const isViewOnly    = ["super_admin", "manager"].includes(currentUser.role) && !canManageTrx;
 
-  const [tab, setTab]                   = useState<"overview" | "transaksi" | "reimbursement">("reimbursement");
+  // Non-finance roles always land on reimbursement tab
+  const [tab, setTab] = useState<"overview" | "transaksi" | "reimbursement">(isFinanceRole ? "reimbursement" : "reimbursement");
   const [transactions, setTransactions] = useState<FinanceTransaction[]>(initialTransactions);
   const [reimbursements, setReimbursements] = useState<Reimbursement[]>(initialReimbursements);
 
@@ -282,11 +284,13 @@ export default function FinanceBoard({ currentUser, initialTransactions, initial
 
   const filteredTrx = transactions.filter(t => typeFilter === "all" || t.type === typeFilter);
 
-  const TABS = [
+  const TABS = (isFinanceRole ? [
     { key: "overview",      label: "Overview" },
     { key: "transaksi",     label: "Transaksi" },
     { key: "reimbursement", label: `Reimbursement${pendingReimb > 0 ? ` (${pendingReimb})` : ""}` },
-  ] as const;
+  ] : [
+    { key: "reimbursement", label: "Reimbursement Saya" },
+  ]) as { key: "overview" | "transaksi" | "reimbursement"; label: string }[];
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: "#f9fafb" }}>
@@ -299,8 +303,8 @@ export default function FinanceBoard({ currentUser, initialTransactions, initial
           <div>
             <h1 style={{ fontSize: 18, fontWeight: 700, color: "#111827", letterSpacing: "-0.02em" }}>Finance</h1>
             <p style={{ fontSize: 12, color: "#9ca3af", marginTop: 1 }}>
-              {isViewOnly ? "Mode lihat saja" : "Manajemen keuangan"}
-              {pendingReimb > 0 && <span style={{ marginLeft: 6, color: "#f59e0b", fontWeight: 600 }}>· {pendingReimb} reimbursement menunggu</span>}
+              {!isFinanceRole ? "Ajukan reimbursement pengeluaran" : isViewOnly ? "Mode lihat saja" : "Manajemen keuangan"}
+              {canApprove && pendingReimb > 0 && <span style={{ marginLeft: 6, color: "#f59e0b", fontWeight: 600 }}>· {pendingReimb} menunggu review</span>}
             </p>
           </div>
         </div>
@@ -477,22 +481,62 @@ export default function FinanceBoard({ currentUser, initialTransactions, initial
             <motion.div key="reimbursement" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
               style={{ display: "flex", flexDirection: "column", gap: 16 }}>
 
-              {/* Stats bar */}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
-                {[
-                  { label: "Menunggu Review", value: reimbursements.filter(r => r.status === "pending").length, suffix: "pengajuan", color: "#d97706", bg: "#fffbeb", border: "#fde68a" },
-                  { label: "Total Disetujui",  value: fmtRupiah(approvedReimbTotal),           suffix: "",           color: "#059669", bg: "#f0fdf4", border: "#a7f3d0" },
-                  { label: "Ditolak",          value: reimbursements.filter(r => r.status === "rejected").length, suffix: "pengajuan", color: "#dc2626", bg: "#fef2f2", border: "#fecaca" },
-                ].map(s => (
-                  <motion.div key={s.label} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-                    style={{ background: "#fff", border: `1px solid ${s.border}`, borderRadius: 12, padding: "14px 18px" }}>
-                    <p style={{ fontSize: 11, color: "#9ca3af", fontWeight: 500, marginBottom: 6 }}>{s.label}</p>
-                    <p style={{ fontSize: 20, fontWeight: 800, color: s.color, letterSpacing: "-0.02em" }}>
-                      {s.value}{s.suffix && <span style={{ fontSize: 12, fontWeight: 500, color: s.color, marginLeft: 4 }}>{s.suffix}</span>}
+              {/* Notification banner for kep_finance when there are pending reimbs */}
+              {currentUser.role === "kep_finance" && pendingReimb > 0 && (
+                <motion.div
+                  initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 12,
+                    background: "linear-gradient(135deg, #fffbeb, #fef3c7)",
+                    border: "1.5px solid #fde68a", borderRadius: 12,
+                    padding: "13px 18px",
+                  }}
+                >
+                  <div style={{ width: 36, height: 36, borderRadius: 10, background: "#f59e0b", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                    <Receipt size={17} color="#fff" />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <p style={{ fontSize: 13, fontWeight: 700, color: "#92400e" }}>
+                      {pendingReimb} Reimbursement Menunggu Review Anda
                     </p>
-                  </motion.div>
-                ))}
-              </div>
+                    <p style={{ fontSize: 12, color: "#a16207", marginTop: 2 }}>
+                      Sebagai Kepala Finance, Anda perlu meninjau dan menyetujui atau menolak pengajuan ini.
+                    </p>
+                  </div>
+                  <div style={{ flexShrink: 0 }}>
+                    <span style={{ fontSize: 24, fontWeight: 900, color: "#d97706" }}>{pendingReimb}</span>
+                  </div>
+                </motion.div>
+              )}
+
+              {/* Info banner for non-finance roles */}
+              {!isFinanceRole && (
+                <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 16px", background: "#f0fdf4", border: "1px solid #a7f3d0", borderRadius: 10 }}>
+                  <CheckCircle size={15} color="#059669" />
+                  <p style={{ fontSize: 12, color: "#059669", fontWeight: 500 }}>
+                    Pengajuan reimbursement Anda akan diteruskan ke Kepala Finance untuk ditinjau.
+                  </p>
+                </div>
+              )}
+
+              {/* Stats bar — only for kep_finance / manager / super_admin */}
+              {canApprove && (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+                  {[
+                    { label: "Menunggu Review", value: reimbursements.filter(r => r.status === "pending").length, suffix: "pengajuan", color: "#d97706", bg: "#fffbeb", border: "#fde68a" },
+                    { label: "Total Disetujui",  value: fmtRupiah(approvedReimbTotal),           suffix: "",           color: "#059669", bg: "#f0fdf4", border: "#a7f3d0" },
+                    { label: "Ditolak",          value: reimbursements.filter(r => r.status === "rejected").length, suffix: "pengajuan", color: "#dc2626", bg: "#fef2f2", border: "#fecaca" },
+                  ].map(s => (
+                    <motion.div key={s.label} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+                      style={{ background: "#fff", border: `1px solid ${s.border}`, borderRadius: 12, padding: "14px 18px" }}>
+                      <p style={{ fontSize: 11, color: "#9ca3af", fontWeight: 500, marginBottom: 6 }}>{s.label}</p>
+                      <p style={{ fontSize: 20, fontWeight: 800, color: s.color, letterSpacing: "-0.02em" }}>
+                        {s.value}{s.suffix && <span style={{ fontSize: 12, fontWeight: 500, color: s.color, marginLeft: 4 }}>{s.suffix}</span>}
+                      </p>
+                    </motion.div>
+                  ))}
+                </div>
+              )}
 
               {/* Filter + Search bar */}
               <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>

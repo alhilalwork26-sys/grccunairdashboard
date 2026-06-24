@@ -9,26 +9,31 @@ export default async function NotificationsPage() {
   const today = new Date().toISOString().split("T")[0];
   const in7 = new Date(Date.now() + 7 * 86400000).toISOString().split("T")[0];
 
+  const { data: profile } = await supabase.from("profiles").select("*").eq("id", user!.id).single();
+
+  const canSeeAllReimbs = ["super_admin", "manager", "kep_finance"].includes(profile?.role ?? "");
+
   const [
-    { data: profile },
     { data: overdueTasks },
     { data: pendingReimbs },
     { data: announcements },
     { data: upcomingTrainings },
     { data: reviewTasks },
   ] = await Promise.all([
-    supabase.from("profiles").select("*").eq("id", user!.id).single(),
     supabase.from("tasks")
       .select("id, title, due_date, priority, status, assigned_to, assignee:profiles!tasks_assigned_to_fkey(full_name)")
       .lt("due_date", today)
       .not("status", "eq", "done")
       .order("due_date", { ascending: true })
       .limit(20),
-    supabase.from("reimbursements")
-      .select("id, title, amount, created_at, requester:profiles!reimbursements_requested_by_fkey(full_name, role)")
-      .eq("status", "pending")
-      .order("created_at", { ascending: false })
-      .limit(10),
+    // Only kep_finance/manager/super_admin see pending reimbursements as notifications
+    canSeeAllReimbs
+      ? supabase.from("reimbursements")
+          .select("id, title, amount, created_at, requester:profiles!reimbursements_requested_by_fkey(full_name, role)")
+          .eq("status", "pending")
+          .order("created_at", { ascending: false })
+          .limit(10)
+      : Promise.resolve({ data: [] }),
     supabase.from("announcements")
       .select("id, title, content, type, created_at, pinned")
       .order("pinned", { ascending: false })
@@ -53,6 +58,7 @@ export default async function NotificationsPage() {
     full_name: user!.user_metadata?.full_name ?? user!.email ?? "",
     role: "super_admin", created_at: user!.created_at,
   };
+
 
   return (
     <NotificationsBoard

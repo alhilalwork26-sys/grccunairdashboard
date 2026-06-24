@@ -24,29 +24,40 @@ export async function updateUserRole(userId: string, role: Role) {
   return { error: null };
 }
 
-export async function inviteUser(email: string, fullName: string, role: Role) {
+export async function createUser(
+  email: string,
+  fullName: string,
+  role: Role,
+  password: string,
+  allowedModules: string[] | null,
+) {
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!serviceKey || serviceKey === "PASTE_SERVICE_ROLE_KEY_HERE") {
-    return { error: "Service role key belum dikonfigurasi. Isi SUPABASE_SERVICE_ROLE_KEY di .env.local." };
+    return { error: "Service role key belum dikonfigurasi." };
   }
   const admin = createAdminClient();
-
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
-
-  // Kirim email undangan resmi — user akan terima link untuk set password
-  const { data, error } = await admin.auth.admin.inviteUserByEmail(email, {
-    data: { full_name: fullName },
-    redirectTo: `${siteUrl}/dashboard`,
+  const { data, error } = await admin.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+    user_metadata: { full_name: fullName },
   });
   if (error) return { error: error.message };
-
-  // Buat profil langsung dengan role yang ditentukan
   const { error: profileError } = await admin
     .from("profiles")
-    .upsert({ id: data.user.id, email, full_name: fullName, role });
+    .upsert({ id: data.user.id, email, full_name: fullName, role, is_active: true, allowed_modules: allowedModules });
   if (profileError) return { error: profileError.message };
-
   return { error: null, userId: data.user.id };
+}
+
+export async function updateUserModules(userId: string, allowedModules: string[] | null) {
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from("profiles")
+    .update({ allowed_modules: allowedModules })
+    .eq("id", userId);
+  if (error) return { error: error.message };
+  return { error: null };
 }
 
 export async function deleteUser(userId: string) {

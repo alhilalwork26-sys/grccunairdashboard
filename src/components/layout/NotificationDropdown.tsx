@@ -26,7 +26,9 @@ const TYPE_CFG = {
   approval: { color: "#8b5cf6", bg: "#f5f3ff", Icon: ClipboardCheck },
 };
 
-export default function NotificationDropdown() {
+const REIMB_ROLES = ["super_admin", "manager", "kep_finance"];
+
+export default function NotificationDropdown({ userRole }: { userRole?: string }) {
   const [open, setOpen]       = useState(false);
   const [notifs, setNotifs]   = useState<VirtualNotif[]>([]);
   const [loading, setLoading] = useState(false);
@@ -40,11 +42,13 @@ export default function NotificationDropdown() {
 
     async function fetchBadge() {
       const today = new Date().toISOString().split("T")[0];
+      const canSeeReimbs = !userRole || REIMB_ROLES.includes(userRole);
       const [{ count: overdue }, { count: pending }] = await Promise.all([
         supabase.from("tasks").select("*", { count: "exact", head: true })
           .lt("due_date", today).not("status", "eq", "done"),
-        supabase.from("reimbursements").select("*", { count: "exact", head: true })
-          .eq("status", "pending"),
+        canSeeReimbs
+          ? supabase.from("reimbursements").select("*", { count: "exact", head: true }).eq("status", "pending")
+          : Promise.resolve({ count: 0, error: null }),
       ]);
       setBadgeCount((overdue ?? 0) + (pending ?? 0));
     }
@@ -66,6 +70,7 @@ export default function NotificationDropdown() {
     const today = new Date().toISOString().split("T")[0];
     const in7 = new Date(Date.now() + 7 * 86400000).toISOString().split("T")[0];
 
+    const canSeeReimbs = !userRole || REIMB_ROLES.includes(userRole);
     const [
       { data: overdue },
       { data: announces },
@@ -78,8 +83,9 @@ export default function NotificationDropdown() {
         .order("created_at", { ascending: false }).limit(3),
       supabase.from("training_sessions").select("id, title, date")
         .eq("status", "upcoming").gte("date", today).lte("date", in7).limit(3),
-      supabase.from("reimbursements").select("id, title, amount")
-        .eq("status", "pending").limit(3),
+      canSeeReimbs
+        ? supabase.from("reimbursements").select("id, title, amount").eq("status", "pending").limit(3)
+        : Promise.resolve({ data: [] }),
     ]);
 
     const result: VirtualNotif[] = [];
