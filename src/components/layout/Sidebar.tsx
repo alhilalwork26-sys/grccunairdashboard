@@ -18,6 +18,7 @@ import { useTheme } from "@/context/ThemeContext";
 
 const NAV = [
   { label: "Dashboard",         href: "/dashboard",                  icon: LayoutDashboard },
+  { label: "Chat",               href: "/dashboard/chat",             icon: MessageCircle   },
   { label: "Daily Progress",    href: "/dashboard/progress",         icon: TrendingUp      },
   { label: "Task Management",   href: "/dashboard/task-management",  icon: CheckSquare     },
   { label: "Announcement",      href: "/dashboard/announce",         icon: Bell            },
@@ -31,7 +32,6 @@ const NAV = [
   { label: "Training",          href: "/dashboard/training",         icon: GraduationCap   },
   { label: "Approval Center",   href: "/dashboard/approvals",        icon: ClipboardCheck  },
   { label: "Laporan",           href: "/dashboard/report",           icon: BarChart2       },
-  { label: "Chat",               href: "/dashboard/chat",             icon: MessageCircle   },
   { label: "Notifikasi",        href: "/dashboard/notifications",    icon: BellRing        },
   { label: "Pengaturan",        href: "/dashboard/settings",         icon: Settings        },
   { label: "Profil",            href: "/dashboard/profile",          icon: User            },
