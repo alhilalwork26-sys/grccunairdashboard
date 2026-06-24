@@ -8,7 +8,7 @@ import {
   Bell, CalendarDays, Settings, LogOut,
   ChevronLeft, ChevronRight, FolderOpen, Wallet,
   GraduationCap, ClipboardCheck, BarChart2, BellRing, User,
-  Megaphone, FileImage, Palette, FileText,
+  Megaphone, FileImage, Palette, FileText, MessageCircle,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
@@ -31,6 +31,7 @@ const NAV = [
   { label: "Training",          href: "/dashboard/training",         icon: GraduationCap   },
   { label: "Approval Center",   href: "/dashboard/approvals",        icon: ClipboardCheck  },
   { label: "Laporan",           href: "/dashboard/report",           icon: BarChart2       },
+  { label: "Chat",               href: "/dashboard/chat",             icon: MessageCircle   },
   { label: "Notifikasi",        href: "/dashboard/notifications",    icon: BellRing        },
   { label: "Pengaturan",        href: "/dashboard/settings",         icon: Settings        },
   { label: "Profil",            href: "/dashboard/profile",          icon: User            },
