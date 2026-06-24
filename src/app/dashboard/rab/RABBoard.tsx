@@ -27,6 +27,7 @@ interface RABRecord {
   dpp: number | null;
   ppn: number | null;
   institutional_fee: number | null;
+  jenis_rab: "in_house" | "umum";
   catatan: string | null;
   pengeluaran: { kategori: string; item: string; jumlah: number; satuan: string; tarif: number }[];
   status: "draft" | "diajukan" | "disetujui" | "ditolak";
@@ -88,12 +89,14 @@ function calcSummary(
   ppnStr: string,
   instFeeStr: string,
   pengeluaran: PengeluaranRow[],
+  jenisRAB: "in_house" | "umum" = "umum",
 ) {
   const totalPenerimaanAwal = rows.reduce((s, r) => s + n(r.orang) * n(r.nilai_investasi), 0);
   const hargaJual = hargaJualStr !== "" ? n(hargaJualStr) : totalPenerimaanAwal;
   const dpp       = dppStr !== ""       ? n(dppStr)       : hargaJual * (100 / 112);
   const ppn       = ppnStr !== ""       ? n(ppnStr)       : dpp * 0.12;
-  const instFee   = instFeeStr !== ""   ? n(instFeeStr)   : totalPenerimaanAwal * 0.10;
+  const autoInstFee = jenisRAB === "in_house" ? dpp * 0.10 : totalPenerimaanAwal * 0.10;
+  const instFee   = instFeeStr !== ""   ? n(instFeeStr)   : autoInstFee;
   const penerimaanAktual = hargaJual - instFee;
   const totalPengeluaran = pengeluaran.reduce((s, r) => s + n(r.jumlah) * n(r.tarif), 0);
   const profitLoss = penerimaanAktual - totalPengeluaran;
@@ -146,6 +149,7 @@ export default function RABBoard({ currentUser, initialRAB }: Props) {
   const [toast, setToast]     = useState<{ msg: string; ok: boolean } | null>(null);
   const [search, setSearch]   = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [jenisRAB, setJenisRAB] = useState<"in_house" | "umum">("umum");
   const [reviewNote, setReviewNote] = useState("");
   const [reviewLoading, setReviewLoading] = useState(false);
 
@@ -166,8 +170,8 @@ export default function RABBoard({ currentUser, initialRAB }: Props) {
 
   // ── Derived calculations ──────────────────────────────────────────────────
   const calc = useMemo(
-    () => calcSummary(pemasukanRows, form.harga_jual, form.dpp, form.ppn, form.institutional_fee, pengeluaranRows),
-    [pemasukanRows, form.harga_jual, form.dpp, form.ppn, form.institutional_fee, pengeluaranRows],
+    () => calcSummary(pemasukanRows, form.harga_jual, form.dpp, form.ppn, form.institutional_fee, pengeluaranRows, jenisRAB),
+    [pemasukanRows, form.harga_jual, form.dpp, form.ppn, form.institutional_fee, pengeluaranRows, jenisRAB],
   );
 
   const warnings = useMemo(() => {
@@ -200,6 +204,7 @@ export default function RABBoard({ currentUser, initialRAB }: Props) {
   function openCreate() {
     setEditTarget(null);
     setForm({ ...EMPTY_FORM, tanggal_mulai: new Date().toISOString().split("T")[0] });
+    setJenisRAB("umum");
     setPemasukanRows([{ id: uid(), jenis_harga: "Harga Utama", orang: "", nilai_investasi: "" }]);
     setPengeluaranRows([
       { id: uid(), kategori: "Honor Personel", item: "Honor Narasumber", jumlah: "2", satuan: "jam", tarif: "" },
@@ -230,6 +235,7 @@ export default function RABBoard({ currentUser, initialRAB }: Props) {
       ? r.pengeluaran.map(x => ({ id: uid(), kategori: x.kategori, item: x.item, jumlah: String(x.jumlah), satuan: x.satuan, tarif: String(x.tarif) }))
       : [{ id: uid(), kategori: "", item: "", jumlah: "", satuan: "paket", tarif: "" }]
     );
+    setJenisRAB(r.jenis_rab ?? "umum");
     setView("form");
   }
 
@@ -247,7 +253,7 @@ export default function RABBoard({ currentUser, initialRAB }: Props) {
     }
     setSaving(true);
 
-    const c = calcSummary(pemasukanRows, form.harga_jual, form.dpp, form.ppn, form.institutional_fee, pengeluaranRows);
+    const c = calcSummary(pemasukanRows, form.harga_jual, form.dpp, form.ppn, form.institutional_fee, pengeluaranRows, jenisRAB);
     const payload = {
       nama_kegiatan: form.nama_kegiatan.trim(),
       pic: form.pic.trim() || null,
@@ -259,6 +265,7 @@ export default function RABBoard({ currentUser, initialRAB }: Props) {
       ppn: form.ppn !== "" ? n(form.ppn) : null,
       institutional_fee: form.institutional_fee !== "" ? n(form.institutional_fee) : null,
       catatan: form.catatan.trim() || null,
+      jenis_rab: jenisRAB,
       pengeluaran: pengeluaranRows.map(r => ({ kategori: r.kategori, item: r.item, jumlah: n(r.jumlah), satuan: r.satuan, tarif: n(r.tarif) })),
       status: submitStatus,
       total_pemasukan: c.totalPenerimaanAwal,
@@ -325,6 +332,7 @@ export default function RABBoard({ currentUser, initialRAB }: Props) {
       r.ppn != null ? String(r.ppn) : "",
       r.institutional_fee != null ? String(r.institutional_fee) : "",
       r.pengeluaran.map(x => ({ id: "", kategori: x.kategori, item: x.item, jumlah: String(x.jumlah), satuan: x.satuan, tarif: String(x.tarif) })),
+      r.jenis_rab ?? "umum",
     );
     const rows: (string | number)[][] = [
       [`RAB — ${r.nama_kegiatan}`],
@@ -442,6 +450,9 @@ export default function RABBoard({ currentUser, initialRAB }: Props) {
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
                             <p style={{ fontSize: 15, fontWeight: 700, color: "#111827", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.nama_kegiatan}</p>
+                            <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 20, background: r.jenis_rab === "in_house" ? "#f5f3ff" : "#eff6ff", color: r.jenis_rab === "in_house" ? "#7c3aed" : "#2563eb", border: `1px solid ${r.jenis_rab === "in_house" ? "#ddd6fe" : "#bfdbfe"}`, flexShrink: 0 }}>
+                              {r.jenis_rab === "in_house" ? "In House" : "Umum"}
+                            </span>
                             <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 20, background: s.bg, color: s.color, border: `1px solid ${s.border}`, flexShrink: 0, display: "flex", alignItems: "center", gap: 4 }}>
                               <StatusIcon size={9} /> {s.label}
                             </span>
@@ -509,6 +520,7 @@ export default function RABBoard({ currentUser, initialRAB }: Props) {
       r.ppn != null ? String(r.ppn) : "",
       r.institutional_fee != null ? String(r.institutional_fee) : "",
       r.pengeluaran.map(x => ({ id: "", kategori: x.kategori, item: x.item, jumlah: String(x.jumlah), satuan: x.satuan, tarif: String(x.tarif) })),
+      r.jenis_rab ?? "umum",
     );
     const s = STATUS_CONFIG[r.status];
     const StatusIcon = s.icon;
@@ -552,9 +564,14 @@ export default function RABBoard({ currentUser, initialRAB }: Props) {
                   <span style={{ fontSize: 12, color: "#9ca3af" }}>Dibuat oleh {r.creator?.full_name ?? "—"}</span>
                 </div>
               </div>
-              <span style={{ fontSize: 12, fontWeight: 700, padding: "5px 12px", borderRadius: 20, background: s.bg, color: s.color, border: `1px solid ${s.border}`, display: "flex", alignItems: "center", gap: 5, flexShrink: 0 }}>
-                <StatusIcon size={12} /> {s.label}
-              </span>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, padding: "4px 12px", borderRadius: 20, background: r.jenis_rab === "in_house" ? "#f5f3ff" : "#eff6ff", color: r.jenis_rab === "in_house" ? "#7c3aed" : "#2563eb", border: `1px solid ${r.jenis_rab === "in_house" ? "#ddd6fe" : "#bfdbfe"}` }}>
+                  {r.jenis_rab === "in_house" ? "In House" : "Umum"}
+                </span>
+                <span style={{ fontSize: 12, fontWeight: 700, padding: "5px 12px", borderRadius: 20, background: s.bg, color: s.color, border: `1px solid ${s.border}`, display: "flex", alignItems: "center", gap: 5 }}>
+                  <StatusIcon size={12} /> {s.label}
+                </span>
+              </div>
             </div>
           </motion.div>
 
@@ -601,7 +618,7 @@ export default function RABBoard({ currentUser, initialRAB }: Props) {
                 { label: "Harga Jual", value: fmtRupiah(c2.hargaJual) },
                 { label: "DPP", value: fmtRupiah(c2.dpp) },
                 { label: "PPN (12%)", value: fmtRupiah(c2.ppn) },
-                { label: "Institutional Fee (10%)", value: fmtRupiah(c2.instFee) },
+                { label: `Institutional Fee (10% × ${r.jenis_rab === "in_house" ? "DPP" : "Penerimaan Awal"})`, value: fmtRupiah(c2.instFee) },
                 { label: "Penerimaan Aktual", value: fmtRupiah(c2.penerimaanAktual) },
               ].map(d => (
                 <div key={d.label}>
@@ -721,6 +738,32 @@ export default function RABBoard({ currentUser, initialRAB }: Props) {
 
         {/* Info kegiatan */}
         <FormSection title="Informasi Kegiatan" delay={0}>
+          {/* Jenis RAB toggle */}
+          <div style={{ marginBottom: 18, padding: "14px 16px", background: jenisRAB === "in_house" ? "#faf5ff" : "#eff6ff", borderRadius: 12, border: `1px solid ${jenisRAB === "in_house" ? "#e9d5ff" : "#bfdbfe"}` }}>
+            <p style={{ fontSize: 10, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Jenis RAB</p>
+            <div style={{ display: "flex", gap: 0, background: "#fff", borderRadius: 10, padding: 3, width: "fit-content", boxShadow: "0 0 0 1px #e5e7eb" }}>
+              {(["umum", "in_house"] as const).map(type => (
+                <motion.button key={type} whileTap={{ scale: 0.97 }}
+                  onClick={() => setJenisRAB(type)}
+                  style={{
+                    padding: "9px 22px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: 700,
+                    background: jenisRAB === type
+                      ? type === "in_house" ? "linear-gradient(135deg, #7c3aed, #6d28d9)" : "linear-gradient(135deg, #6366f1, #4f46e5)"
+                      : "transparent",
+                    color: jenisRAB === type ? "#fff" : "#6b7280",
+                    boxShadow: jenisRAB === type ? "0 2px 8px rgba(0,0,0,0.15)" : "none",
+                    transition: "all 0.15s ease",
+                  }}>
+                  {type === "in_house" ? "In House" : "Umum"}
+                </motion.button>
+              ))}
+            </div>
+            <p style={{ fontSize: 12, color: jenisRAB === "in_house" ? "#6d28d9" : "#4f46e5", marginTop: 10, fontWeight: 500 }}>
+              {jenisRAB === "in_house"
+                ? "Institutional Fee = 10% × DPP"
+                : "Institutional Fee = 10% × Total Penerimaan Awal"}
+            </p>
+          </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
             <CleanInput label="Nama Kegiatan *" value={form.nama_kegiatan} onChange={v => setForm(f => ({ ...f, nama_kegiatan: v }))} placeholder="Contoh: Pelatihan Public Batch 1" />
             <CleanInput label="PIC" value={form.pic} onChange={v => setForm(f => ({ ...f, pic: v }))} placeholder="Nama PIC kegiatan" />
@@ -775,7 +818,7 @@ export default function RABBoard({ currentUser, initialRAB }: Props) {
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
               <CleanInput label="PPN" value={form.ppn} onChange={v => setForm(f => ({ ...f, ppn: v }))} placeholder={`Auto: ${fmtRupiah(calc.ppn)}`} hint="Kosong = DPP × 12%. Isi 0 untuk bebas PPN." />
-              <CleanInput label="Institutional Fee" value={form.institutional_fee} onChange={v => setForm(f => ({ ...f, institutional_fee: v }))} placeholder={`Auto: ${fmtRupiah(calc.instFee)}`} hint="Kosong = 10% penerimaan awal. Bisa manual/0." />
+              <CleanInput label="Institutional Fee" value={form.institutional_fee} onChange={v => setForm(f => ({ ...f, institutional_fee: v }))} placeholder={`Auto: ${fmtRupiah(calc.instFee)}`} hint={jenisRAB === "in_house" ? "Kosong = 10% × DPP (In House). Bisa manual/0." : "Kosong = 10% × Total Penerimaan Awal (Umum). Bisa manual/0."} />
             </div>
           </div>
         </FormSection>
