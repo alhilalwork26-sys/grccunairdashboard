@@ -93,6 +93,7 @@ export default function ChatBoard({currentUser,allUsers,dmRooms:initDms}:Props) 
   const [unreads,setUnreads]   = useState<Record<string,number>>({});
   const [hoveredMsg,setHoveredMsg] = useState<string|null>(null);
   const [deleting,setDeleting]     = useState<string|null>(null);
+  const [lastMsgAt,setLastMsgAt]   = useState<Record<string,string>>({});
 
   const endRef        = useRef<HTMLDivElement>(null);
   const taRef         = useRef<HTMLTextAreaElement>(null);
@@ -104,6 +105,18 @@ export default function ChatBoard({currentUser,allUsers,dmRooms:initDms}:Props) 
   const roomSub  = isGlobal ? `${allUsers.length+1} anggota` : (curDm?.other_user.role?.replace(/_/g," ")??"");
 
   const items = useMemo(()=>buildItems(msgs,currentUser.id),[msgs,currentUser.id]);
+
+  // Sort DM list: contacts with most-recent message first, then alphabetical
+  const sortedUsers = useMemo(()=>[...allUsers].sort((a,b)=>{
+    const da=dms.find(d=>d.other_user.id===a.id);
+    const db=dms.find(d=>d.other_user.id===b.id);
+    const ta=da?lastMsgAt[da.room_id]??"":"";
+    const tb=db?lastMsgAt[db.room_id]??"":"";
+    if(ta&&tb) return tb.localeCompare(ta);
+    if(ta) return -1;
+    if(tb) return 1;
+    return a.full_name.localeCompare(b.full_name);
+  }),[allUsers,dms,lastMsgAt]);
 
   // ── Switch room (clears unread + saves last-read timestamp) ───────────────
   function switchRoom(rid: string) {
@@ -134,7 +147,9 @@ export default function ChatBoard({currentUser,allUsers,dmRooms:initDms}:Props) 
       .on("postgres_changes",{event:"INSERT",schema:"public",table:"chat_messages",filter:`room_id=eq.${roomId}`},
         async(p)=>{
           if(!ok) return;
-          const{data}=await supabase.from("chat_messages").select("*,sender:profiles(id,full_name,role,avatar_url)").eq("id",(p.new as {id:string}).id).single();
+          const nm=p.new as{id:string;created_at:string};
+          setLastMsgAt(prev=>({...prev,[roomId]:nm.created_at}));
+          const{data}=await supabase.from("chat_messages").select("*,sender:profiles(id,full_name,role,avatar_url)").eq("id",nm.id).single();
           if(data&&ok) setMsgs(prev=>prev.some(m=>m.id===(data as ChatMessage).id)?prev:[...prev,data as ChatMessage]);
         })
       .on("postgres_changes",{event:"UPDATE",schema:"public",table:"chat_messages",filter:`room_id=eq.${roomId}`},
@@ -172,6 +187,16 @@ export default function ChatBoard({currentUser,allUsers,dmRooms:initDms}:Props) 
     return()=>{supabase.removeChannel(ch);};
   },[currentUser.id,supabase]); // eslint-disable-line
 
+  // ── Load last-message timestamps for all DM rooms (for sort order) ──────
+  useEffect(()=>{
+    if(!initDms.length) return;
+    Promise.all(initDms.map(async({room_id})=>{
+      const{data}=await supabase.from("chat_messages").select("created_at")
+        .eq("room_id",room_id).order("created_at",{ascending:false}).limit(1).maybeSingle();
+      return [room_id, data?.created_at??""] as [string,string];
+    })).then(entries=>setLastMsgAt(Object.fromEntries(entries.filter(([,t])=>t))));
+  },[supabase]); // eslint-disable-line
+
   // ── Load initial unread counts for all rooms ──────────────────────────────
   useEffect(()=>{
     const allRooms=[GLOBAL_ROOM_ID,...dms.map(d=>d.room_id)];
@@ -188,7 +213,8 @@ export default function ChatBoard({currentUser,allUsers,dmRooms:initDms}:Props) 
   useEffect(()=>{
     const ch=supabase.channel("chat-unreads-global")
       .on("postgres_changes",{event:"INSERT",schema:"public",table:"chat_messages"},p=>{
-        const m=p.new as{room_id:string;sender_id:string};
+        const m=p.new as{room_id:string;sender_id:string;created_at:string};
+        setLastMsgAt(prev=>({...prev,[m.room_id]:m.created_at}));
         if(m.sender_id===currentUser.id||m.room_id===activeRoomRef.current) return;
         setUnreads(prev=>({...prev,[m.room_id]:(prev[m.room_id]??0)+1}));
       }).subscribe();
@@ -200,7 +226,9 @@ export default function ChatBoard({currentUser,allUsers,dmRooms:initDms}:Props) 
     const text=input.trim(); if(!text||sending) return;
     setSending(true); setInput("");
     if(taRef.current) taRef.current.style.height="auto";
+    const now=new Date().toISOString();
     await supabase.from("chat_messages").insert({room_id:roomId,sender_id:currentUser.id,content:text});
+    setLastMsgAt(prev=>({...prev,[roomId]:now}));
     setSending(false); taRef.current?.focus();
   }
 
@@ -251,7 +279,7 @@ export default function ChatBoard({currentUser,allUsers,dmRooms:initDms}:Props) 
 
             {/* Direct Messages */}
             <p style={{fontSize:10,fontWeight:700,color:"#b0b7c3",textTransform:"uppercase",letterSpacing:"0.09em",padding:"0 8px",marginBottom:6}}>Pesan Langsung</p>
-            {allUsers.map((u,i)=>{
+            {sortedUsers.map((u,i)=>{
               const dm=dms.find(d=>d.other_user.id===u.id);
               const active=dm?.room_id===roomId;
               const unread=dm?unreads[dm.room_id]??0:0;
