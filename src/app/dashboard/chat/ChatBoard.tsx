@@ -101,6 +101,39 @@ export default function ChatBoard({currentUser,allUsers,dmRooms:initDms}:Props) 
 
   useEffect(()=>{ endRef.current?.scrollIntoView({behavior:"smooth"}); },[msgs]);
 
+  // ── New DM rooms arriving in real-time (so recipient sees without refresh) ──
+  useEffect(()=>{
+    const ch=supabase.channel(`my-rooms:${currentUser.id}`)
+      .on("postgres_changes",{event:"INSERT",schema:"public",table:"chat_room_members",
+        filter:`user_id=eq.${currentUser.id}`},
+        async(p)=>{
+          const rid=(p.new as {room_id:string}).room_id;
+          if(rid===GLOBAL_ROOM_ID) return;
+          // Skip rooms we already know about
+          setDms(prev=>{
+            if(prev.some(d=>d.room_id===rid)) return prev;
+            // Fire async to get room + other user info
+            (async()=>{
+              const {data:rm}=await supabase.from("chat_rooms")
+                .select("id,type").eq("id",rid).eq("type","direct").single();
+              if(!rm) return;
+              const {data:om}=await supabase.from("chat_room_members")
+                .select("profile:profiles(id,full_name,role,email,created_at)")
+                .eq("room_id",rid).neq("user_id",currentUser.id).single();
+              if(om?.profile){
+                setDms(cur=>cur.some(d=>d.room_id===rid)
+                  ?cur
+                  :[...cur,{room_id:rid,other_user:om.profile as unknown as UserProfile}]
+                );
+              }
+            })();
+            return prev;
+          });
+        })
+      .subscribe();
+    return ()=>{supabase.removeChannel(ch);};
+  },[currentUser.id,supabase]);
+
   async function send() {
     const text=input.trim(); if(!text||sending) return;
     setSending(true); setInput("");
@@ -113,11 +146,18 @@ export default function ChatBoard({currentUser,allUsers,dmRooms:initDms}:Props) 
     const ex=dms.find(d=>d.other_user.id===u.id);
     if(ex){setRoomId(ex.room_id);return;}
     setMaking(u.id);
-    const {data:room}=await supabase.from("chat_rooms").insert({type:"direct"}).select().single();
-    if(!room){setMaking(null);return;}
-    await supabase.from("chat_room_members").insert([{room_id:room.id,user_id:currentUser.id},{room_id:room.id,user_id:u.id}]);
-    setDms(prev=>[...prev,{room_id:room.id,other_user:u}]);
-    setRoomId(room.id); setMaking(null);
+    // Generate UUID client-side: avoids RLS issue where INSERT...RETURNING
+    // fails because user isn't in chat_room_members yet at SELECT time.
+    const newRoomId=crypto.randomUUID();
+    const {error}=await supabase.from("chat_rooms").insert({id:newRoomId,type:"direct"});
+    if(error){setMaking(null);return;}
+    const {error:memErr}=await supabase.from("chat_room_members").insert([
+      {room_id:newRoomId,user_id:currentUser.id},
+      {room_id:newRoomId,user_id:u.id},
+    ]);
+    if(memErr){setMaking(null);return;}
+    setDms(prev=>[...prev,{room_id:newRoomId,other_user:u}]);
+    setRoomId(newRoomId); setMaking(null);
   }
 
   // ─── RENDER ───────────────────────────────────────────────────────────────
