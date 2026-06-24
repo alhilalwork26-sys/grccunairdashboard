@@ -58,7 +58,7 @@ export default function DashboardHome({ user, stats, recentTasks, recentAnnounce
   ];
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
+    <div className="board-root" style={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
       <Topbar user={user} title="Dashboard" />
 
       <main style={{ flex: 1, padding: "24px 24px 40px", overflowY: "auto", background: "#f9fafb" }}>

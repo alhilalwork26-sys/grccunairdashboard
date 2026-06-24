@@ -1,11 +1,13 @@
 import { createClient } from "@/lib/supabase/server";
 import KontenBoard from "./KontenBoard";
 import type { UserProfile } from "@/types";
+import { redirect } from "next/navigation";
 
 export default async function KontenPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  const { data: profile } = await supabase.from("profiles").select("*").eq("id", user!.id).single();
+  if (!user) redirect("/login");
+  const { data: profile } = await supabase.from("profiles").select("*").eq("id", user.id).single();
 
   const [{ data: posts }, { data: campaigns }] = await Promise.all([
     supabase.from("content_posts")

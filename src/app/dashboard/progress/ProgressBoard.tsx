@@ -251,7 +251,7 @@ export default function ProgressBoard({ currentUser, initialEntries, profiles, t
   const { start: weekStart, end: weekEnd } = getWeekRange(today);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: "#f9fafb" }}>
+    <div className="board-root" style={{ display: "flex", flexDirection: "column", height: "100vh", background: "#f9fafb" }}>
 
       {/* Topbar */}
       <div style={{

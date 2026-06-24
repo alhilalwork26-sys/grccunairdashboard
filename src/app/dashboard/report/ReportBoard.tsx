@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 import {
   BarChart2, CheckSquare, Wallet, TrendingUp,
   GraduationCap, AlertTriangle, ArrowUpRight,
-  Download, Printer,
+  Download, Printer, Megaphone, ImageIcon, Pencil,
 } from "lucide-react";
 import Topbar from "@/components/layout/Topbar";
 import type { UserProfile } from "@/types";
@@ -85,6 +85,9 @@ interface Props {
   topExpenseCategories: { cat: string; amount: number }[];
   progressRows: { name: string; role: string; count: number; avgMood: number }[];
   trainingStats: { upcoming: number; ongoing: number; done: number; cancelled: number };
+  kampanyeStats: { planning: number; active: number; completed: number; cancelled: number };
+  kontenStats: { draft: number; review: number; approved: number; rejected: number; posted: number };
+  briefStats: { open: number; in_progress: number; delivered: number; revision: number; done: number };
   currentMonth: string;
 }
 
@@ -93,7 +96,7 @@ const MOOD_EMOJI = ["", "😢", "😕", "😐", "😊", "😁"];
 export default function ReportBoard({
   user, taskByStatus, overdueCount, completionRate, totalTasks,
   taskMemberRows, totalIncome, totalExpense, topExpenseCategories,
-  progressRows, trainingStats, currentMonth,
+  progressRows, trainingStats, kampanyeStats, kontenStats, briefStats, currentMonth,
 }: Props) {
   const balance = totalIncome - totalExpense;
 
@@ -135,6 +138,29 @@ export default function ReportBoard({
       ["Berlangsung", trainingStats.ongoing],
       ["Selesai", trainingStats.done],
       ["Dibatalkan", trainingStats.cancelled],
+      [],
+      ["=== KAMPANYE ==="],
+      ["Status", "Jumlah"],
+      ["Planning", kampanyeStats.planning],
+      ["Aktif", kampanyeStats.active],
+      ["Selesai", kampanyeStats.completed],
+      ["Dibatalkan", kampanyeStats.cancelled],
+      [],
+      ["=== KONTEN ==="],
+      ["Status", "Jumlah"],
+      ["Draft", kontenStats.draft],
+      ["Review", kontenStats.review],
+      ["Approved", kontenStats.approved],
+      ["Rejected", kontenStats.rejected],
+      ["Posted", kontenStats.posted],
+      [],
+      ["=== BRIEF KREATIF ==="],
+      ["Status", "Jumlah"],
+      ["Open", briefStats.open],
+      ["In Progress", briefStats.in_progress],
+      ["Delivered", briefStats.delivered],
+      ["Revision", briefStats.revision],
+      ["Done", briefStats.done],
     ];
 
     const csv = rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\n");
@@ -424,9 +450,9 @@ export default function ReportBoard({
 
         </div>
 
-        {/* Training stats — full width footer */}
+        {/* Training stats — full width */}
         <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}
-          style={{ background: "#ffffff", borderRadius: 14, border: "1px solid #f3f4f6", padding: "18px 20px" }}
+          style={{ background: "#ffffff", borderRadius: 14, border: "1px solid #f3f4f6", padding: "18px 20px", marginBottom: 16 }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 16 }}>
             <GraduationCap size={15} color="#8b5cf6" strokeWidth={2} />
@@ -450,6 +476,68 @@ export default function ReportBoard({
             ))}
           </div>
         </motion.div>
+
+        {/* Row: Kampanye + Konten + Brief */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16 }}>
+
+          {/* Kampanye */}
+          <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.55 }}
+            style={{ background: "#ffffff", borderRadius: 14, border: "1px solid #f3f4f6", padding: "18px 20px" }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 14 }}>
+              <Megaphone size={15} color="#f59e0b" strokeWidth={2} />
+              <span style={{ fontSize: 13, fontWeight: 700, color: "#111827" }}>Kampanye</span>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              {[
+                { label: "Planning",   value: kampanyeStats.planning,  color: "#3b82f6", bg: "#eff6ff" },
+                { label: "Aktif",      value: kampanyeStats.active,    color: "#10b981", bg: "#f0fdf4" },
+                { label: "Selesai",    value: kampanyeStats.completed, color: "#9ca3af", bg: "#f3f4f6" },
+                { label: "Dibatalkan", value: kampanyeStats.cancelled, color: "#ef4444", bg: "#fef2f2" },
+              ].map(s => (
+                <div key={s.label} style={{ background: s.bg, borderRadius: 10, padding: "10px 12px" }}>
+                  <p style={{ fontSize: 20, fontWeight: 800, color: s.color, lineHeight: 1 }}>{s.value}</p>
+                  <p style={{ fontSize: 10, fontWeight: 600, color: "#6b7280", marginTop: 3 }}>{s.label}</p>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+
+          {/* Konten */}
+          <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }}
+            style={{ background: "#ffffff", borderRadius: 14, border: "1px solid #f3f4f6", padding: "18px 20px" }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 14 }}>
+              <ImageIcon size={15} color="#ec4899" strokeWidth={2} />
+              <span style={{ fontSize: 13, fontWeight: 700, color: "#111827" }}>Konten Plan</span>
+            </div>
+            <BarChart data={[
+              { label: "Posted",   value: kontenStats.posted,   color: "#10b981" },
+              { label: "Approved", value: kontenStats.approved, color: "#3b82f6" },
+              { label: "Review",   value: kontenStats.review,   color: "#f59e0b" },
+              { label: "Draft",    value: kontenStats.draft,    color: "#9ca3af" },
+              { label: "Rejected", value: kontenStats.rejected, color: "#ef4444" },
+            ]} />
+          </motion.div>
+
+          {/* Brief */}
+          <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.65 }}
+            style={{ background: "#ffffff", borderRadius: 14, border: "1px solid #f3f4f6", padding: "18px 20px" }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 14 }}>
+              <Pencil size={15} color="#7c3aed" strokeWidth={2} />
+              <span style={{ fontSize: 13, fontWeight: 700, color: "#111827" }}>Brief Kreatif</span>
+            </div>
+            <BarChart data={[
+              { label: "Done",        value: briefStats.done,        color: "#10b981" },
+              { label: "Delivered",   value: briefStats.delivered,   color: "#3b82f6" },
+              { label: "In Progress", value: briefStats.in_progress, color: "#8b5cf6" },
+              { label: "Open",        value: briefStats.open,        color: "#f59e0b" },
+              { label: "Revision",    value: briefStats.revision,    color: "#ef4444" },
+            ]} />
+          </motion.div>
+
+        </div>
 
       </main>
     </div>

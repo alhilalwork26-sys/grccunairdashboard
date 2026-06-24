@@ -96,7 +96,7 @@ export default function ApprovalsBoard({ currentUser, pendingReimbursements, rev
   const total = reimbs.length + tasks.length;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: "#f9fafb" }}>
+    <div className="board-root" style={{ display: "flex", flexDirection: "column", height: "100vh", background: "#f9fafb" }}>
       {/* Topbar */}
       <div style={{ background: "#fff", borderBottom: "1px solid #f3f4f6", padding: "0 28px", display: "flex", alignItems: "center", height: 64, flexShrink: 0, gap: 12 }}>
         <div style={{ width: 36, height: 36, borderRadius: 10, background: "linear-gradient(135deg, #6366f1, #4f46e5)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 12px rgba(99,102,241,0.3)" }}>

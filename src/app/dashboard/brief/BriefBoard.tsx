@@ -145,7 +145,7 @@ export default function BriefBoard({ initialBriefs, kreatifProfiles, currentUser
   const isKreatif  = currentUser.role === "staff_kreatif";
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh", background: "#f9fafb" }}>
+    <div className="board-root" style={{ display: "flex", flexDirection: "column", minHeight: "100vh", background: "#f9fafb" }}>
       <Topbar user={currentUser} title="Brief Kreatif" />
       <div style={{ flex: 1, padding: "24px 24px 40px" }}>
 

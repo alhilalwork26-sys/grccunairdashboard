@@ -1,12 +1,14 @@
 import { createClient } from "@/lib/supabase/server";
 import DocsBoard from "./DocsBoard";
 import type { UserProfile } from "@/types";
+import { redirect } from "next/navigation";
 
 export const PAGE_SIZE = 20;
 
 export default async function DocsPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
 
   const [{ data: profile }, { data: documents, count }] = await Promise.all([
     supabase.from("profiles").select("*").eq("id", user!.id).single(),

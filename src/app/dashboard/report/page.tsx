@@ -1,10 +1,12 @@
 import { createClient } from "@/lib/supabase/server";
 import ReportBoard from "./ReportBoard";
 import type { UserProfile } from "@/types";
+import { redirect } from "next/navigation";
 
 export default async function ReportPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
 
   const now   = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0];
@@ -17,13 +19,19 @@ export default async function ReportPage() {
     { data: progresses },
     { data: trainings },
     { data: profiles },
+    { data: campaigns },
+    { data: contentPosts },
+    { data: briefs },
   ] = await Promise.all([
-    supabase.from("profiles").select("*").eq("id", user!.id).single(),
+    supabase.from("profiles").select("*").eq("id", user.id).single(),
     supabase.from("tasks").select("id, status, priority, due_date, assigned_to, created_at, assignee:profiles!tasks_assigned_to_fkey(full_name)"),
     supabase.from("finance_transactions").select("id, amount, type, category, date, status").eq("status", "confirmed"),
     supabase.from("daily_progress").select("id, user_id, date, mood, profiles(full_name, role)").gte("date", monthStart),
     supabase.from("training_sessions").select("id, status"),
     supabase.from("profiles").select("id, full_name, role"),
+    supabase.from("campaigns").select("id, status"),
+    supabase.from("content_posts").select("id, status"),
+    supabase.from("creative_briefs").select("id, status"),
   ]);
 
   const userProfile: UserProfile = profile ?? {
@@ -94,6 +102,35 @@ export default async function ReportPage() {
     cancelled: allTrainings.filter(t => t.status === "cancelled").length,
   };
 
+  // --- Kampanye stats ---
+  const allCampaigns = campaigns ?? [];
+  const kampanyeStats = {
+    planning:  allCampaigns.filter(c => c.status === "planning").length,
+    active:    allCampaigns.filter(c => c.status === "active").length,
+    completed: allCampaigns.filter(c => c.status === "completed").length,
+    cancelled: allCampaigns.filter(c => c.status === "cancelled").length,
+  };
+
+  // --- Konten stats ---
+  const allPosts = contentPosts ?? [];
+  const kontenStats = {
+    draft:    allPosts.filter(p => p.status === "draft").length,
+    review:   allPosts.filter(p => p.status === "review").length,
+    approved: allPosts.filter(p => p.status === "approved").length,
+    rejected: allPosts.filter(p => p.status === "rejected").length,
+    posted:   allPosts.filter(p => p.status === "posted").length,
+  };
+
+  // --- Brief stats ---
+  const allBriefs = briefs ?? [];
+  const briefStats = {
+    open:        allBriefs.filter(b => b.status === "open").length,
+    in_progress: allBriefs.filter(b => b.status === "in_progress").length,
+    delivered:   allBriefs.filter(b => b.status === "delivered").length,
+    revision:    allBriefs.filter(b => b.status === "revision").length,
+    done:        allBriefs.filter(b => b.status === "done").length,
+  };
+
   return (
     <ReportBoard
       user={userProfile}
@@ -107,6 +144,9 @@ export default async function ReportPage() {
       topExpenseCategories={topExpenseCategories}
       progressRows={progressRows}
       trainingStats={trainingStats}
+      kampanyeStats={kampanyeStats}
+      kontenStats={kontenStats}
+      briefStats={briefStats}
       currentMonth={now.toLocaleDateString("id-ID", { month: "long", year: "numeric" })}
     />
   );

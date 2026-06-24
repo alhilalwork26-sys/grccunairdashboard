@@ -256,7 +256,7 @@ export default function KontenBoard({ initialPosts, campaigns, currentUser }: Pr
   // RENDER
   // ══════════════════════════════════════════════════════════════════════════
   return (
-    <div ref={rootRef} style={{ display: "flex", flexDirection: "column", minHeight: "100vh", background: "#f9fafb" }}>
+    <div ref={rootRef} className="board-root" style={{ display: "flex", flexDirection: "column", minHeight: "100vh", background: "#f9fafb" }}>
       <Topbar user={currentUser} title="Konten Plan" />
       <div style={{ flex: 1, padding: "24px 24px 40px" }}>
 

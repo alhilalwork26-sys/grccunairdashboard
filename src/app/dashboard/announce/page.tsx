@@ -1,10 +1,12 @@
 import { createClient } from "@/lib/supabase/server";
 import AnnouncementBoard from "./AnnouncementBoard";
 import type { UserProfile } from "@/types";
+import { redirect } from "next/navigation";
 
 export default async function AnnouncementPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
 
   const [{ data: profile }, { data: announcements }] = await Promise.all([
     supabase.from("profiles").select("*").eq("id", user!.id).single(),

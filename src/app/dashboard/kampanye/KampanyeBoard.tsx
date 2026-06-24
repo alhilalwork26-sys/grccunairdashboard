@@ -116,7 +116,7 @@ export default function KampanyeBoard({ initialCampaigns, currentUser }: Props) 
   const canManage = ["super_admin", "manager", "kep_marketing"].includes(currentUser.role);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh", background: "#f9fafb" }}>
+    <div className="board-root" style={{ display: "flex", flexDirection: "column", minHeight: "100vh", background: "#f9fafb" }}>
       <Topbar user={currentUser} title="Kampanye" />
       <div style={{ flex: 1, padding: "24px 24px 40px" }}>
 

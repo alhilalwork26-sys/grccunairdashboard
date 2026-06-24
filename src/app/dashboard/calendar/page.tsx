@@ -1,10 +1,12 @@
 import { createClient } from "@/lib/supabase/server";
 import CalendarBoard from "./CalendarBoard";
 import type { UserProfile } from "@/types";
+import { redirect } from "next/navigation";
 
 export default async function CalendarPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
 
   const now = new Date();
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0];

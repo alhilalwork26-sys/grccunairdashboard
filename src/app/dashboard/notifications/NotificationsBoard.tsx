@@ -3,7 +3,7 @@
 import { motion } from "framer-motion";
 import {
   Clock, ClipboardCheck, Megaphone, GraduationCap,
-  AlertCircle, CheckSquare, BellRing,
+  AlertCircle, CheckSquare, BellRing, ImageIcon, Pencil,
 } from "lucide-react";
 import Topbar from "@/components/layout/Topbar";
 import Link from "next/link";
@@ -32,6 +32,8 @@ interface Props {
   announcements:     any[];
   upcomingTrainings: any[];
   reviewTasks:       any[];
+  pendingKonten:     any[];
+  openBriefs:        any[];
 }
 
 interface SectionProps {
@@ -77,11 +79,11 @@ function Section({ title, icon, color, count, href, linkLabel, children, empty, 
   );
 }
 
-export default function NotificationsBoard({ user, overdueTasks, pendingReimbs, announcements, upcomingTrainings, reviewTasks }: Props) {
-  const totalAlerts = overdueTasks.length + pendingReimbs.length + reviewTasks.length;
+export default function NotificationsBoard({ user, overdueTasks, pendingReimbs, announcements, upcomingTrainings, reviewTasks, pendingKonten, openBriefs }: Props) {
+  const totalAlerts = overdueTasks.length + pendingReimbs.length + reviewTasks.length + pendingKonten.length + openBriefs.length;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
+    <div className="board-root" style={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
       <Topbar user={user} title="Notifikasi" />
 
       <main style={{ flex: 1, padding: "24px 24px 40px", background: "#f9fafb", overflowY: "auto" }}>
@@ -195,6 +197,52 @@ export default function NotificationsBoard({ user, overdueTasks, pendingReimbs, 
               </motion.div>
             ))}
           </Section>
+
+          {/* Konten pending review */}
+          {pendingKonten.length > 0 && (
+            <Section
+              title="Konten Menunggu Approval" icon={<ImageIcon size={15} color="#ec4899" strokeWidth={2} />}
+              color="#ec4899" count={pendingKonten.length}
+              href="/dashboard/konten" linkLabel="Review konten" empty="" delay={0.25}
+            >
+              {pendingKonten.map((p, i) => (
+                <motion.div key={p.id}
+                  initial={{ opacity: 0, x: -4 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.3 + i * 0.04 }}
+                  style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 18px", borderBottom: i < pendingKonten.length - 1 ? "1px solid #f9fafb" : "none" }}
+                >
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ fontSize: 12, fontWeight: 500, color: "#111827", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.judul}</p>
+                    <p style={{ fontSize: 10, color: "#9ca3af", marginTop: 1 }}>{(p.creator as any)?.full_name ?? "—"} · {p.platform}</p>
+                  </div>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: "#ec4899", background: "#fdf2f8", padding: "2px 7px", borderRadius: 20, flexShrink: 0 }}>Review</span>
+                </motion.div>
+              ))}
+            </Section>
+          )}
+
+          {/* Open / revision briefs */}
+          {openBriefs.length > 0 && (
+            <Section
+              title="Brief Menunggu Dikerjakan" icon={<Pencil size={15} color="#7c3aed" strokeWidth={2} />}
+              color="#7c3aed" count={openBriefs.length}
+              href="/dashboard/brief" linkLabel="Lihat brief" empty="" delay={0.3}
+            >
+              {openBriefs.map((b, i) => (
+                <motion.div key={b.id}
+                  initial={{ opacity: 0, x: -4 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.35 + i * 0.04 }}
+                  style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 18px", borderBottom: i < openBriefs.length - 1 ? "1px solid #f9fafb" : "none" }}
+                >
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ fontSize: 12, fontWeight: 500, color: "#111827", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.judul}</p>
+                    <p style={{ fontSize: 10, color: "#9ca3af", marginTop: 1 }}>{(b.requester as any)?.full_name ?? "—"}{b.deadline ? ` · deadline ${fmtDate(b.deadline)}` : ""}</p>
+                  </div>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: b.status === "revision" ? "#f59e0b" : "#7c3aed", background: b.status === "revision" ? "#fffbeb" : "#f5f3ff", padding: "2px 7px", borderRadius: 20, flexShrink: 0 }}>
+                    {b.status === "revision" ? "Revisi" : "Open"}
+                  </span>
+                </motion.div>
+              ))}
+            </Section>
+          )}
 
         </div>
 

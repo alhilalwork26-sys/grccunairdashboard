@@ -1,11 +1,13 @@
 import { createClient } from "@/lib/supabase/server";
 import KampanyeBoard from "./KampanyeBoard";
 import type { UserProfile } from "@/types";
+import { redirect } from "next/navigation";
 
 export default async function KampanyePage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  const { data: profile } = await supabase.from("profiles").select("*").eq("id", user!.id).single();
+  if (!user) redirect("/login");
+  const { data: profile } = await supabase.from("profiles").select("*").eq("id", user.id).single();
 
   const { data: campaigns } = await supabase
     .from("campaigns")

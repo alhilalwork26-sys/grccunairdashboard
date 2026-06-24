@@ -146,7 +146,7 @@ export default function AnnouncementBoard({ currentUser, initialAnnouncements }:
   ];
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: "#f9fafb" }}>
+    <div className="board-root" style={{ display: "flex", flexDirection: "column", height: "100vh", background: "#f9fafb" }}>
       {/* Topbar */}
       <div style={{
         background: "#fff", borderBottom: "1px solid #f3f4f6",

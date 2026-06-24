@@ -1,12 +1,14 @@
 import { createClient } from "@/lib/supabase/server";
 import ProgressBoard from "./ProgressBoard";
 import type { UserProfile } from "@/types";
+import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
 export default async function DailyProgressPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
 
   const today = new Date().toISOString().split("T")[0];
 

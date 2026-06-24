@@ -276,7 +276,7 @@ export default function TaskBoard({ initialTasks, profiles, currentUser, canSeeA
   }, []);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh", background: "#f9fafb" }}>
+    <div className="board-root" style={{ display: "flex", flexDirection: "column", minHeight: "100vh", background: "#f9fafb" }}>
       <Topbar user={currentUser} title="Task Management" />
 
       <div style={{ flex: 1, padding: "24px 24px 40px" }}>
