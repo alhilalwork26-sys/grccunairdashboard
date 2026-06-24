@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
-import DashboardShell from "@/components/layout/DashboardShell";
 import ProfileBoard from "./ProfileBoard";
 import type { UserProfile } from "@/types";
 
@@ -29,9 +28,5 @@ export default async function ProfilePage() {
 
   if (!profile) redirect("/login");
 
-  return (
-    <DashboardShell user={profile as UserProfile}>
-      <ProfileBoard user={profile as UserProfile} />
-    </DashboardShell>
-  );
+  return <ProfileBoard user={profile as UserProfile} />;
 }
