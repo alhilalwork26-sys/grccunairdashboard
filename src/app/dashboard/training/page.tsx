@@ -3,21 +3,21 @@ import TrainingBoard from "./TrainingBoard";
 import type { UserProfile } from "@/types";
 import { redirect } from "next/navigation";
 
-const TRAINING_ROLES = ["super_admin", "manager", "kep_trainer"];
+const ALLOWED_ROLES = ["super_admin", "manager", "kep_trainer"];
 
 export default async function TrainingPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
 
-  const { data: profile } = await supabase.from("profiles").select("*").eq("id", user!.id).single();
-
+  const { data: profile } = await supabase.from("profiles").select("*").eq("id", user.id).single();
   const currentUser: UserProfile = profile ?? {
-    id: user!.id, email: user!.email ?? "",
-    full_name: user!.user_metadata?.full_name ?? "",
-    role: "super_admin", created_at: user!.created_at,
+    id: user.id, email: user.email ?? "",
+    full_name: user.user_metadata?.full_name ?? "",
+    role: "super_admin", created_at: user.created_at,
   };
 
-  if (!TRAINING_ROLES.includes(currentUser.role)) redirect("/dashboard");
+  if (!ALLOWED_ROLES.includes(currentUser.role)) redirect("/dashboard");
 
   const [{ data: sessions }, { data: profiles }] = await Promise.all([
     supabase
