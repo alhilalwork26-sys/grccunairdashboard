@@ -24,7 +24,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="id" className={`${geistSans.variable} ${geistMono.variable} h-full`}>
+    // suppressHydrationWarning prevents mismatch warning when ThemeProvider adds "dark" class client-side
+    <html lang="id" className={`${geistSans.variable} ${geistMono.variable} h-full`} suppressHydrationWarning>
       <body className="min-h-full flex flex-col antialiased">
         <ThemeProvider>{children}</ThemeProvider>
       </body>

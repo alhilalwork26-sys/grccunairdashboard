@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
+import { useTheme } from "@/context/ThemeContext";
 
 interface VirtualNotif {
   id: string;
@@ -31,6 +32,7 @@ export default function NotificationDropdown() {
   const [loading, setLoading] = useState(false);
   const [badgeCount, setBadgeCount] = useState(0);
   const ref = useRef<HTMLDivElement>(null);
+  const { isDark } = useTheme();
 
   // Badge count — initial fetch + realtime subscription
   useEffect(() => {
@@ -147,8 +149,12 @@ export default function NotificationDropdown() {
         onClick={handleOpen}
         style={{
           width: 36, height: 36, borderRadius: 10,
-          background: open ? "#f0fdf4" : "#f9fafb",
-          border: `1px solid ${open ? "#d1fae5" : "#e5e7eb"}`,
+          background: open
+            ? (isDark ? "#052e16" : "#f0fdf4")
+            : (isDark ? "#0f172a" : "#f9fafb"),
+          border: `1px solid ${open
+            ? (isDark ? "#065f46" : "#d1fae5")
+            : (isDark ? "#334155" : "#e5e7eb")}`,
           display: "flex", alignItems: "center", justifyContent: "center",
           cursor: "pointer", position: "relative",
         }}
@@ -179,17 +185,19 @@ export default function NotificationDropdown() {
             transition={{ duration: 0.18 }}
             style={{
               position: "absolute", right: 0, top: "calc(100% + 8px)",
-              width: 340, background: "#ffffff",
-              border: "1px solid #e5e7eb", borderRadius: 14,
-              boxShadow: "0 12px 40px rgba(0,0,0,0.1)",
+              width: 340,
+              background: isDark ? "#1e293b" : "#ffffff",
+              border: `1px solid ${isDark ? "#334155" : "#e5e7eb"}`,
+              borderRadius: 14,
+              boxShadow: isDark ? "0 12px 40px rgba(0,0,0,0.4)" : "0 12px 40px rgba(0,0,0,0.1)",
               zIndex: 100, overflow: "hidden",
             }}
           >
             {/* Header */}
-            <div style={{ padding: "14px 16px 12px", borderBottom: "1px solid #f3f4f6", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div style={{ padding: "14px 16px 12px", borderBottom: `1px solid ${isDark ? "#334155" : "#f3f4f6"}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
                 <Bell size={14} color="#10b981" strokeWidth={2} />
-                <span style={{ fontSize: 13, fontWeight: 700, color: "#111827" }}>Notifikasi</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: isDark ? "#f1f5f9" : "#111827" }}>Notifikasi</span>
                 <span style={{ fontSize: 10, color: "#94a3b8", display: "flex", alignItems: "center", gap: 3 }}>
                   <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#10b981", display: "inline-block" }} />
                   live
@@ -221,10 +229,10 @@ export default function NotificationDropdown() {
                       initial={{ opacity: 0, x: -4 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: i * 0.04 }}
-                      whileHover={{ background: "#fafafa" }}
+                      whileHover={{ background: isDark ? "#0f172a" : "#fafafa" }}
                       style={{
                         display: "flex", gap: 12, padding: "12px 16px",
-                        borderBottom: i < notifs.length - 1 ? "1px solid #f9fafb" : "none",
+                        borderBottom: i < notifs.length - 1 ? `1px solid ${isDark ? "#334155" : "#f9fafb"}` : "none",
                         cursor: "pointer",
                       }}
                     >
@@ -239,7 +247,7 @@ export default function NotificationDropdown() {
                         <p style={{ fontSize: 10, fontWeight: 700, color: cfg.color, marginBottom: 2, textTransform: "uppercase", letterSpacing: "0.05em" }}>
                           {n.title}
                         </p>
-                        <p style={{ fontSize: 12, color: "#374151", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        <p style={{ fontSize: 12, color: isDark ? "#cbd5e1" : "#374151", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                           {n.body}
                         </p>
                       </div>
@@ -250,7 +258,7 @@ export default function NotificationDropdown() {
             </div>
 
             {/* Footer */}
-            <div style={{ padding: "10px 16px 12px", borderTop: "1px solid #f3f4f6" }}>
+            <div style={{ padding: "10px 16px 12px", borderTop: `1px solid ${isDark ? "#334155" : "#f3f4f6"}` }}>
               <Link href="/dashboard/notifications" style={{ textDecoration: "none" }} onClick={() => setOpen(false)}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 12, fontWeight: 600, color: "#10b981" }}>
                   Lihat semua notifikasi <ArrowRight size={12} />

@@ -69,6 +69,9 @@ body {
 /* ── Dark mode ── */
 html.dark body { background: #0f172a; }
 html.dark .board-root { background: #0f172a !important; }
+/* board-root uses <main> as content area — darken it too */
+html.dark .board-root main { background: #0f172a !important; }
+/* inputs on dark backgrounds */
 html.dark .clean-input {
   background: #1e293b !important;
   border-color: #334155 !important;
