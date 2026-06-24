@@ -7,12 +7,13 @@ import {
   LayoutDashboard, CheckSquare, TrendingUp,
   Bell, CalendarDays, Settings, LogOut,
   ChevronLeft, ChevronRight, FolderOpen, Wallet,
-  GraduationCap, ClipboardCheck, BarChart2, BellRing,
+  GraduationCap, ClipboardCheck, BarChart2, BellRing, User,
 } from "lucide-react";
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import type { UserProfile } from "@/types";
+import { useTheme } from "@/context/ThemeContext";
 
 const NAV = [
   { label: "Dashboard",         href: "/dashboard",                  icon: LayoutDashboard },
@@ -27,6 +28,7 @@ const NAV = [
   { label: "Laporan",           href: "/dashboard/report",           icon: BarChart2       },
   { label: "Notifikasi",        href: "/dashboard/notifications",    icon: BellRing        },
   { label: "Pengaturan",        href: "/dashboard/settings",         icon: Settings        },
+  { label: "Profil",            href: "/dashboard/profile",          icon: User            },
 ];
 
 interface SidebarProps {
@@ -38,6 +40,7 @@ export default function Sidebar({ user, onClose }: SidebarProps) {
   const pathname  = usePathname();
   const router    = useRouter();
   const [collapsed, setCollapsed] = useState(false);
+  const { isDark } = useTheme();
 
   async function handleLogout() {
     const supabase = createClient();
@@ -47,6 +50,18 @@ export default function Sidebar({ user, onClose }: SidebarProps) {
 
   const w = collapsed ? 72 : 240;
 
+  // theme tokens
+  const bg          = isDark ? "#1e293b" : "#ffffff";
+  const border      = isDark ? "#334155" : "#f3f4f6";
+  const textPrimary = isDark ? "#f1f5f9" : "#111827";
+  const textMuted   = isDark ? "#94a3b8" : "#9ca3af";
+  const textSub     = isDark ? "#64748b" : "#9ca3af";
+  const navActiveBg     = isDark ? "#052e16" : "#f0fdf4";
+  const navActiveBorder = isDark ? "#065f46" : "#d1fae5";
+  const navActiveColor  = isDark ? "#34d399" : "#059669";
+  const navText         = isDark ? "#cbd5e1" : "#374151";
+  const userCardBg      = isDark ? "#0f172a" : "#f9fafb";
+
   return (
     <motion.aside
       animate={{ width: w }}
@@ -54,16 +69,17 @@ export default function Sidebar({ user, onClose }: SidebarProps) {
       style={{
         width: w, minWidth: w, height: "100vh",
         position: "sticky", top: 0,
-        background: "#ffffff",
-        borderRight: "1px solid #f3f4f6",
+        background: bg,
+        borderRight: `1px solid ${border}`,
         display: "flex", flexDirection: "column",
         overflow: "hidden",
         flexShrink: 0,
         zIndex: 30,
+        transition: "background 0.2s, border-color 0.2s",
       }}
     >
       {/* Logo */}
-      <div style={{ padding: "20px 16px 16px", display: "flex", alignItems: "center", gap: 10, borderBottom: "1px solid #f3f4f6", justifyContent: "space-between" }}>
+      <div style={{ padding: "20px 16px 16px", display: "flex", alignItems: "center", gap: 10, borderBottom: `1px solid ${border}`, justifyContent: "space-between" }}>
         <div
           style={{
             width: 36, height: 36, borderRadius: 10, flexShrink: 0,
@@ -87,8 +103,8 @@ export default function Sidebar({ user, onClose }: SidebarProps) {
                 transition={{ duration: 0.18 }}
                 style={{ overflow: "hidden", whiteSpace: "nowrap" }}
               >
-                <p style={{ fontSize: 15, fontWeight: 700, color: "#111827", letterSpacing: "-0.02em", lineHeight: 1 }}>GRCC</p>
-                <p style={{ fontSize: 10, color: "#9ca3af", fontFamily: "monospace", marginTop: 2 }}>UNAIR · v2.1.0</p>
+                <p style={{ fontSize: 15, fontWeight: 700, color: textPrimary, letterSpacing: "-0.02em", lineHeight: 1 }}>GRCC</p>
+                <p style={{ fontSize: 10, color: textSub, fontFamily: "monospace", marginTop: 2 }}>UNAIR · v2.1.0</p>
               </motion.div>
             )}
           </AnimatePresence>
@@ -96,7 +112,7 @@ export default function Sidebar({ user, onClose }: SidebarProps) {
         {onClose && (
           <motion.button whileTap={{ scale: 0.9 }} onClick={onClose}
             style={{ padding: 4, border: "none", background: "transparent", cursor: "pointer", display: "flex", flexShrink: 0 }}>
-            <ChevronLeft size={18} color="#9ca3af" />
+            <ChevronLeft size={18} color={textMuted} />
           </motion.button>
         )}
       </div>
@@ -116,7 +132,7 @@ export default function Sidebar({ user, onClose }: SidebarProps) {
                   padding: collapsed ? "10px" : "10px 12px",
                   borderRadius: 10,
                   justifyContent: collapsed ? "center" : "flex-start",
-                  background: active ? "#f0fdf4" : "transparent",
+                  background: active ? navActiveBg : "transparent",
                   transition: "background 0.15s ease",
                   position: "relative",
                 }}
@@ -127,8 +143,8 @@ export default function Sidebar({ user, onClose }: SidebarProps) {
                     layoutId="active-pill"
                     style={{
                       position: "absolute", inset: 0, borderRadius: 10,
-                      background: "#f0fdf4",
-                      border: "1px solid #d1fae5",
+                      background: navActiveBg,
+                      border: `1px solid ${navActiveBorder}`,
                     }}
                     transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
                   />
@@ -136,7 +152,7 @@ export default function Sidebar({ user, onClose }: SidebarProps) {
                 <Icon
                   size={18}
                   strokeWidth={active ? 2.2 : 1.7}
-                  style={{ color: active ? "#059669" : "#6b7280", flexShrink: 0, position: "relative" }}
+                  style={{ color: active ? navActiveColor : textMuted, flexShrink: 0, position: "relative" }}
                 />
                 <AnimatePresence>
                   {!collapsed && (
@@ -147,7 +163,7 @@ export default function Sidebar({ user, onClose }: SidebarProps) {
                       transition={{ duration: 0.15 }}
                       style={{
                         fontSize: 13, fontWeight: active ? 600 : 500,
-                        color: active ? "#059669" : "#374151",
+                        color: active ? navActiveColor : navText,
                         position: "relative", whiteSpace: "nowrap",
                       }}
                     >
@@ -162,7 +178,7 @@ export default function Sidebar({ user, onClose }: SidebarProps) {
       </nav>
 
       {/* Bottom: user + logout */}
-      <div style={{ padding: "8px 8px 16px", borderTop: "1px solid #f3f4f6" }}>
+      <div style={{ padding: "8px 8px 16px", borderTop: `1px solid ${border}` }}>
         {/* User card */}
         <AnimatePresence>
           {!collapsed && user && (
@@ -172,10 +188,10 @@ export default function Sidebar({ user, onClose }: SidebarProps) {
               exit={{ opacity: 0, y: 6 }}
               style={{
                 padding: "10px 12px", borderRadius: 10, marginBottom: 4,
-                background: "#f9fafb", border: "1px solid #f3f4f6",
+                background: userCardBg, border: `1px solid ${border}`,
               }}
             >
-              <p style={{ fontSize: 12, fontWeight: 600, color: "#111827", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              <p style={{ fontSize: 12, fontWeight: 600, color: textPrimary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {user.full_name || user.email}
               </p>
               <p style={{ fontSize: 11, color: "#10b981", fontWeight: 500, marginTop: 1 }}>
@@ -198,14 +214,14 @@ export default function Sidebar({ user, onClose }: SidebarProps) {
           }}
           title={collapsed ? "Keluar" : undefined}
         >
-          <LogOut size={17} strokeWidth={1.7} style={{ color: "#9ca3af", flexShrink: 0 }} />
+          <LogOut size={17} strokeWidth={1.7} style={{ color: textMuted, flexShrink: 0 }} />
           <AnimatePresence>
             {!collapsed && (
               <motion.span
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                style={{ fontSize: 13, fontWeight: 500, color: "#6b7280", whiteSpace: "nowrap" }}
+                style={{ fontSize: 13, fontWeight: 500, color: textMuted, whiteSpace: "nowrap" }}
               >
                 Keluar
               </motion.span>
@@ -225,8 +241,8 @@ export default function Sidebar({ user, onClose }: SidebarProps) {
           }}
         >
           {collapsed
-            ? <ChevronRight size={14} style={{ color: "#d1d5db" }} />
-            : <ChevronLeft size={14} style={{ color: "#d1d5db" }} />
+            ? <ChevronRight size={14} style={{ color: textMuted }} />
+            : <ChevronLeft size={14} style={{ color: textMuted }} />
           }
         </motion.button>
       </div>

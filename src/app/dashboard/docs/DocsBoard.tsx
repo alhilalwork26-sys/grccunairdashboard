@@ -320,7 +320,7 @@ export default function DocsBoard({ currentUser, initialDocs, totalCount, pageSi
 
   // ─── Render ────────────────────────────────────────────────────
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: "#f9fafb" }}>
+    <div className="board-root" style={{ display: "flex", flexDirection: "column", height: "100vh", background: "#f9fafb" }}>
 
       {/* Topbar */}
       <div style={{

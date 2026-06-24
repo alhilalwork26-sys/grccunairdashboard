@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Bell, BellRing, Clock, Megaphone, GraduationCap,
@@ -58,20 +58,8 @@ export default function NotificationDropdown() {
     return () => { supabase.removeChannel(channel); };
   }, []);
 
-  // Close on outside click
-  useEffect(() => {
-    function handle(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener("mousedown", handle);
-    return () => document.removeEventListener("mousedown", handle);
-  }, []);
-
-  async function handleOpen() {
-    if (open) { setOpen(false); return; }
-    setOpen(true);
-    setLoading(true);
-
+  // Fetch the notification list
+  const fetchNotifs = useCallback(async () => {
     const supabase = createClient();
     const today = new Date().toISOString().split("T")[0];
     const in7 = new Date(Date.now() + 7 * 86400000).toISOString().split("T")[0];
@@ -117,6 +105,36 @@ export default function NotificationDropdown() {
     }));
 
     setNotifs(result);
+  }, []);
+
+  // Realtime subscription while dropdown is open
+  useEffect(() => {
+    if (!open) return;
+    const supabase = createClient();
+    const channel = supabase
+      .channel("notif-list-rt")
+      .on("postgres_changes", { event: "*", schema: "public", table: "tasks" }, fetchNotifs)
+      .on("postgres_changes", { event: "*", schema: "public", table: "reimbursements" }, fetchNotifs)
+      .on("postgres_changes", { event: "*", schema: "public", table: "announcements" }, fetchNotifs)
+      .on("postgres_changes", { event: "*", schema: "public", table: "training_sessions" }, fetchNotifs)
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [open, fetchNotifs]);
+
+  // Close on outside click
+  useEffect(() => {
+    function handle(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handle);
+    return () => document.removeEventListener("mousedown", handle);
+  }, []);
+
+  async function handleOpen() {
+    if (open) { setOpen(false); return; }
+    setOpen(true);
+    setLoading(true);
+    await fetchNotifs();
     setLoading(false);
     setBadgeCount(0);
   }
@@ -172,6 +190,10 @@ export default function NotificationDropdown() {
               <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
                 <Bell size={14} color="#10b981" strokeWidth={2} />
                 <span style={{ fontSize: 13, fontWeight: 700, color: "#111827" }}>Notifikasi</span>
+                <span style={{ fontSize: 10, color: "#94a3b8", display: "flex", alignItems: "center", gap: 3 }}>
+                  <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#10b981", display: "inline-block" }} />
+                  live
+                </span>
               </div>
               <button onClick={() => setOpen(false)} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", color: "#9ca3af" }}>
                 <X size={15} />

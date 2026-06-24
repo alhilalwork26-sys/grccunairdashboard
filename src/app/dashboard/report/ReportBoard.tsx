@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import {
   BarChart2, CheckSquare, Wallet, TrendingUp,
   GraduationCap, AlertTriangle, ArrowUpRight,
+  Download, Printer,
 } from "lucide-react";
 import Topbar from "@/components/layout/Topbar";
 import type { UserProfile } from "@/types";
@@ -96,6 +97,56 @@ export default function ReportBoard({
 }: Props) {
   const balance = totalIncome - totalExpense;
 
+  function exportCSV() {
+    const rows: (string | number)[][] = [
+      [`Laporan GRCC UNAIR — ${currentMonth}`],
+      [],
+      ["=== RINGKASAN TASK ==="],
+      ["Status", "Jumlah"],
+      ["Selesai", taskByStatus.done],
+      ["In Progress", taskByStatus.in_progress],
+      ["Review", taskByStatus.review],
+      ["Pending", taskByStatus.pending],
+      ["Total Task", totalTasks],
+      ["Task Overdue", overdueCount],
+      ["Completion Rate", `${completionRate}%`],
+      [],
+      ["=== KEUANGAN ==="],
+      ["Keterangan", "Nominal (Rp)"],
+      ["Total Pemasukan", totalIncome],
+      ["Total Pengeluaran", totalExpense],
+      ["Saldo", balance],
+      [],
+      ["=== TOP PENGELUARAN ==="],
+      ["Kategori", "Nominal (Rp)"],
+      ...topExpenseCategories.map(c => [c.cat, c.amount]),
+      [],
+      ["=== TASK PER ANGGOTA ==="],
+      ["Nama", "Total Task", "Selesai", "Completion %"],
+      ...taskMemberRows.map(m => [m.name, m.total, m.done, m.total > 0 ? `${Math.round((m.done / m.total) * 100)}%` : "0%"]),
+      [],
+      ["=== DAILY PROGRESS ==="],
+      ["Nama", "Role", "Hari Submit", "Avg Mood"],
+      ...progressRows.map(r => [r.name, r.role?.replace(/_/g, " "), r.count, r.avgMood]),
+      [],
+      ["=== TRAINING ==="],
+      ["Status", "Jumlah"],
+      ["Akan Datang", trainingStats.upcoming],
+      ["Berlangsung", trainingStats.ongoing],
+      ["Selesai", trainingStats.done],
+      ["Dibatalkan", trainingStats.cancelled],
+    ];
+
+    const csv = rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href     = url;
+    a.download = `laporan-grcc-${currentMonth.replace(/\s/g, "-")}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   const SUMMARY_CARDS = [
     {
       label: "Completion Rate",
@@ -130,7 +181,7 @@ export default function ReportBoard({
   ];
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
+    <div className="board-root" style={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
       <Topbar user={user} title="Laporan & Rekap" />
 
       <main style={{ flex: 1, padding: "24px 24px 40px", background: "#f9fafb", overflowY: "auto" }}>
@@ -140,6 +191,36 @@ export default function ReportBoard({
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
             <BarChart2 size={20} color="#10b981" strokeWidth={2} />
             <h2 style={{ fontSize: 22, fontWeight: 800, color: "#111827", letterSpacing: "-0.03em" }}>Laporan & Rekap</h2>
+            <div className="no-print" style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+              <motion.button
+                whileHover={{ y: -1, boxShadow: "0 4px 12px rgba(16,185,129,0.2)" }}
+                whileTap={{ scale: 0.96 }}
+                onClick={exportCSV}
+                style={{
+                  display: "flex", alignItems: "center", gap: 6,
+                  padding: "8px 14px", borderRadius: 10,
+                  background: "#f0fdf4", border: "1px solid #d1fae5",
+                  color: "#059669", fontSize: 13, fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                <Download size={13} /> Export CSV
+              </motion.button>
+              <motion.button
+                whileHover={{ y: -1, boxShadow: "0 4px 12px rgba(0,0,0,0.1)" }}
+                whileTap={{ scale: 0.96 }}
+                onClick={() => window.print()}
+                style={{
+                  display: "flex", alignItems: "center", gap: 6,
+                  padding: "8px 14px", borderRadius: 10,
+                  background: "#111827", border: "1px solid #111827",
+                  color: "#fff", fontSize: 13, fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                <Printer size={13} /> Cetak PDF
+              </motion.button>
+            </div>
           </div>
           <p style={{ fontSize: 13, color: "#6b7280" }}>Rekap performa tim GRCC — data real-time dari semua modul.</p>
         </motion.div>

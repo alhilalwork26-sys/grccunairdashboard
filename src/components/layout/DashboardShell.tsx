@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Menu } from "lucide-react";
 import Sidebar from "./Sidebar";
 import type { UserProfile } from "@/types";
+import { useTheme } from "@/context/ThemeContext";
 
 export default function DashboardShell({
   user,
@@ -15,6 +16,7 @@ export default function DashboardShell({
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const { isDark } = useTheme();
 
   useEffect(() => {
     function check() { setIsMobile(window.innerWidth < 768); }
@@ -29,7 +31,7 @@ export default function DashboardShell({
   }, []);
 
   return (
-    <div style={{ display: "flex", minHeight: "100vh", background: "#f9fafb" }}>
+    <div style={{ display: "flex", minHeight: "100vh", background: isDark ? "#0f172a" : "#f9fafb" }}>
 
       {/* Desktop sidebar — always visible */}
       {!isMobile && <Sidebar user={user} />}
@@ -80,13 +82,14 @@ export default function DashboardShell({
                 style={{
                   position: "fixed", top: 13, left: 14, zIndex: 25,
                   width: 36, height: 36, borderRadius: 10,
-                  background: "#fff", border: "1px solid #e5e7eb",
+                  background: isDark ? "#1e293b" : "#fff",
+                  border: `1px solid ${isDark ? "#334155" : "#e5e7eb"}`,
                   display: "flex", alignItems: "center", justifyContent: "center",
                   cursor: "pointer",
                   boxShadow: "0 2px 10px rgba(0,0,0,0.1)",
                 }}
               >
-                <Menu size={17} color="#374151" />
+                <Menu size={17} color={isDark ? "#94a3b8" : "#374151"} />
               </motion.button>
             )}
           </AnimatePresence>

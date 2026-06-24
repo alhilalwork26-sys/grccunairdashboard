@@ -65,3 +65,25 @@ body {
   /* Mobile topbar: offset for hamburger button */
   .dashboard-topbar { padding-left: 60px !important; }
 }
+
+/* ── Dark mode ── */
+html.dark body { background: #0f172a; }
+html.dark .board-root { background: #0f172a !important; }
+html.dark .clean-input {
+  background: #1e293b !important;
+  border-color: #334155 !important;
+  color: #f1f5f9 !important;
+}
+html.dark .clean-input::placeholder { color: #64748b !important; }
+html.dark .clean-input:focus {
+  background: #0f172a !important;
+  border-color: #10b981 !important;
+}
+
+/* ── Print ── */
+@media print {
+  .no-print { display: none !important; }
+  aside, .dashboard-topbar { display: none !important; }
+  .board-root { background: white !important; }
+  body { background: white !important; }
+}
