@@ -187,6 +187,7 @@ export default function Sidebar({ user, onClose }: SidebarProps) {
   const visibleNav = (user?.allowed_modules == null || (user.allowed_modules as string[]).length === 0
     ? NAV
     : NAV.filter(item => {
+        if (item.href === "/dashboard/chat") return true;
         const parts = item.href.split("/").filter(Boolean);
         const moduleId = parts[parts.length - 1] || "dashboard";
         return (user.allowed_modules as string[]).includes(moduleId);

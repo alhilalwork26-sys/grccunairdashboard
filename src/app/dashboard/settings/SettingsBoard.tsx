@@ -26,6 +26,7 @@ const ROLE_COLOR: Record<Role, { bg: string; text: string; border: string }> = {
 
 const MODULES = [
   { id: "dashboard",       label: "Dashboard" },
+  { id: "chat",            label: "Chat" },
   { id: "progress",        label: "Daily Progress" },
   { id: "task-management", label: "Task Management" },
   { id: "announce",        label: "Announcement" },
