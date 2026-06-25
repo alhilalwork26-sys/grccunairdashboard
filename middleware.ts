@@ -1,10 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { SUPABASE_URL } from "@/lib/supabase/config";
 
 // Reads the Supabase session directly from the auth cookie without importing
 // @supabase/ssr — avoids Node.js globals (__dirname) that crash Edge Runtime.
 function isAuthenticated(request: NextRequest): boolean {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
-  const projectId = supabaseUrl
+  const projectId = SUPABASE_URL
     .replace("https://", "")
     .replace(".supabase.co", "");
   const cookieName = `sb-${projectId}-auth-token`;

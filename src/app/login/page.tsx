@@ -62,15 +62,21 @@ export default function LoginPage() {
     e.preventDefault();
     setError("");
     setLoading(true);
-    const supabase = createClient();
-    const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
-    if (authError) {
-      setError("Email atau password salah.");
+    try {
+      const supabase = createClient();
+      const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
+      if (authError) {
+        setError("Email atau password salah.");
+        setLoading(false);
+        return;
+      }
+      // Full navigation ensures session cookie is sent fresh to the server.
+      window.location.href = "/dashboard";
+    } catch (err) {
+      console.error(err);
+      setError("Login gagal dimuat. Coba refresh halaman atau hubungi admin.");
       setLoading(false);
-      return;
     }
-    // Full navigation ensures session cookie is sent fresh to the server.
-    window.location.href = "/dashboard";
   }
 
   return (
