@@ -12,14 +12,29 @@ function createAdminClient() {
   );
 }
 
-export async function updateUserRole(userId: string, role: Role) {
+// Reads the caller's session and verifies they are super_admin.
+// Returns an error string if denied, or null if allowed.
+async function requireSuperAdmin(): Promise<string | null> {
   const cookieStore = await cookies();
-  const supabase = createServerClient(
+  const session = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     { cookies: { getAll: () => cookieStore.getAll(), setAll: () => {} } }
   );
-  const { error } = await supabase.from("profiles").update({ role }).eq("id", userId);
+  const { data: { user } } = await session.auth.getUser();
+  if (!user) return "Tidak terautentikasi.";
+  const { data: profile } = await session
+    .from("profiles").select("role").eq("id", user.id).single();
+  if (profile?.role !== "super_admin") return "Akses ditolak.";
+  return null;
+}
+
+export async function updateUserRole(userId: string, role: Role) {
+  const denied = await requireSuperAdmin();
+  if (denied) return { error: denied };
+  // Use admin client so this is not subject to row-level RLS
+  const admin = createAdminClient();
+  const { error } = await admin.from("profiles").update({ role }).eq("id", userId);
   if (error) return { error: error.message };
   return { error: null };
 }
@@ -35,6 +50,8 @@ export async function createUser(
   if (!serviceKey || serviceKey === "PASTE_SERVICE_ROLE_KEY_HERE") {
     return { error: "Service role key belum dikonfigurasi." };
   }
+  const denied = await requireSuperAdmin();
+  if (denied) return { error: denied };
   const admin = createAdminClient();
   const { data, error } = await admin.auth.admin.createUser({
     email,
@@ -51,6 +68,8 @@ export async function createUser(
 }
 
 export async function updateUserModules(userId: string, allowedModules: string[] | null) {
+  const denied = await requireSuperAdmin();
+  if (denied) return { error: denied };
   const admin = createAdminClient();
   const { error } = await admin
     .from("profiles")
@@ -65,6 +84,8 @@ export async function deleteUser(userId: string) {
   if (!serviceKey || serviceKey === "PASTE_SERVICE_ROLE_KEY_HERE") {
     return { error: "Service role key belum dikonfigurasi." };
   }
+  const denied = await requireSuperAdmin();
+  if (denied) return { error: denied };
   const admin = createAdminClient();
   const { error } = await admin.auth.admin.deleteUser(userId);
   if (error) return { error: error.message };
@@ -76,6 +97,8 @@ export async function toggleUserStatus(userId: string, activate: boolean) {
   if (!serviceKey || serviceKey === "PASTE_SERVICE_ROLE_KEY_HERE") {
     return { error: "Service role key belum dikonfigurasi." };
   }
+  const denied = await requireSuperAdmin();
+  if (denied) return { error: denied };
   const admin = createAdminClient();
   const { error: authError } = await admin.auth.admin.updateUserById(userId, {
     ban_duration: activate ? "none" : "876000h",

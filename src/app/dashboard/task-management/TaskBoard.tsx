@@ -9,9 +9,16 @@ import {
   Link2, ThumbsUp, ThumbsDown, History, ExternalLink, FileCheck,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { approveTaskAction, rejectTaskAction } from "./actions";
 import Topbar from "@/components/layout/Topbar";
 import Avatar from "@/components/ui/Avatar";
 import type { Task, TaskLog, UserProfile } from "@/types";
+
+function sanitizeUrl(url: string | null | undefined): string | undefined {
+  if (!url) return undefined;
+  try { const p = new URL(url); return p.protocol === "http:" || p.protocol === "https:" ? url : undefined; }
+  catch { return undefined; }
+}
 
 const STATUS_CFG = {
   pending:     { label: "Pending",    color: "#f59e0b", bg: "#fffbeb", Icon: Circle },
@@ -208,12 +215,10 @@ export default function TaskBoard({ initialTasks, profiles, currentUser, canSeeA
 
   async function approveTask(taskId: string) {
     const now = new Date().toISOString();
-    const { error } = await supabase.from("tasks").update({ status: "done", approved_by: currentUser.id, approved_at: now }).eq("id", taskId);
-    if (!error) {
-      await supabase.from("task_logs").insert({ task_id: taskId, actor_id: currentUser.id, action: "approved", from_status: "review", to_status: "done" });
-      setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: "done", approved_by: currentUser.id, approved_at: now } : t));
-      showToast("Task disetujui");
-    } else showToast("Gagal menyetujui", "err");
+    const result = await approveTaskAction(taskId);
+    if (result.error) { showToast(result.error, "err"); return; }
+    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: "done", approved_by: currentUser.id, approved_at: now } : t));
+    showToast("Task disetujui");
     setPopup(null);
   }
 
@@ -221,14 +226,12 @@ export default function TaskBoard({ initialTasks, profiles, currentUser, canSeeA
     e.preventDefault();
     if (!rejectModal) return;
     setSubmittingReject(true);
-    const { error } = await supabase.from("tasks").update({ status: "in_progress", rejected_note: rejectNote.trim() || null }).eq("id", rejectModal.taskId);
-    if (!error) {
-      await supabase.from("task_logs").insert({ task_id: rejectModal.taskId, actor_id: currentUser.id, action: "rejected", from_status: "review", to_status: "in_progress", note: rejectNote.trim() || null });
-      setTasks(prev => prev.map(t => t.id === rejectModal.taskId ? { ...t, status: "in_progress", rejected_note: rejectNote.trim() || null } : t));
-      showToast("Task dikembalikan ke pengerjaan");
-      setRejectModal(null);
-      setRejectNote("");
-    } else showToast("Gagal menolak task", "err");
+    const result = await rejectTaskAction(rejectModal.taskId, rejectNote.trim() || null);
+    if (result.error) { showToast(result.error, "err"); setSubmittingReject(false); return; }
+    setTasks(prev => prev.map(t => t.id === rejectModal.taskId ? { ...t, status: "in_progress", rejected_note: rejectNote.trim() || null } : t));
+    showToast("Task dikembalikan ke pengerjaan");
+    setRejectModal(null);
+    setRejectNote("");
     setSubmittingReject(false);
     setPopup(null);
   }
@@ -420,7 +423,7 @@ export default function TaskBoard({ initialTasks, profiles, currentUser, canSeeA
                         </span>
                       )}
                       {task.proof_url && task.status !== "pending" && (
-                        <a href={task.proof_url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
+                        <a href={sanitizeUrl(task.proof_url)} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
                           title="Lihat bukti pengerjaan" style={{ display: "flex", alignItems: "center", flexShrink: 0 }}>
                           <ExternalLink size={11} style={{ color: "#3b82f6" }} />
                         </a>
@@ -817,7 +820,7 @@ export default function TaskBoard({ initialTasks, profiles, currentUser, canSeeA
                 <div style={{ padding: "10px 24px", background: "#f0fdf4", borderBottom: "1px solid #d1fae5", display: "flex", alignItems: "center", gap: 8 }}>
                   <Link2 size={12} color="#10b981" style={{ flexShrink: 0 }} />
                   <span style={{ fontSize: 12, color: "#059669", fontWeight: 500 }}>Bukti pengerjaan:</span>
-                  <a href={logsModal.task.proof_url} target="_blank" rel="noopener noreferrer"
+                  <a href={sanitizeUrl(logsModal.task.proof_url)} target="_blank" rel="noopener noreferrer"
                     style={{ fontSize: 12, color: "#3b82f6", textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
                     {logsModal.task.proof_url}
                   </a>
@@ -868,7 +871,7 @@ export default function TaskBoard({ initialTasks, profiles, currentUser, canSeeA
                               </div>
                             )}
                             {log.proof_url && (
-                              <a href={log.proof_url} target="_blank" rel="noopener noreferrer"
+                              <a href={sanitizeUrl(log.proof_url)} target="_blank" rel="noopener noreferrer"
                                 style={{ display: "inline-flex", alignItems: "center", gap: 5, marginTop: 8, fontSize: 12, color: "#3b82f6", textDecoration: "none", background: "#eff6ff", padding: "4px 10px", borderRadius: 6, border: "1px solid #bfdbfe" }}>
                                 <Link2 size={11} /> Lihat bukti pengerjaan <ExternalLink size={10} />
                               </a>

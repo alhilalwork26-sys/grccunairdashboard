@@ -69,6 +69,7 @@ export default function Sidebar({ user, onClose }: SidebarProps) {
   // Fetch all badge counts in one go
   useEffect(() => {
     if (!user?.id) return;
+    let mounted = true;
     const supabase  = createClient();
     const role      = user.role ?? "";
     const canApprove    = APPROVE_ROLES.includes(role);
@@ -83,9 +84,12 @@ export default function Sidebar({ user, onClose }: SidebarProps) {
       const isSuperAdmin = role === "super_admin";
       const isKreatif    = role === "staff_kreatif";
 
-      const lastChatVisit = (typeof window !== "undefined"
-        ? localStorage.getItem(`lastVisit_chat_${user!.id}`)
-        : null) ?? "2000-01-01T00:00:00Z";
+      const lsChatKey = `lastVisit_chat_${user!.id}`;
+      const storedChatVisit = typeof window !== "undefined" ? localStorage.getItem(lsChatKey) : null;
+      if (!storedChatVisit && typeof window !== "undefined") {
+        localStorage.setItem(lsChatKey, new Date().toISOString());
+      }
+      const lastChatVisit = storedChatVisit ?? new Date().toISOString();
 
       const [
         { count: taskCount },
@@ -128,6 +132,7 @@ export default function Sidebar({ user, onClose }: SidebarProps) {
         + (canSeeReimbs ? (financeCount ?? 0) : 0)
         + (canApprove   ? (approvalCount ?? 0) : 0);
 
+      if (!mounted) return;
       setBadges({
         "task-management": taskCount     ?? 0,
         "announce":        announceCount ?? 0,
@@ -152,7 +157,7 @@ export default function Sidebar({ user, onClose }: SidebarProps) {
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "chat_messages" }, fetchAllBadges)
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    return () => { mounted = false; supabase.removeChannel(channel); };
   }, [user?.id, user?.role]);
 
   // Clear badge for the current page when navigating
@@ -179,7 +184,7 @@ export default function Sidebar({ user, onClose }: SidebarProps) {
   const w = collapsed ? 72 : 240;
 
   // Filter nav by per-user module access (null = full access) + role-gated routes
-  const visibleNav = (user?.allowed_modules == null
+  const visibleNav = (user?.allowed_modules == null || (user.allowed_modules as string[]).length === 0
     ? NAV
     : NAV.filter(item => {
         const parts = item.href.split("/").filter(Boolean);

@@ -233,7 +233,8 @@ export default function ChatBoard({currentUser,allUsers,dmRooms:initDms}:Props) 
     setSending(true); setInput("");
     if(taRef.current) taRef.current.style.height="auto";
     const now=new Date().toISOString();
-    await supabase.from("chat_messages").insert({room_id:roomId,sender_id:currentUser.id,content:text});
+    const{error}=await supabase.from("chat_messages").insert({room_id:roomId,sender_id:currentUser.id,content:text});
+    if(error){ setInput(text); setSending(false); return; }
     setLastMsgAt(prev=>({...prev,[roomId]:now}));
     setSending(false); taRef.current?.focus();
   }
@@ -389,7 +390,7 @@ export default function ChatBoard({currentUser,allUsers,dmRooms:initDms}:Props) 
                   {composeResults.map((u,i)=>(
                     <motion.button key={u.id}
                       initial={{opacity:0,y:10}} animate={{opacity:1,y:0}} transition={{delay:i*.035,duration:.18,type:"spring",stiffness:400,damping:28}}
-                      onClick={async()=>{setShowCompose(false);setComposeQ("");await openDM(u);}}
+                      onClick={async()=>{ if(making) return; setShowCompose(false);setComposeQ("");await openDM(u);}}
                       whileHover={{backgroundColor:"#f5f3ff",x:2}} whileTap={{scale:.97}}
                       style={{width:"100%",display:"flex",alignItems:"center",gap:10,padding:"9px 10px",borderRadius:12,border:"none",cursor:"pointer",textAlign:"left",marginBottom:3,background:"transparent",transition:"background 0.1s"}}>
                       <div style={{position:"relative",flexShrink:0}}>
