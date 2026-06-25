@@ -69,6 +69,7 @@ interface Props {
 
 export default function DocsBoard({ currentUser, initialDocs, totalCount, pageSize }: Props) {
   const supabase = createClient();
+  const canUpload = true;
   const canManage = ["super_admin", "manager", "program_admin"].includes(currentUser.role);
 
   // Core state
@@ -348,7 +349,7 @@ export default function DocsBoard({ currentUser, initialDocs, totalCount, pageSi
             </p>
           </div>
         </div>
-        {canManage && (
+        {canUpload && (
           <motion.button
             whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
             onClick={() => { setShowModal(true); setForm(EMPTY_FORM); setFile(null); setUploadProgress(0); }}
@@ -445,9 +446,9 @@ export default function DocsBoard({ currentUser, initialDocs, totalCount, pageSi
             <div style={{ fontSize: 48, marginBottom: 12 }}>📂</div>
             <p style={{ fontSize: 16, fontWeight: 600, color: "#374151" }}>Belum ada dokumen</p>
             <p style={{ fontSize: 13, color: "#9ca3af", marginTop: 4 }}>
-              {canManage ? "Upload dokumen pertama untuk tim" : "Belum ada dokumen yang dibagikan"}
+              {canUpload ? "Upload dokumen pertama untuk tim" : "Belum ada dokumen yang dibagikan"}
             </p>
-            {canManage && (
+            {canUpload && (
               <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
                 onClick={() => setShowModal(true)}
                 style={{ marginTop: 20, background: "#f59e0b", color: "#fff", border: "none", borderRadius: 10, padding: "10px 22px", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
