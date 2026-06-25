@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Hash, Send, Loader2, MessageSquare, Users, Trash2 } from "lucide-react";
+import { Hash, Send, Loader2, MessageSquare, Users, Trash2, SquarePen, Search, X } from "lucide-react";
 import Topbar from "@/components/layout/Topbar";
 import type { UserProfile } from "@/types";
 import { createClient } from "@/lib/supabase/client";
@@ -91,9 +91,11 @@ export default function ChatBoard({currentUser,allUsers,dmRooms:initDms}:Props) 
   const [making,setMaking]     = useState<string|null>(null);
   const [focused,setFocused]   = useState(false);
   const [unreads,setUnreads]   = useState<Record<string,number>>({});
-  const [hoveredMsg,setHoveredMsg] = useState<string|null>(null);
-  const [deleting,setDeleting]     = useState<string|null>(null);
-  const [lastMsgAt,setLastMsgAt]   = useState<Record<string,string>>({});
+  const [hoveredMsg,setHoveredMsg]   = useState<string|null>(null);
+  const [deleting,setDeleting]       = useState<string|null>(null);
+  const [lastMsgAt,setLastMsgAt]     = useState<Record<string,string>>({});
+  const [showCompose,setShowCompose] = useState(false);
+  const [composeQ,setComposeQ]       = useState("");
 
   const endRef        = useRef<HTMLDivElement>(null);
   const taRef         = useRef<HTMLTextAreaElement>(null);
@@ -106,17 +108,21 @@ export default function ChatBoard({currentUser,allUsers,dmRooms:initDms}:Props) 
 
   const items = useMemo(()=>buildItems(msgs,currentUser.id),[msgs,currentUser.id]);
 
-  // Sort DM list: contacts with most-recent message first, then alphabetical
-  const sortedUsers = useMemo(()=>[...allUsers].sort((a,b)=>{
-    const da=dms.find(d=>d.other_user.id===a.id);
-    const db=dms.find(d=>d.other_user.id===b.id);
-    const ta=da?lastMsgAt[da.room_id]??"":"";
-    const tb=db?lastMsgAt[db.room_id]??"":"";
+  // Sort existing DMs by most-recent message
+  const sortedDms = useMemo(()=>[...dms].sort((a,b)=>{
+    const ta=lastMsgAt[a.room_id]??"";
+    const tb=lastMsgAt[b.room_id]??"";
     if(ta&&tb) return tb.localeCompare(ta);
     if(ta) return -1;
     if(tb) return 1;
-    return a.full_name.localeCompare(b.full_name);
-  }),[allUsers,dms,lastMsgAt]);
+    return a.other_user.full_name.localeCompare(b.other_user.full_name);
+  }),[dms,lastMsgAt]);
+
+  // Users available to start a new DM (exclude those already in dms)
+  const composeResults = useMemo(()=>allUsers.filter(u=>{
+    const q=composeQ.toLowerCase();
+    return (!q||u.full_name.toLowerCase().includes(q)||u.role?.toLowerCase().includes(q));
+  }),[allUsers,composeQ]);
 
   // ── Switch room (clears unread + saves last-read timestamp) ───────────────
   function switchRoom(rid: string) {
@@ -260,7 +266,7 @@ export default function ChatBoard({currentUser,allUsers,dmRooms:initDms}:Props) 
       <div style={{display:"flex",flex:1,overflow:"hidden"}}>
 
         {/* ─── Left Panel ─────────────────────────────────────────────── */}
-        <div style={{width:224,flexShrink:0,background:"#fff",borderRight:"1px solid #f0f0f5",display:"flex",flexDirection:"column",overflow:"hidden"}}>
+        <div style={{width:224,flexShrink:0,background:"#fff",borderRight:"1px solid #f0f0f5",display:"flex",flexDirection:"column",overflow:"hidden",position:"relative"}}>
           <div style={{flex:1,overflowY:"auto",padding:"18px 10px 10px"}}>
 
             {/* Channel */}
@@ -277,16 +283,34 @@ export default function ChatBoard({currentUser,allUsers,dmRooms:initDms}:Props) 
               </AnimatePresence>
             </motion.button>
 
-            {/* Direct Messages */}
-            <p style={{fontSize:10,fontWeight:700,color:"#b0b7c3",textTransform:"uppercase",letterSpacing:"0.09em",padding:"0 8px",marginBottom:6}}>Pesan Langsung</p>
-            {sortedUsers.map((u,i)=>{
-              const dm=dms.find(d=>d.other_user.id===u.id);
-              const active=dm?.room_id===roomId;
-              const unread=dm?unreads[dm.room_id]??0:0;
+            {/* Direct Messages header + compose button */}
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 8px",marginBottom:6}}>
+              <p style={{fontSize:10,fontWeight:700,color:"#b0b7c3",textTransform:"uppercase",letterSpacing:"0.09em",margin:0}}>Pesan Langsung</p>
+              <motion.button
+                whileHover={{scale:1.15,backgroundColor:"#ede9fe"}} whileTap={{scale:.88}}
+                onClick={()=>{setShowCompose(true);setComposeQ("");}}
+                title="Pesan baru"
+                style={{width:22,height:22,borderRadius:7,border:"none",background:"transparent",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",padding:0,transition:"background 0.12s"}}>
+                <SquarePen size={13} color="#6366f1" />
+              </motion.button>
+            </div>
+
+            {/* Existing DMs */}
+            {sortedDms.length===0&&(
+              <motion.div initial={{opacity:0}} animate={{opacity:1}}
+                style={{padding:"18px 8px",textAlign:"center"}}>
+                <p style={{fontSize:11,color:"#c4c9d4",lineHeight:1.6}}>Belum ada percakapan.<br/>Tekan ✏️ untuk mulai chat.</p>
+              </motion.div>
+            )}
+            {sortedDms.map((dm,i)=>{
+              const u=dm.other_user;
+              const active=dm.room_id===roomId;
+              const unread=unreads[dm.room_id]??0;
               return (
-                <motion.button key={u.id}
+                <motion.button key={dm.room_id}
+                  layout
                   initial={{opacity:0,x:-8}} animate={{opacity:1,x:0}} transition={{delay:i*.04,duration:.2}}
-                  onClick={()=>openDM(u)} whileTap={{scale:.97}}
+                  onClick={()=>switchRoom(dm.room_id)} whileTap={{scale:.97}}
                   style={{width:"100%",display:"flex",alignItems:"center",gap:9,padding:"7px 10px",borderRadius:10,border:"none",cursor:"pointer",textAlign:"left",marginBottom:2,
                     background:active?"linear-gradient(135deg,rgba(99,102,241,.1),rgba(139,92,246,.08))":"transparent",transition:"background 0.15s"}}>
                   <div style={{position:"relative",flexShrink:0}}>
@@ -296,10 +320,7 @@ export default function ChatBoard({currentUser,allUsers,dmRooms:initDms}:Props) 
                   <span style={{fontSize:13,fontWeight:active||unread>0?600:400,color:active?"#4f46e5":unread>0?"#111827":"#374151",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
                     {u.full_name}
                   </span>
-                  {making===u.id
-                    ? <motion.div animate={{rotate:360}} transition={{repeat:Infinity,duration:.7,ease:"linear"}}><Loader2 size={12} color="#9ca3af" /></motion.div>
-                    : <AnimatePresence>{unread>0&&<Badge count={unread}/>}</AnimatePresence>
-                  }
+                  <AnimatePresence>{unread>0&&<Badge count={unread}/>}</AnimatePresence>
                 </motion.button>
               );
             })}
@@ -318,6 +339,79 @@ export default function ChatBoard({currentUser,allUsers,dmRooms:initDms}:Props) 
               </div>
             </div>
           </div>
+
+          {/* ── Compose Panel (slides up over sidebar) ──────────────── */}
+          <AnimatePresence>
+            {showCompose&&(
+              <motion.div
+                initial={{y:"100%",opacity:0}} animate={{y:0,opacity:1}} exit={{y:"100%",opacity:0}}
+                transition={{type:"spring",stiffness:420,damping:36}}
+                style={{position:"absolute",inset:0,background:"#fff",zIndex:20,display:"flex",flexDirection:"column"}}>
+
+                {/* Compose header */}
+                <div style={{padding:"18px 14px 12px",borderBottom:"1px solid #f0f0f5",flexShrink:0}}>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+                    <p style={{fontSize:14,fontWeight:700,color:"#111827",margin:0}}>Pesan Baru</p>
+                    <motion.button whileHover={{scale:1.08}} whileTap={{scale:.88}}
+                      onClick={()=>{setShowCompose(false);setComposeQ("");}}
+                      style={{width:26,height:26,borderRadius:8,border:"none",background:"#f3f4f6",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",padding:0}}>
+                      <X size={14} color="#6b7280" />
+                    </motion.button>
+                  </div>
+                  {/* Search bar */}
+                  <motion.div
+                    animate={{borderColor:composeQ?"#a5b4fc":"#e5e7eb"}}
+                    style={{display:"flex",alignItems:"center",gap:8,background:"#f8fafc",borderRadius:10,padding:"8px 12px",border:"1.5px solid #e5e7eb",transition:"border-color 0.15s"}}>
+                    <Search size={13} color="#9ca3af" />
+                    <input autoFocus value={composeQ} onChange={e=>setComposeQ(e.target.value)}
+                      placeholder="Cari nama atau role…"
+                      style={{flex:1,border:"none",outline:"none",background:"transparent",fontSize:13,color:"#111827",fontFamily:"inherit"}} />
+                    <AnimatePresence>
+                      {composeQ&&(
+                        <motion.button initial={{scale:0,opacity:0}} animate={{scale:1,opacity:1}} exit={{scale:0,opacity:0}}
+                          whileTap={{scale:.8}} onClick={()=>setComposeQ("")}
+                          style={{border:"none",background:"none",cursor:"pointer",padding:0,display:"flex"}}>
+                          <X size={12} color="#9ca3af" />
+                        </motion.button>
+                      )}
+                    </AnimatePresence>
+                  </motion.div>
+                </div>
+
+                {/* User list */}
+                <div style={{flex:1,overflowY:"auto",padding:"8px 10px"}}>
+                  {composeResults.length===0&&(
+                    <motion.div initial={{opacity:0}} animate={{opacity:1}}
+                      style={{padding:"28px 8px",textAlign:"center"}}>
+                      <p style={{fontSize:12,color:"#c4c9d4"}}>Pengguna tidak ditemukan</p>
+                    </motion.div>
+                  )}
+                  {composeResults.map((u,i)=>(
+                    <motion.button key={u.id}
+                      initial={{opacity:0,y:10}} animate={{opacity:1,y:0}} transition={{delay:i*.035,duration:.18,type:"spring",stiffness:400,damping:28}}
+                      onClick={async()=>{setShowCompose(false);setComposeQ("");await openDM(u);}}
+                      whileHover={{backgroundColor:"#f5f3ff",x:2}} whileTap={{scale:.97}}
+                      style={{width:"100%",display:"flex",alignItems:"center",gap:10,padding:"9px 10px",borderRadius:12,border:"none",cursor:"pointer",textAlign:"left",marginBottom:3,background:"transparent",transition:"background 0.1s"}}>
+                      <div style={{position:"relative",flexShrink:0}}>
+                        <Av name={u.full_name} uid={u.id} size={34} url={u.avatar_url} />
+                        <div style={{position:"absolute",bottom:0,right:0,width:8,height:8,borderRadius:"50%",background:"#10b981",border:"1.5px solid #fff"}} />
+                      </div>
+                      <div style={{flex:1,overflow:"hidden"}}>
+                        <p style={{fontSize:13,fontWeight:600,color:"#111827",margin:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.full_name}</p>
+                        <p style={{fontSize:11,color:"#9ca3af",marginTop:2}}>{u.role?.replace(/_/g," ")}</p>
+                      </div>
+                      {making===u.id
+                        ? <motion.div animate={{rotate:360}} transition={{repeat:Infinity,duration:.7,ease:"linear"}}><Loader2 size={14} color="#6366f1"/></motion.div>
+                        : <div style={{width:24,height:24,borderRadius:8,background:"#ede9fe",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                            <SquarePen size={11} color="#6366f1"/>
+                          </div>
+                      }
+                    </motion.button>
+                  ))}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
         {/* ─── Chat Area ──────────────────────────────────────────────── */}
