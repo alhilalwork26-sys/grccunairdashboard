@@ -1,41 +1,46 @@
-import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-export async function middleware(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({ request });
+// Reads the Supabase session directly from the auth cookie without importing
+// @supabase/ssr — avoids Node.js globals (__dirname) that crash Edge Runtime.
+function isAuthenticated(request: NextRequest): boolean {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+  const projectId = supabaseUrl
+    .replace("https://", "")
+    .replace(".supabase.co", "");
+  const cookieName = `sb-${projectId}-auth-token`;
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll();
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) =>
-            request.cookies.set(name, value)
-          );
-          supabaseResponse = NextResponse.next({ request });
-          cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
-          );
-        },
-      },
+  // Supabase may chunk large sessions into .0, .1, etc.
+  const raw =
+    request.cookies.get(cookieName)?.value ??
+    request.cookies.get(`${cookieName}.0`)?.value;
+
+  if (!raw) return false;
+
+  try {
+    const session = JSON.parse(decodeURIComponent(raw));
+    const expiresAt: number = session?.expires_at ?? 0;
+    return expiresAt > Math.floor(Date.now() / 1000);
+  } catch {
+    try {
+      const session = JSON.parse(atob(raw));
+      const expiresAt: number = session?.expires_at ?? 0;
+      return expiresAt > Math.floor(Date.now() / 1000);
+    } catch {
+      // Cookie exists but unreadable — trust it to avoid redirect loops
+      return true;
     }
-  );
+  }
+}
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  const isAuth = !!user;
+export function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
   const isLoginPage = pathname === "/login";
   const isDashboard = pathname.startsWith("/dashboard");
   const isDemo = pathname.startsWith("/demo");
 
-  if (isDemo) return supabaseResponse;
+  if (isDemo) return NextResponse.next();
+
+  const isAuth = isAuthenticated(request);
 
   if (!isAuth && isDashboard) {
     return NextResponse.redirect(new URL("/login", request.url));
@@ -45,7 +50,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 
-  return supabaseResponse;
+  return NextResponse.next();
 }
 
 export const config = {
