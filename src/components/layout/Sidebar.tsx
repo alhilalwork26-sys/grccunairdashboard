@@ -273,7 +273,15 @@ export default function Sidebar({ user, onClose }: SidebarProps) {
           const badgeKey = item.href.split("/dashboard/")[1] ?? "";
           const badge    = badges[badgeKey] ?? 0;
           return (
-            <Link key={item.href} href={item.href} style={{ textDecoration: "none" }} onClick={onClose}>
+            <Link
+              key={item.href}
+              href={item.href}
+              prefetch
+              style={{ textDecoration: "none" }}
+              onMouseEnter={() => router.prefetch(item.href)}
+              onFocus={() => router.prefetch(item.href)}
+              onClick={onClose}
+            >
               <motion.div
                 whileHover={{ x: collapsed ? 0 : 2 }}
                 whileTap={{ scale: 0.98 }}

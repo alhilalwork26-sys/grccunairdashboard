@@ -7,7 +7,8 @@ const ALLOWED_ROLES = ["super_admin", "manager", "kep_trainer"];
 
 export default async function TrainingPage() {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { data: { session } } = await supabase.auth.getSession();
+  const user = session?.user;
   if (!user) redirect("/login");
 
   const { data: profile } = await supabase.from("profiles").select("*").eq("id", user.id).single();

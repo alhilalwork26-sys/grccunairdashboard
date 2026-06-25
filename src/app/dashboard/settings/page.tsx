@@ -5,7 +5,8 @@ import { redirect } from "next/navigation";
 
 export default async function SettingsPage() {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { data: { session } } = await supabase.auth.getSession();
+  const user = session?.user;
 
   const [{ data: profile }, { data: allProfiles }] = await Promise.all([
     supabase.from("profiles").select("*").eq("id", user!.id).single(),

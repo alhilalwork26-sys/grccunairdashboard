@@ -5,7 +5,8 @@ import { redirect } from "next/navigation";
 
 export default async function AnnouncementPage() {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { data: { session } } = await supabase.auth.getSession();
+  const user = session?.user;
   if (!user) redirect("/login");
 
   const [{ data: profile }, { data: announcements }] = await Promise.all([
