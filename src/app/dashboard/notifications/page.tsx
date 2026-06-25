@@ -9,8 +9,11 @@ export default async function NotificationsPage() {
   const user = session?.user;
   if (!user) redirect("/login");
 
-  const today = new Date().toISOString().split("T")[0];
-  const in7 = new Date(Date.now() + 7 * 86400000).toISOString().split("T")[0];
+  const todayDate = new Date();
+  const today = todayDate.toISOString().split("T")[0];
+  const in7Date = new Date(todayDate);
+  in7Date.setDate(todayDate.getDate() + 7);
+  const in7 = in7Date.toISOString().split("T")[0];
 
   const { data: profile } = await supabase.from("profiles").select("*").eq("id", user.id).single();
 

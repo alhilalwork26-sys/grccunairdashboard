@@ -6,10 +6,10 @@ import { createClient } from "@/lib/supabase/client";
 import type { UserProfile, Document } from "@/types";
 import {
   FolderOpen, X, Check, Search, Download, Trash2,
-  FileText, Image, FileArchive, File, Upload,
+  FileText, Image as ImageIcon, FileArchive, File, Upload,
   Lock, Eye, EyeOff, KeyRound, ShieldAlert,
   LayoutGrid, List, ArrowUp, ArrowDown, ArrowUpDown,
-  Edit3, ZoomIn, ExternalLink,
+  Edit3, ZoomIn,
 } from "lucide-react";
 
 const CATEGORIES = ["Umum", "Keuangan", "Marketing", "Pelatihan", "HR", "Legal", "Lainnya"];
@@ -26,7 +26,7 @@ const CAT_COLOR: Record<string, { bg: string; text: string; border: string }> = 
 
 function getFileIcon(type: string | null | undefined, size = 20) {
   if (!type) return <File size={size} />;
-  if (type.startsWith("image/")) return <Image size={size} />;
+  if (type.startsWith("image/")) return <ImageIcon size={size} />;
   if (type.includes("zip") || type.includes("rar") || type.includes("7z")) return <FileArchive size={size} />;
   return <FileText size={size} />;
 }
@@ -55,6 +55,10 @@ function fmtDate(s: string) {
 const EMPTY_FORM = { title: "", description: "", category: "Umum", is_locked: false, password: "" };
 
 type SortField = "date" | "name" | "size" | "category";
+
+function uniqueFileName(ext: string | undefined) {
+  return `${new Date().getTime()}-${crypto.randomUUID()}.${ext ?? "file"}`;
+}
 
 interface Props {
   currentUser: UserProfile;
@@ -158,7 +162,7 @@ export default function DocsBoard({ currentUser, initialDocs, totalCount, pageSi
     setUploadProgress(10);
 
     const ext = file.name.split(".").pop();
-    const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+    const fileName = uniqueFileName(ext);
     const filePath = `${currentUser.id}/${fileName}`;
 
     setUploadProgress(30);
@@ -296,8 +300,8 @@ export default function DocsBoard({ currentUser, initialDocs, totalCount, pageSi
     setLoadingMore(false);
   };
 
-  // ─── Sub-components ────────────────────────────────────────────
-  const SortButton = ({ field, label }: { field: SortField; label: string }) => (
+  // ─── Render helpers ────────────────────────────────────────────
+  const renderSortButton = (field: SortField, label: string) => (
     <button
       onClick={() => toggleSort(field)}
       style={{
@@ -413,10 +417,10 @@ export default function DocsBoard({ currentUser, initialDocs, totalCount, pageSi
           {/* Sort buttons */}
           <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
             <span style={{ fontSize: 11, color: "#9ca3af", fontWeight: 600 }}>Urutkan:</span>
-            <SortButton field="date" label="Tanggal" />
-            <SortButton field="name" label="Nama" />
-            <SortButton field="size" label="Ukuran" />
-            <SortButton field="category" label="Kategori" />
+            {renderSortButton("date", "Tanggal")}
+            {renderSortButton("name", "Nama")}
+            {renderSortButton("size", "Ukuran")}
+            {renderSortButton("category", "Kategori")}
           </div>
 
           {/* View toggle */}

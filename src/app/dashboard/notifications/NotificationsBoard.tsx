@@ -3,7 +3,7 @@
 import { motion } from "framer-motion";
 import {
   Clock, ClipboardCheck, Megaphone, GraduationCap,
-  AlertCircle, CheckSquare, BellRing, ImageIcon, Pencil,
+  AlertCircle, BellRing, ImageIcon, Pencil,
 } from "lucide-react";
 import Topbar from "@/components/layout/Topbar";
 import Link from "next/link";

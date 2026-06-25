@@ -36,10 +36,16 @@ export default function SearchModal({ open, onClose }: Props) {
   // Focus input when opened
   useEffect(() => {
     if (open) {
-      setQuery("");
-      setResults([]);
-      setFocused(-1);
-      setTimeout(() => inputRef.current?.focus(), 60);
+      const resetTimer = window.setTimeout(() => {
+        setQuery("");
+        setResults([]);
+        setFocused(-1);
+      }, 0);
+      const focusTimer = window.setTimeout(() => inputRef.current?.focus(), 60);
+      return () => {
+        window.clearTimeout(resetTimer);
+        window.clearTimeout(focusTimer);
+      };
     }
   }, [open]);
 
@@ -171,7 +177,7 @@ export default function SearchModal({ open, onClose }: Props) {
                       <div style={{ padding: "8px 16px 4px", fontSize: 10, fontWeight: 700, color: "#9ca3af", letterSpacing: "0.07em", textTransform: "uppercase" }}>
                         {cfg.label}
                       </div>
-                      {items.map((r, i) => {
+                      {items.map((r) => {
                         const globalIdx = results.indexOf(r);
                         const isActive = focused === globalIdx;
                         return (

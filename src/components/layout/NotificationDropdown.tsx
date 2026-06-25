@@ -62,7 +62,7 @@ export default function NotificationDropdown({ userRole }: { userRole?: string }
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, []);
+  }, [userRole]);
 
   // Fetch the notification list
   const fetchNotifs = useCallback(async () => {
@@ -113,7 +113,7 @@ export default function NotificationDropdown({ userRole }: { userRole?: string }
     }));
 
     setNotifs(result);
-  }, []);
+  }, [userRole]);
 
   // Realtime subscription while dropdown is open
   useEffect(() => {

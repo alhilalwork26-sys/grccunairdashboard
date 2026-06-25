@@ -144,7 +144,11 @@ export default function ChatBoard({currentUser,allUsers,dmRooms:initDms}:Props) 
   // ── Load messages + realtime for active room ───────────────────────────────
   useEffect(()=>{
     let ok=true;
-    setLoading(true); setMsgs([]);
+    const resetTimer = window.setTimeout(() => {
+      if (!ok) return;
+      setLoading(true);
+      setMsgs([]);
+    }, 0);
     supabase.from("chat_messages").select("*,sender:profiles(id,full_name,role,avatar_url)")
       .eq("room_id",roomId).order("created_at",{ascending:true}).limit(150)
       .then(({data})=>{ if(ok){setMsgs((data as ChatMessage[])??[]);setLoading(false);} });
@@ -165,8 +169,8 @@ export default function ChatBoard({currentUser,allUsers,dmRooms:initDms}:Props) 
           setMsgs(prev=>prev.map(m=>m.id===u.id?{...m,deleted_at:u.deleted_at}:m));
         })
       .subscribe();
-    return ()=>{ ok=false; supabase.removeChannel(ch); };
-  },[roomId,supabase]); // eslint-disable-line
+    return ()=>{ ok=false; window.clearTimeout(resetTimer); supabase.removeChannel(ch); };
+  },[roomId,supabase]);  
 
   // ── Auto-scroll ────────────────────────────────────────────────────────────
   useEffect(()=>{ endRef.current?.scrollIntoView({behavior:"smooth"}); },[msgs]);
@@ -191,7 +195,7 @@ export default function ChatBoard({currentUser,allUsers,dmRooms:initDms}:Props) 
           });
         }).subscribe();
     return()=>{supabase.removeChannel(ch);};
-  },[currentUser.id,supabase]); // eslint-disable-line
+  },[currentUser.id,supabase]);  
 
   // ── Load last-message timestamps for all DM rooms (for sort order) ──────
   useEffect(()=>{
@@ -213,7 +217,7 @@ export default function ChatBoard({currentUser,allUsers,dmRooms:initDms}:Props) 
         .eq("room_id",rid).neq("sender_id",currentUser.id).gt("created_at",lr);
       return [rid, count??0] as [string,number];
     })).then(entries=>setUnreads(Object.fromEntries(entries.filter(([,c])=>c>0))));
-  },[dms,currentUser.id,supabase]); // eslint-disable-line
+  },[dms,currentUser.id,supabase]);  
 
   // ── Global subscription: track unreads in non-active rooms ────────────────
   useEffect(()=>{
@@ -225,7 +229,7 @@ export default function ChatBoard({currentUser,allUsers,dmRooms:initDms}:Props) 
         setUnreads(prev=>({...prev,[m.room_id]:(prev[m.room_id]??0)+1}));
       }).subscribe();
     return()=>{supabase.removeChannel(ch);};
-  },[currentUser.id,supabase]); // eslint-disable-line
+  },[currentUser.id,supabase]);  
 
   // ── Send ───────────────────────────────────────────────────────────────────
   async function send() {

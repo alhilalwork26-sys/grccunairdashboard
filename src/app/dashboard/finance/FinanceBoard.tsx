@@ -28,11 +28,6 @@ function fmtDateShort(s: string) {
 }
 const isImg = (url?: string | null) => !!url && !url.toLowerCase().endsWith(".pdf");
 
-const STATUS_TRX: Record<string, { label: string; color: string; bg: string }> = {
-  pending:   { label: "Pending",    color: "#f59e0b", bg: "#fffbeb" },
-  confirmed: { label: "Confirmed",  color: "#10b981", bg: "#f0fdf4" },
-  cancelled: { label: "Dibatalkan", color: "#9ca3af", bg: "#f3f4f6" },
-};
 const STATUS_REIMB: Record<string, { label: string; color: string; bg: string; border: string; icon: React.ReactNode }> = {
   pending:  { label: "Menunggu",  color: "#d97706", bg: "#fffbeb", border: "#fde68a", icon: <Clock size={11} /> },
   approved: { label: "Disetujui", color: "#059669", bg: "#f0fdf4", border: "#a7f3d0", icon: <CheckCircle size={11} /> },
@@ -46,6 +41,10 @@ const newReimbRow = () => ({
   expense_date: new Date().toISOString().split("T")[0],
   description: "", file: null as File | null,
 });
+
+function storageStamp() {
+  return new Date().getTime();
+}
 
 function TimelineStep({ done, color, label, date, last }: { done: boolean; color: string; label: string; date: string; last?: boolean }) {
   return (
@@ -107,11 +106,8 @@ export default function FinanceBoard({ currentUser, initialTransactions, initial
   const [uploadingPayProof, setUploadingPayProof] = useState(false);
   const payProofFileRef                     = useRef<HTMLInputElement>(null);
 
-  // Card expand / image expand / row hover
-  const [expandedGroupKey, setExpandedGroupKey] = useState<string | null>(null);
-  const [expandedCard, setExpandedCard]     = useState<string | null>(null);
+  // Image expand
   const [expandedImg, setExpandedImg]       = useState<string | null>(null);
-  const [hoveredRow, setHoveredRow]         = useState<string | null>(null);
 
   // Review
   const [reviewTarget, setReviewTarget] = useState<Reimbursement | null>(null);
@@ -199,7 +195,7 @@ export default function FinanceBoard({ currentUser, initialTransactions, initial
       if (row.file) {
         setUploadingReceipt(true);
         const ext  = row.file.name.split(".").pop();
-        const path = `${currentUser.id}/${Date.now()}_${row.key.slice(0, 8)}.${ext}`;
+        const path = `${currentUser.id}/${storageStamp()}_${row.key.slice(0, 8)}.${ext}`;
         const { error: upErr } = await supabase.storage.from("receipts").upload(path, row.file, { upsert: false, contentType: row.file.type });
         if (upErr) { showToast(`Gagal upload bukti "${row.title}": ${upErr.message}`, false); continue; }
         const { data: { publicUrl } } = supabase.storage.from("receipts").getPublicUrl(path);
@@ -265,7 +261,7 @@ export default function FinanceBoard({ currentUser, initialTransactions, initial
     if (!payProofTarget || !payProofFile) return;
     setUploadingPayProof(true);
     const ext  = payProofFile.name.split(".").pop();
-    const path = `payment/${payProofTarget.id}/${Date.now()}.${ext}`;
+    const path = `payment/${payProofTarget.id}/${storageStamp()}.${ext}`;
     const { error: upErr } = await supabase.storage.from("receipts").upload(path, payProofFile, { upsert: true, contentType: payProofFile.type });
     if (upErr) { showToast("Gagal upload bukti bayar: " + upErr.message, false); setUploadingPayProof(false); return; }
     const { data: { publicUrl } } = supabase.storage.from("receipts").getPublicUrl(path);
@@ -1231,7 +1227,7 @@ export default function FinanceBoard({ currentUser, initialTransactions, initial
                 </div>
                 {payProofFile && (
                   <div style={{ background: "#f0fdf4", border: "1px solid #a7f3d0", borderRadius: 10, padding: "10px 14px" }}>
-                    <p style={{ fontSize: 12, color: "#059669", fontWeight: 600 }}>Setelah upload, status reimbursement akan tercatat sebagai "Sudah Dibayar" dengan timestamp saat ini.</p>
+                    <p style={{ fontSize: 12, color: "#059669", fontWeight: 600 }}>Setelah upload, status reimbursement akan tercatat sebagai &quot;Sudah Dibayar&quot; dengan timestamp saat ini.</p>
                   </div>
                 )}
                 <div style={{ display: "flex", gap: 10 }}>

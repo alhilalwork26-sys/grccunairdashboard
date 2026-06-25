@@ -518,7 +518,7 @@ export default function SettingsBoard({ currentUser, initialProfiles }: Props) {
                   {editModules === null ? (
                     <div style={{ padding: "12px 14px", background: "#f0fdf4", border: "1px solid #d1fae5", borderRadius: 10 }}>
                       <p style={{ fontSize: 12, color: "#059669", fontWeight: 600 }}>✓ Akses penuh ke semua modul</p>
-                      <p style={{ fontSize: 11, color: "#6b7280", marginTop: 2 }}>Klik "Batasi Akses" untuk memilih modul tertentu</p>
+                      <p style={{ fontSize: 11, color: "#6b7280", marginTop: 2 }}>Klik &quot;Batasi Akses&quot; untuk memilih modul tertentu</p>
                     </div>
                   ) : (
                     <ModuleChecklist

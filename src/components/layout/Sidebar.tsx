@@ -65,26 +65,28 @@ export default function Sidebar({ user, onClose }: SidebarProps) {
   const [collapsed, setCollapsed]           = useState(false);
   const [badges, setBadges]                 = useState<Record<string, number>>({});
   const { isDark } = useTheme();
+  const userId = user?.id;
+  const userRole = user?.role ?? "";
 
   // Fetch all badge counts in one go
   useEffect(() => {
-    if (!user?.id) return;
+    if (!userId) return;
     let mounted = true;
     const supabase  = createClient();
-    const role      = user.role ?? "";
+    const role      = userRole;
     const canApprove    = APPROVE_ROLES.includes(role);
     const canSeeReimbs  = REIMB_ROLES.includes(role);
 
     async function fetchAllBadges() {
       const today          = new Date().toISOString().split("T")[0];
       const lastSeenAnnounce = (typeof window !== "undefined"
-        ? localStorage.getItem(`lastSeen_announce_${user!.id}`)
+        ? localStorage.getItem(`lastSeen_announce_${userId}`)
         : null) ?? "2000-01-01T00:00:00Z";
 
       const isSuperAdmin = role === "super_admin";
       const isKreatif    = role === "staff_kreatif";
 
-      const lsChatKey = `lastVisit_chat_${user!.id}`;
+      const lsChatKey = `lastVisit_chat_${userId}`;
       const storedChatVisit = typeof window !== "undefined" ? localStorage.getItem(lsChatKey) : null;
       if (!storedChatVisit && typeof window !== "undefined") {
         localStorage.setItem(lsChatKey, new Date().toISOString());
@@ -102,7 +104,7 @@ export default function Sidebar({ user, onClose }: SidebarProps) {
         { count: chatCount },
       ] = await Promise.all([
         supabase.from("tasks").select("*", { count: "exact", head: true })
-          .eq("assigned_to", user!.id).eq("status", "pending"),
+          .eq("assigned_to", userId).eq("status", "pending"),
         supabase.from("announcements").select("*", { count: "exact", head: true })
           .gt("created_at", lastSeenAnnounce),
         canApprove
@@ -112,7 +114,7 @@ export default function Sidebar({ user, onClose }: SidebarProps) {
           ? supabase.from("reimbursements").select("*", { count: "exact", head: true }).eq("status", "pending")
           : Promise.resolve({ count: 0, error: null }),
         supabase.from("tasks").select("*", { count: "exact", head: true })
-          .eq("assigned_to", user!.id).lt("due_date", today).not("status", "eq", "done"),
+          .eq("assigned_to", userId).lt("due_date", today).not("status", "eq", "done"),
         // Konten in review — only super_admin approves
         isSuperAdmin
           ? supabase.from("content_posts").select("*", { count: "exact", head: true }).eq("status", "review")
@@ -120,11 +122,11 @@ export default function Sidebar({ user, onClose }: SidebarProps) {
         // Briefs waiting for staff_kreatif action
         isKreatif
           ? supabase.from("creative_briefs").select("*", { count: "exact", head: true })
-              .eq("assigned_to", user!.id).in("status", ["open", "revision"])
+              .eq("assigned_to", userId).in("status", ["open", "revision"])
           : Promise.resolve({ count: 0, error: null }),
         // Unread chat messages (RLS auto-filters to accessible rooms)
         supabase.from("chat_messages").select("*", { count: "exact", head: true })
-          .neq("sender_id", user!.id)
+          .neq("sender_id", userId)
           .gt("created_at", lastChatVisit),
       ]);
 
@@ -158,22 +160,25 @@ export default function Sidebar({ user, onClose }: SidebarProps) {
       .subscribe();
 
     return () => { mounted = false; supabase.removeChannel(channel); };
-  }, [user?.id, user?.role]);
+  }, [userId, userRole]);
 
   // Clear badge for the current page when navigating
   useEffect(() => {
     const key = CLEAR_MAP[pathname];
     if (!key) return;
-    setBadges(prev => ({ ...prev, [key]: 0 }));
+    const timer = window.setTimeout(() => {
+      setBadges(prev => ({ ...prev, [key]: 0 }));
+    }, 0);
     // Persist "last seen" for announcements
-    if (key === "announce" && user?.id && typeof window !== "undefined") {
-      localStorage.setItem(`lastSeen_announce_${user.id}`, new Date().toISOString());
+    if (key === "announce" && userId && typeof window !== "undefined") {
+      localStorage.setItem(`lastSeen_announce_${userId}`, new Date().toISOString());
     }
     // Persist "last visit" for chat
-    if (key === "chat" && user?.id && typeof window !== "undefined") {
-      localStorage.setItem(`lastVisit_chat_${user.id}`, new Date().toISOString());
+    if (key === "chat" && userId && typeof window !== "undefined") {
+      localStorage.setItem(`lastVisit_chat_${userId}`, new Date().toISOString());
     }
-  }, [pathname, user?.id]);
+    return () => window.clearTimeout(timer);
+  }, [pathname, userId]);
 
   async function handleLogout() {
     const supabase = createClient();

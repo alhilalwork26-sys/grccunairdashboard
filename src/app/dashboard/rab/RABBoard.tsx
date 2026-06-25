@@ -4,9 +4,9 @@ import { useState, useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   FileText, Plus, X, ChevronDown, ChevronUp, Trash2,
-  CheckCircle, XCircle, Clock, Send, Eye, Download,
+  CheckCircle, XCircle, Clock, Send, Download,
   Printer, AlertTriangle, TrendingUp, TrendingDown,
-  Calculator, Search, Filter, Calendar, User, Edit2,
+  Calculator, Search, Calendar, User, Edit2,
 } from "lucide-react";
 import Topbar from "@/components/layout/Topbar";
 import type { UserProfile } from "@/types";
@@ -429,7 +429,7 @@ export default function RABBoard({ currentUser, initialRAB }: Props) {
               style={{ textAlign: "center", padding: "60px 0" }}>
               <FileText size={40} color="#d1d5db" style={{ margin: "0 auto 12px" }} />
               <p style={{ fontSize: 15, fontWeight: 600, color: "#374151" }}>Belum ada RAB</p>
-              <p style={{ fontSize: 13, color: "#9ca3af", marginTop: 4 }}>Klik "Buat RAB" untuk memulai.</p>
+              <p style={{ fontSize: 13, color: "#9ca3af", marginTop: 4 }}>Klik &quot;Buat RAB&quot; untuk memulai.</p>
             </motion.div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>

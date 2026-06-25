@@ -25,9 +25,6 @@ export default async function FinancePage() {
   // All authenticated users can access Finance to submit reimbursements
   // Only finance roles get full access (overview, transactions, all reimbs)
 
-  const now = new Date();
-  const startOfMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
-
   const isFinanceRole = FINANCE_ROLES.includes(currentUser.role);
   const canSeeAll    = ["super_admin", "manager", "kep_finance"].includes(currentUser.role);
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { CheckSquare, TrendingUp, Bell, CalendarDays, ArrowUpRight, Clock, CircleDot } from "lucide-react";
+import { CheckSquare, TrendingUp, Bell, CalendarDays, ArrowUpRight, Clock } from "lucide-react";
 import Topbar from "@/components/layout/Topbar";
 import CalendarPanel from "@/components/layout/CalendarPanel";
 import type { UserProfile } from "@/types";

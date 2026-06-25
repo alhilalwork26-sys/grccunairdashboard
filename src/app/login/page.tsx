@@ -8,7 +8,6 @@ import {
   Users, FileText, TrendingUp, Bell, Shield,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { useRouter } from "next/navigation";
 
 /* ── Floating bubble config ── */
 const BUBBLES = [
@@ -50,7 +49,6 @@ function floatVariants(dur: number, delay: number): Variants {
 }
 
 export default function LoginPage() {
-  const router = useRouter();
   const [email, setEmail]       = useState("");
   const [password, setPassword] = useState("");
   const [showPass, setShowPass] = useState(false);

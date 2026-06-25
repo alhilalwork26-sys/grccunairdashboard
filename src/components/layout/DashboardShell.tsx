@@ -22,7 +22,6 @@ export default function DashboardShell({
   const { isDark } = useTheme();
   const pathname   = usePathname();
   const prevPath   = useRef(pathname);
-  const timerRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     function check() { setIsMobile(window.innerWidth < 768); }
@@ -33,7 +32,8 @@ export default function DashboardShell({
 
   // Close mobile sidebar on navigate
   useEffect(() => {
-    setSidebarOpen(false);
+    const timer = window.setTimeout(() => setSidebarOpen(false), 0);
+    return () => window.clearTimeout(timer);
   }, [pathname]);
 
   // Top progress bar: animate on route change
