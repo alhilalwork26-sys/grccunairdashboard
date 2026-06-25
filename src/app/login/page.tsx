@@ -95,19 +95,7 @@ export default function LoginPage() {
           transition={{ duration: 0.5 }}
           style={{ display: "flex", alignItems: "center", gap: 10 }}
         >
-          <div
-            style={{
-              width: 36, height: 36, borderRadius: 10,
-              background: "linear-gradient(145deg, #10b981, #047857)",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              boxShadow: "0 4px 12px rgba(16,185,129,0.35)",
-            }}
-          >
-            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-              <path d="M13 6.5C12.1 5.5 10.9 4.8 9.5 4.8C7.07 4.8 5.1 6.77 5.1 9.2C5.1 11.63 7.07 13.6 9.5 13.6C10.9 13.6 12.1 12.9 13 11.9" stroke="white" strokeWidth="1.6" strokeLinecap="round"/>
-              <circle cx="9.5" cy="9.2" r="1.6" fill="white"/>
-            </svg>
-          </div>
+          <img src="/logo.svg" alt="GRCC" style={{ width: 44, height: 44, objectFit: "contain" }} />
           <span style={{ fontSize: 17, fontWeight: 700, color: "#111827", letterSpacing: "-0.02em" }}>GRCC</span>
         </motion.div>
 
@@ -322,24 +310,13 @@ export default function LoginPage() {
             pointerEvents: "none",
           }}
         >
-          <motion.div
+          <motion.img
+            src="/logo.svg"
+            alt="GRCC"
             animate={{ scale: [1, 1.04, 1] }}
             transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-            style={{
-              width: 88, height: 88,
-              borderRadius: 24,
-              background: "linear-gradient(145deg, #10b981, #047857)",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              margin: "0 auto 16px",
-              boxShadow: "0 16px 48px rgba(16,185,129,0.4), 0 0 0 1px rgba(16,185,129,0.2)",
-            }}
-          >
-            <svg width="44" height="44" viewBox="0 0 44 44" fill="none">
-              <circle cx="22" cy="22" r="14" stroke="rgba(255,255,255,0.25)" strokeWidth="1" fill="none"/>
-              <path d="M30 16.5C28 14.2 25.2 12.8 22 12.8C15.9 12.8 11 17.7 11 23.8C11 29.9 15.9 34.8 22 34.8C25.2 34.8 28 33.4 30 31.1" stroke="white" strokeWidth="2.4" strokeLinecap="round" fill="none"/>
-              <circle cx="22" cy="23.8" r="3.2" fill="white"/>
-            </svg>
-          </motion.div>
+            style={{ width: 110, height: 110, objectFit: "contain", margin: "0 auto 16px", display: "block" }}
+          />
           <p style={{ fontSize: 15, fontWeight: 700, color: "#111827", letterSpacing: "-0.02em" }}>GRCC UNAIR</p>
           <p style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>Internal Dashboard</p>
         </motion.div>
