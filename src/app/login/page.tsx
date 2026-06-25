@@ -69,10 +69,8 @@ export default function LoginPage() {
       setLoading(false);
       return;
     }
-    // router.refresh() clears App Router's stale cache so the dashboard
-    // layout gets a fresh server render with the new session cookie.
-    router.refresh();
-    router.push("/dashboard");
+    // Full navigation ensures session cookie is sent fresh to the server.
+    window.location.href = "/dashboard";
   }
 
   return (
