@@ -251,7 +251,7 @@ export default function Sidebar({ user, onClose }: SidebarProps) {
                 style={{ overflow: "hidden", whiteSpace: "nowrap" }}
               >
                 <p style={{ fontSize: 15, fontWeight: 700, color: textPrimary, letterSpacing: "-0.02em", lineHeight: 1 }}>GRCC</p>
-                <p style={{ fontSize: 10, color: textSub, fontFamily: "monospace", marginTop: 2 }}>UNAIR · v2.1.0</p>
+                <p style={{ fontSize: 10, color: textSub, fontFamily: "monospace", marginTop: 2 }}>UNAIR · V 1.0</p>
               </motion.div>
             )}
           </AnimatePresence>

@@ -227,20 +227,6 @@ export default function LoginPage() {
           </form>
 
           {/* Divider hint */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.6 }}
-            style={{ marginTop: 28, padding: "16px", borderRadius: 12, background: "#f9fafb", border: "1px solid #f3f4f6" }}
-          >
-            <p style={{ fontSize: 11, fontWeight: 700, color: "#9ca3af", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 6 }}>
-              Akun Awal
-            </p>
-            <p style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.6 }}>
-              Masuk sebagai <strong style={{ color: "#111827" }}>Super Admin</strong>, lalu buat akun tim dari menu{" "}
-              <span style={{ color: "#10b981", fontWeight: 600 }}>Pengaturan</span>.
-            </p>
-          </motion.div>
         </motion.div>
 
         {/* Footer */}
@@ -250,7 +236,7 @@ export default function LoginPage() {
           transition={{ delay: 0.7 }}
           style={{ fontSize: 11, color: "#d1d5db", fontFamily: "monospace" }}
         >
-          © 2026 GRCC · Universitas Airlangga · v2.1.0
+          GRCC 2026 V 1.0
         </motion.p>
       </div>
 
