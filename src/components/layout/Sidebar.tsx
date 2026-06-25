@@ -227,11 +227,19 @@ export default function Sidebar({ user, onClose }: SidebarProps) {
     >
       {/* Logo */}
       <div style={{ padding: "20px 16px 16px", display: "flex", alignItems: "center", gap: 10, borderBottom: `1px solid ${border}`, justifyContent: "space-between" }}>
-        <img
-          src="/logo.svg"
-          alt="GRCC"
-          style={{ width: 36, height: 36, objectFit: "contain", flexShrink: 0 }}
-        />
+        <div style={{
+          width: 40, height: 40, borderRadius: 10, flexShrink: 0,
+          background: "#fff",
+          boxShadow: "0 2px 10px rgba(0,0,0,0.10), 0 0 0 1px rgba(0,0,0,0.06)",
+          overflow: "hidden", position: "relative",
+        }}>
+          <img src="/logo.svg" alt="GRCC" style={{
+            position: "absolute", width: 90, height: 90,
+            top: "50%", left: "50%",
+            transform: "translate(-50%, -50%)",
+            objectFit: "contain",
+          }} />
+        </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1 }}>
           <AnimatePresence>
             {!collapsed && (

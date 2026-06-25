@@ -95,7 +95,19 @@ export default function LoginPage() {
           transition={{ duration: 0.5 }}
           style={{ display: "flex", alignItems: "center", gap: 10 }}
         >
-          <img src="/logo.svg" alt="GRCC" style={{ width: 44, height: 44, objectFit: "contain" }} />
+          <div style={{
+            width: 44, height: 44, borderRadius: 11, flexShrink: 0,
+            background: "#fff",
+            boxShadow: "0 2px 12px rgba(0,0,0,0.10), 0 0 0 1px rgba(0,0,0,0.06)",
+            overflow: "hidden", position: "relative",
+          }}>
+            <img src="/logo.svg" alt="GRCC" style={{
+              position: "absolute", width: 100, height: 100,
+              top: "50%", left: "50%",
+              transform: "translate(-50%, -50%)",
+              objectFit: "contain",
+            }} />
+          </div>
           <span style={{ fontSize: 17, fontWeight: 700, color: "#111827", letterSpacing: "-0.02em" }}>GRCC</span>
         </motion.div>
 
@@ -308,17 +320,35 @@ export default function LoginPage() {
             transform: "translate(-50%, -50%)",
             textAlign: "center",
             pointerEvents: "none",
+            background: "rgba(255,255,255,0.65)",
+            backdropFilter: "blur(14px)",
+            WebkitBackdropFilter: "blur(14px)",
+            borderRadius: 28,
+            border: "1px solid rgba(255,255,255,0.9)",
+            padding: "36px 48px",
+            boxShadow: "0 8px 40px rgba(0,0,0,0.06), 0 2px 12px rgba(16,185,129,0.08)",
           }}
         >
-          <motion.img
-            src="/logo.svg"
-            alt="GRCC"
+          <motion.div
             animate={{ scale: [1, 1.04, 1] }}
             transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-            style={{ width: 110, height: 110, objectFit: "contain", margin: "0 auto 16px", display: "block" }}
-          />
-          <p style={{ fontSize: 15, fontWeight: 700, color: "#111827", letterSpacing: "-0.02em" }}>GRCC UNAIR</p>
-          <p style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>Internal Dashboard</p>
+            style={{
+              width: 120, height: 120, borderRadius: 26,
+              background: "#fff",
+              boxShadow: "0 8px 32px rgba(16,185,129,0.18), 0 2px 12px rgba(0,0,0,0.08), 0 0 0 1.5px rgba(16,185,129,0.12)",
+              overflow: "hidden", position: "relative",
+              margin: "0 auto 20px",
+            }}
+          >
+            <img src="/logo.svg" alt="GRCC" style={{
+              position: "absolute", width: 260, height: 260,
+              top: "50%", left: "50%",
+              transform: "translate(-50%, -50%)",
+              objectFit: "contain",
+            }} />
+          </motion.div>
+          <p style={{ fontSize: 17, fontWeight: 800, color: "#111827", letterSpacing: "-0.03em" }}>GRCC UNAIR</p>
+          <p style={{ fontSize: 12, color: "#6b7280", marginTop: 5, letterSpacing: "0.01em" }}>Internal Dashboard</p>
         </motion.div>
       </div>
 
