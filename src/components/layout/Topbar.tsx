@@ -51,6 +51,14 @@ export default function Topbar({ user, title }: TopbarProps) {
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file || !user) return;
+
+    if (file.size > 10 * 1024 * 1024) {
+      setUploadMsg({ ok: false, text: "Ukuran foto maksimal 10 MB" });
+      setTimeout(() => setUploadMsg(null), 3000);
+      if (fileRef.current) fileRef.current.value = "";
+      return;
+    }
+
     setUploading(true);
     setUploadMsg(null);
 
@@ -282,7 +290,7 @@ export default function Topbar({ user, title }: TopbarProps) {
                 )}
 
                 <p style={{ fontSize: 10, color: textMuted, marginTop: 10, textAlign: "center" }}>
-                  JPG, PNG, WebP · maks 5MB
+                  JPG, PNG, WebP · maks 10MB
                 </p>
 
                 <input

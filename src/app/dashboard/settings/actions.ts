@@ -17,14 +17,18 @@ function createAdminClient() {
 // Returns an error string if denied, or null if allowed.
 async function requireSuperAdmin(): Promise<string | null> {
   const cookieStore = await cookies();
-  const session = createServerClient(
+  // Use anon client only to verify the JWT (getUser makes a network call to Auth).
+  const userClient = createServerClient(
     SUPABASE_URL,
     SUPABASE_ANON_KEY,
     { cookies: { getAll: () => cookieStore.getAll(), setAll: () => {} } }
   );
-  const { data: { user } } = await session.auth.getUser();
-  if (!user) return "Tidak terautentikasi.";
-  const { data: profile } = await session
+  const { data: { user }, error: userError } = await userClient.auth.getUser();
+  if (userError || !user) return "Tidak terautentikasi.";
+
+  // Use admin client to read the profile — bypasses RLS so it always works.
+  const admin = createAdminClient();
+  const { data: profile } = await admin
     .from("profiles").select("role").eq("id", user.id).single();
   if (profile?.role !== "super_admin") return "Akses ditolak.";
   return null;
