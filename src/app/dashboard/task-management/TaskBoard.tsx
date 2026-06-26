@@ -9,7 +9,7 @@ import {
   Link2, ThumbsUp, ThumbsDown, History, ExternalLink, FileCheck,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { approveTaskAction, rejectTaskAction } from "./actions";
+import { approveTaskAction, changeTaskStatusAction, rejectTaskAction, submitTaskReviewAction } from "./actions";
 import Topbar from "@/components/layout/Topbar";
 import Avatar from "@/components/ui/Avatar";
 import type { Task, TaskLog, UserProfile } from "@/types";
@@ -64,6 +64,7 @@ const EMPTY_FORM = {
 };
 
 const APPROVE_ROLES = ["super_admin", "manager", "kep_trainer"];
+const STATUS_EDITOR_ROLES = ["super_admin", "manager", "program_admin", "kep_finance", "kep_trainer"];
 
 interface Props {
   initialTasks: Task[];
@@ -144,6 +145,12 @@ export default function TaskBoard({ initialTasks, profiles, currentUser, canSeeA
     e.preventDefault();
     if (!form.title.trim()) return;
     setSubmitting(true);
+    if (editing && form.status !== editing.status && !canChangeTaskStatus(editing, form.status)) {
+      showToast("Akses mengubah status task ditolak", "err");
+      setSubmitting(false);
+      return;
+    }
+
     const payload = {
       title:          form.title.trim(),
       description:    form.description.trim() || null,
@@ -181,35 +188,47 @@ export default function TaskBoard({ initialTasks, profiles, currentUser, canSeeA
     setDeleteId(null);
   }
 
-  async function quickStatus(id: string, status: Task["status"]) {
-    if (status === "review") {
-      const task = tasks.find(t => t.id === id);
-      if (task) { setReviewModal({ task }); setReviewForm({ note: "", proof_url: "" }); setPopup(null); }
+  async function quickStatus(task: Task, status: Task["status"]) {
+    if (!canChangeTaskStatus(task, status)) {
+      showToast("Akses mengubah status task ditolak", "err");
+      setPopup(null);
       return;
     }
-    const prev = tasks.find(t => t.id === id);
-    await supabase.from("tasks").update({ status }).eq("id", id);
-    await supabase.from("task_logs").insert({ task_id: id, actor_id: currentUser.id, action: "status_changed", from_status: prev?.status, to_status: status });
-    setTasks(prev => prev.map(t => t.id === id ? { ...t, status } : t));
+    if (status === "review") {
+      setReviewModal({ task });
+      setReviewForm({ note: "", proof_url: "" });
+      setPopup(null);
+      return;
+    }
+    const result = await changeTaskStatusAction(task.id, status);
+    if (result.error) {
+      showToast(result.error, "err");
+      return;
+    }
+    setTasks(prev => prev.map(t => t.id === task.id ? { ...t, ...(result.task ?? { status }) } : t));
   }
 
   async function submitForReview(e: React.FormEvent) {
     e.preventDefault();
     if (!reviewModal) return;
     const { task } = reviewModal;
+    if (!canChangeTaskStatus(task, "review")) {
+      showToast("Akses mengubah status task ditolak", "err");
+      setReviewModal(null);
+      return;
+    }
     if (task.requires_proof && !reviewForm.proof_url.trim()) {
       showToast("Link bukti wajib diisi karena diminta oleh pembuat task", "err");
       return;
     }
     setSubmittingReview(true);
     const updates = { status: "review" as Task["status"], completion_note: reviewForm.note.trim() || null, proof_url: reviewForm.proof_url.trim() || null };
-    const { error } = await supabase.from("tasks").update(updates).eq("id", task.id);
-    if (!error) {
-      await supabase.from("task_logs").insert({ task_id: task.id, actor_id: currentUser.id, action: "submitted_review", from_status: task.status, to_status: "review", note: reviewForm.note.trim() || null, proof_url: reviewForm.proof_url.trim() || null });
-      setTasks(prev => prev.map(t => t.id === task.id ? { ...t, ...updates } : t));
+    const result = await submitTaskReviewAction(task.id, updates.completion_note, updates.proof_url);
+    if (!result.error) {
+      setTasks(prev => prev.map(t => t.id === task.id ? { ...t, ...(result.task ?? updates) } : t));
       showToast("Berhasil dikirim untuk review");
       setReviewModal(null);
-    } else showToast("Gagal mengirim review", "err");
+    } else showToast(result.error, "err");
     setSubmittingReview(false);
   }
 
@@ -267,6 +286,19 @@ export default function TaskBoard({ initialTasks, profiles, currentUser, canSeeA
 
   const canManage  = ["super_admin", "manager", "program_admin", "kep_finance", "kep_trainer"].includes(currentUser.role);
   const canApprove = APPROVE_ROLES.includes(currentUser.role);
+
+  function canChangeTaskStatus(task: Task, nextStatus?: Task["status"]) {
+    const canEditAnyStatus = STATUS_EDITOR_ROLES.includes(currentUser.role);
+    const isTaskOwner = task.assigned_to === currentUser.id || task.created_by === currentUser.id;
+    if (task.status === "done" && !canApprove) return false;
+    if (nextStatus === "done") return canApprove;
+    return canEditAnyStatus || isTaskOwner;
+  }
+
+  function getStatusOptions(task: Task) {
+    return (Object.entries(STATUS_CFG) as [Task["status"], typeof STATUS_CFG[keyof typeof STATUS_CFG]][])
+      .filter(([key]) => canChangeTaskStatus(task, key));
+  }
 
   const assignableProfiles = currentUser.role === "kep_finance"
     ? profiles.filter(p => ["staff_finance", "staff_dokumen"].includes(p.role ?? ""))
@@ -406,6 +438,8 @@ export default function TaskBoard({ initialTasks, profiles, currentUser, canSeeA
               const accentColor = isUrgent ? (dl!.level === "overdue" ? "#ef4444" : "#f97316") : isSoon ? "#f59e0b" : "transparent";
               const assigneeProfile = profiles.find(p => p.id === task.assigned_to);
               const needsProof = task.requires_proof && !task.proof_url && task.status !== "done";
+              const statusOptions = getStatusOptions(task);
+              const canOpenStatusMenu = statusOptions.length > 0;
 
               return (
                 <motion.div key={task.id} layout initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }}
@@ -491,16 +525,23 @@ export default function TaskBoard({ initialTasks, profiles, currentUser, canSeeA
 
                   {/* Status badge */}
                   <div onMouseDown={e => e.stopPropagation()} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <motion.button whileHover={{ opacity: 0.85 }} whileTap={{ scale: 0.97 }}
-                      onClick={e => {
-                        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                        setPopup(popup?.taskId === task.id && popup.type === "status" ? null : { type: "status", taskId: task.id, top: rect.bottom + 6, left: rect.left });
-                      }}
-                      style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 10px", borderRadius: 6, background: sc.bg, fontSize: 11, fontWeight: 600, color: sc.color, border: `1px solid ${sc.color}30`, cursor: "pointer" }}>
-                      <StatusIcon size={10} strokeWidth={2.2} />
-                      {sc.label}
-                      <ChevronDown size={9} style={{ opacity: 0.6 }} />
-                    </motion.button>
+                    {canOpenStatusMenu ? (
+                      <motion.button whileHover={{ opacity: 0.85 }} whileTap={{ scale: 0.97 }}
+                        onClick={e => {
+                          const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                          setPopup(popup?.taskId === task.id && popup.type === "status" ? null : { type: "status", taskId: task.id, top: rect.bottom + 6, left: rect.left });
+                        }}
+                        style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 10px", borderRadius: 6, background: sc.bg, fontSize: 11, fontWeight: 600, color: sc.color, border: `1px solid ${sc.color}30`, cursor: "pointer" }}>
+                        <StatusIcon size={10} strokeWidth={2.2} />
+                        {sc.label}
+                        <ChevronDown size={9} style={{ opacity: 0.6 }} />
+                      </motion.button>
+                    ) : (
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 10px", borderRadius: 6, background: sc.bg, fontSize: 11, fontWeight: 600, color: sc.color, border: `1px solid ${sc.color}30` }}>
+                        <StatusIcon size={10} strokeWidth={2.2} />
+                        {sc.label}
+                      </span>
+                    )}
                     {/* Approve/Reject quick buttons for review tasks */}
                     {task.status === "review" && canApprove && (
                       <>
@@ -552,12 +593,12 @@ export default function TaskBoard({ initialTasks, profiles, currentUser, canSeeA
               {popup.type === "status" ? (
                 <>
                   <p style={{ fontSize: 10, fontWeight: 700, color: "#9ca3af", padding: "5px 8px 4px", letterSpacing: "0.07em", textTransform: "uppercase" }}>Ubah Status</p>
-                  {(Object.entries(STATUS_CFG) as [Task["status"], typeof STATUS_CFG[keyof typeof STATUS_CFG]][]).map(([key, cfg]) => {
+                  {getStatusOptions(popupTask).map(([key, cfg]) => {
                     const Icon = cfg.Icon;
                     const isCurrent = popupTask.status === key;
                     return (
                       <motion.button key={key} whileHover={{ background: isCurrent ? cfg.bg : "#f9fafb" }}
-                        onClick={() => { quickStatus(popup.taskId, key); if (key !== "review") setPopup(null); }}
+                        onClick={() => { quickStatus(popupTask, key); if (key !== "review") setPopup(null); }}
                         style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "7px 8px", borderRadius: 6, border: "none", background: isCurrent ? cfg.bg : "transparent", cursor: "pointer", textAlign: "left" }}>
                         <span style={{ width: 24, height: 24, borderRadius: 6, flexShrink: 0, background: cfg.bg, display: "flex", alignItems: "center", justifyContent: "center", border: isCurrent ? `1.5px solid ${cfg.color}50` : `1.5px solid ${cfg.color}20` }}>
                           <Icon size={12} style={{ color: cfg.color }} strokeWidth={2.2} />
@@ -638,12 +679,28 @@ export default function TaskBoard({ initialTasks, profiles, currentUser, canSeeA
                   </div>
                   <div>
                     <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}><CheckCircle size={11} style={{ display: "inline", marginRight: 4 }} />Status</label>
-                    <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value as Task["status"] }))} className="clean-input" style={{ width: "100%", boxSizing: "border-box" }}>
-                      <option value="pending">Pending</option>
-                      <option value="in_progress">Dikerjakan</option>
-                      <option value="review">Review</option>
-                      <option value="done">Selesai</option>
-                    </select>
+                    {(() => {
+                      const statusOptions = editing
+                        ? getStatusOptions(editing)
+                        : (Object.entries(STATUS_CFG) as [Task["status"], typeof STATUS_CFG[keyof typeof STATUS_CFG]][]);
+                      if (editing && statusOptions.length === 0) {
+                        const cfg = STATUS_CFG[editing.status];
+                        const Icon = cfg.Icon;
+                        return (
+                          <div className="clean-input" style={{ width: "100%", boxSizing: "border-box", display: "flex", alignItems: "center", gap: 7, color: cfg.color, background: cfg.bg, borderColor: `${cfg.color}30` }}>
+                            <Icon size={13} strokeWidth={2.2} />
+                            <span style={{ fontWeight: 600 }}>{cfg.label}</span>
+                          </div>
+                        );
+                      }
+                      return (
+                        <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value as Task["status"] }))} className="clean-input" style={{ width: "100%", boxSizing: "border-box" }}>
+                          {statusOptions.map(([key, cfg]) => (
+                            <option key={key} value={key}>{cfg.label}</option>
+                          ))}
+                        </select>
+                      );
+                    })()}
                   </div>
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
