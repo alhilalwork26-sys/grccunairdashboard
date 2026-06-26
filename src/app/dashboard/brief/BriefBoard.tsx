@@ -4,7 +4,7 @@ import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus, X, Edit2, Trash2, CheckCircle, AlertCircle,
-  Calendar, ExternalLink, Palette, Send, RefreshCw,
+  ExternalLink, Palette, Send, RefreshCw,
   Check, ChevronRight, User, Clock, ArrowRight,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
