@@ -5,6 +5,8 @@ import { cookies } from "next/headers";
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from "@/lib/supabase/config";
 import type { Task, UserProfile } from "@/types";
 
+type CookieStore = Awaited<ReturnType<typeof cookies>>;
+
 function createAdminClient() {
   return createServerClient(
     SUPABASE_URL,
@@ -13,11 +15,23 @@ function createAdminClient() {
   );
 }
 
+function createSessionClient(cookieStore: CookieStore) {
+  return createServerClient(
+    SUPABASE_URL,
+    SUPABASE_ANON_KEY,
+    { cookies: { getAll: () => cookieStore.getAll(), setAll: () => {} } }
+  );
+}
+
+function createMutationClient(cookieStore: CookieStore) {
+  return process.env.SUPABASE_SERVICE_ROLE_KEY ? createAdminClient() : createSessionClient(cookieStore);
+}
+
 const APPROVE_ROLES = ["super_admin", "manager", "kep_trainer"];
 const STATUS_EDITOR_ROLES: UserProfile["role"][] = ["super_admin", "manager", "program_admin", "kep_finance", "kep_trainer"];
 const TASK_STATUSES: Task["status"][] = ["pending", "in_progress", "review", "done"];
 
-type AuthProfile = { userId: string; role: UserProfile["role"] };
+type AuthProfile = { userId: string; role: UserProfile["role"]; cookieStore: CookieStore };
 type StatusTask = Pick<Task, "id" | "status" | "assigned_to" | "created_by" | "requires_proof">;
 
 function canChangeTaskStatus(
@@ -36,17 +50,13 @@ function canChangeTaskStatus(
 
 async function requireProfile(): Promise<AuthProfile | { error: string }> {
   const cookieStore = await cookies();
-  const session = createServerClient(
-    SUPABASE_URL,
-    SUPABASE_ANON_KEY,
-    { cookies: { getAll: () => cookieStore.getAll(), setAll: () => {} } }
-  );
+  const session = createSessionClient(cookieStore);
   const { data: { user } } = await session.auth.getUser();
   if (!user) return { error: "Tidak terautentikasi." };
   const { data: profile } = await session
     .from("profiles").select("role").eq("id", user.id).single();
   if (!profile?.role) return { error: "Profil tidak ditemukan." };
-  return { userId: user.id, role: profile.role as UserProfile["role"] };
+  return { userId: user.id, role: profile.role as UserProfile["role"], cookieStore };
 }
 
 async function requireApprover(): Promise<{ userId: string } | { error: string }> {
@@ -64,8 +74,8 @@ export async function changeTaskStatusAction(
   const auth = await requireProfile();
   if ("error" in auth) return { error: auth.error };
 
-  const admin = createAdminClient();
-  const { data: task, error: taskError } = await admin
+  const db = createMutationClient(auth.cookieStore);
+  const { data: task, error: taskError } = await db
     .from("tasks")
     .select("id,status,assigned_to,created_by,requires_proof")
     .eq("id", taskId)
@@ -76,14 +86,15 @@ export async function changeTaskStatusAction(
   if (!canChangeTaskStatus(currentTask, auth.userId, auth.role, status)) {
     return { error: "Akses mengubah status task ditolak." };
   }
+  if (currentTask.status === status) return { error: null, task: { status } };
 
   const approvedAt = status === "done" ? new Date().toISOString() : null;
   const updates: Partial<Task> = status === "done"
     ? { status, approved_by: auth.userId, approved_at: approvedAt }
     : { status };
-  const { error } = await admin.from("tasks").update(updates).eq("id", taskId);
+  const { error } = await db.from("tasks").update(updates).eq("id", taskId);
   if (error) return { error: error.message };
-  await admin.from("task_logs").insert({
+  await db.from("task_logs").insert({
     task_id: taskId, actor_id: auth.userId,
     action: "status_changed", from_status: currentTask.status, to_status: status,
   });
@@ -98,8 +109,8 @@ export async function submitTaskReviewAction(
   const auth = await requireProfile();
   if ("error" in auth) return { error: auth.error };
 
-  const admin = createAdminClient();
-  const { data: task, error: taskError } = await admin
+  const db = createMutationClient(auth.cookieStore);
+  const { data: task, error: taskError } = await db
     .from("tasks")
     .select("id,status,assigned_to,created_by,requires_proof")
     .eq("id", taskId)
@@ -117,9 +128,9 @@ export async function submitTaskReviewAction(
   }
 
   const updates: Partial<Task> = { status: "review", completion_note: cleanNote, proof_url: cleanProofUrl };
-  const { error } = await admin.from("tasks").update(updates).eq("id", taskId);
+  const { error } = await db.from("tasks").update(updates).eq("id", taskId);
   if (error) return { error: error.message };
-  await admin.from("task_logs").insert({
+  await db.from("task_logs").insert({
     task_id: taskId, actor_id: auth.userId,
     action: "submitted_review", from_status: currentTask.status, to_status: "review",
     note: cleanNote, proof_url: cleanProofUrl,

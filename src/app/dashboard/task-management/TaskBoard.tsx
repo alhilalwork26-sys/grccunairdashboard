@@ -194,6 +194,10 @@ export default function TaskBoard({ initialTasks, profiles, currentUser, canSeeA
       setPopup(null);
       return;
     }
+    if (task.status === status) {
+      setPopup(null);
+      return;
+    }
     if (status === "review") {
       setReviewModal({ task });
       setReviewForm({ note: "", proof_url: "" });
