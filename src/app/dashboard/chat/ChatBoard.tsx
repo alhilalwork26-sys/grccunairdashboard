@@ -237,17 +237,36 @@ export default function ChatBoard({currentUser,allUsers,dmRooms:initDms}:Props) 
     setSending(true); setInput("");
     if(taRef.current) taRef.current.style.height="auto";
     const now=new Date().toISOString();
-    const{error}=await supabase.from("chat_messages").insert({room_id:roomId,sender_id:currentUser.id,content:text});
+    const{data:inserted,error}=await supabase
+      .from("chat_messages")
+      .insert({room_id:roomId,sender_id:currentUser.id,content:text})
+      .select("*,sender:profiles(id,full_name,role,avatar_url)")
+      .single();
     if(error){ setInput(text); setSending(false); return; }
+    // Immediately add to UI without waiting for realtime (dedup handles double-fire)
+    if(inserted) setMsgs(prev=>prev.some(m=>m.id===(inserted as ChatMessage).id)?prev:[...prev,inserted as ChatMessage]);
     setLastMsgAt(prev=>({...prev,[roomId]:now}));
     setSending(false); taRef.current?.focus();
   }
 
   // ── Open / create DM ──────────────────────────────────────────────────────
   async function openDM(u:UserProfile) {
+    // Check client state first
     const ex=dms.find(d=>d.other_user.id===u.id);
-    if(ex){switchRoom(ex.room_id);return;}
+    if(ex){switchRoom(ex.room_id);setShowCompose(false);return;}
     setMaking(u.id);
+    // Check DB for existing direct room between the two users
+    const{data:myRooms}=await supabase.from("chat_room_members").select("room_id").eq("user_id",currentUser.id);
+    const{data:theirRooms}=await supabase.from("chat_room_members").select("room_id").eq("user_id",u.id);
+    const myIds=new Set((myRooms??[]).map(r=>r.room_id));
+    const sharedId=(theirRooms??[]).map(r=>r.room_id).find(id=>myIds.has(id));
+    if(sharedId){
+      const{data:rm}=await supabase.from("chat_rooms").select("id").eq("id",sharedId).eq("type","direct").maybeSingle();
+      if(rm){
+        setDms(prev=>prev.some(d=>d.room_id===rm.id)?prev:[...prev,{room_id:rm.id,other_user:u}]);
+        switchRoom(rm.id); setMaking(null); setShowCompose(false); return;
+      }
+    }
     const newRoomId=crypto.randomUUID();
     const{error}=await supabase.from("chat_rooms").insert({id:newRoomId,type:"direct"});
     if(error){setMaking(null);return;}
@@ -256,8 +275,8 @@ export default function ChatBoard({currentUser,allUsers,dmRooms:initDms}:Props) 
       {room_id:newRoomId,user_id:u.id},
     ]);
     if(memErr){setMaking(null);return;}
-    setDms(prev=>[...prev,{room_id:newRoomId,other_user:u}]);
-    switchRoom(newRoomId); setMaking(null);
+    setDms(prev=>prev.some(d=>d.other_user.id===u.id)?prev:[...prev,{room_id:newRoomId,other_user:u}]);
+    switchRoom(newRoomId); setMaking(null); setShowCompose(false);
   }
 
   // ── Total unread across all rooms (for Topbar badge display) ─────────────

@@ -36,40 +36,26 @@ export default function NotificationDropdown({ userRole }: { userRole?: string }
   const ref = useRef<HTMLDivElement>(null);
   const { isDark } = useTheme();
 
-  // Badge count — initial fetch + realtime subscription
-  useEffect(() => {
-    const supabase = createClient();
+  const supabaseRef = useRef(createClient());
 
-    async function fetchBadge() {
-      const today = new Date().toISOString().split("T")[0];
-      const canSeeReimbs = !userRole || REIMB_ROLES.includes(userRole);
-      const [{ count: overdue }, { count: pending }] = await Promise.all([
-        supabase.from("tasks").select("*", { count: "exact", head: true })
-          .lt("due_date", today).not("status", "eq", "done"),
-        canSeeReimbs
-          ? supabase.from("reimbursements").select("*", { count: "exact", head: true }).eq("status", "pending")
-          : Promise.resolve({ count: 0, error: null }),
-      ]);
-      setBadgeCount((overdue ?? 0) + (pending ?? 0));
-    }
-
-    fetchBadge();
-
-    const channel = supabase
-      .channel("notif-badge")
-      .on("postgres_changes", { event: "*", schema: "public", table: "tasks" }, fetchBadge)
-      .on("postgres_changes", { event: "*", schema: "public", table: "reimbursements" }, fetchBadge)
-      .subscribe();
-
-    return () => { supabase.removeChannel(channel); };
+  const fetchBadge = useCallback(async () => {
+    const today = new Date().toISOString().split("T")[0];
+    const canSeeReimbs = !userRole || REIMB_ROLES.includes(userRole);
+    const [{ count: overdue }, { count: pending }, { count: newAnn }] = await Promise.all([
+      supabaseRef.current.from("tasks").select("*", { count: "exact", head: true })
+        .lt("due_date", today).not("status", "eq", "done"),
+      canSeeReimbs
+        ? supabaseRef.current.from("reimbursements").select("*", { count: "exact", head: true }).eq("status", "pending")
+        : Promise.resolve({ count: 0, error: null }),
+      supabaseRef.current.from("announcements").select("*", { count: "exact", head: true })
+        .order("created_at", { ascending: false }).limit(3),
+    ]);
+    setBadgeCount((overdue ?? 0) + (pending ?? 0) + Math.min(newAnn ?? 0, 3));
   }, [userRole]);
 
-  // Fetch the notification list
   const fetchNotifs = useCallback(async () => {
-    const supabase = createClient();
     const today = new Date().toISOString().split("T")[0];
     const in7 = new Date(Date.now() + 7 * 86400000).toISOString().split("T")[0];
-
     const canSeeReimbs = !userRole || REIMB_ROLES.includes(userRole);
     const [
       { data: overdue },
@@ -77,19 +63,18 @@ export default function NotificationDropdown({ userRole }: { userRole?: string }
       { data: trainings },
       { data: reimbs },
     ] = await Promise.all([
-      supabase.from("tasks").select("id, title, due_date")
+      supabaseRef.current.from("tasks").select("id, title, due_date")
         .lt("due_date", today).not("status", "eq", "done").limit(5),
-      supabase.from("announcements").select("id, title, created_at")
+      supabaseRef.current.from("announcements").select("id, title, created_at")
         .order("created_at", { ascending: false }).limit(3),
-      supabase.from("training_sessions").select("id, title, date")
+      supabaseRef.current.from("training_sessions").select("id, title, date")
         .eq("status", "upcoming").gte("date", today).lte("date", in7).limit(3),
       canSeeReimbs
-        ? supabase.from("reimbursements").select("id, title, amount").eq("status", "pending").limit(3)
+        ? supabaseRef.current.from("reimbursements").select("id, title, amount").eq("status", "pending").limit(3)
         : Promise.resolve({ data: [] }),
     ]);
 
     const result: VirtualNotif[] = [];
-
     (overdue ?? []).forEach(t => result.push({
       id: `overdue-${t.id}`, type: "overdue",
       title: "Task Melewati Deadline", body: t.title,
@@ -111,23 +96,28 @@ export default function NotificationDropdown({ userRole }: { userRole?: string }
       title: "Pengumuman Terbaru", body: a.title,
       href: "/dashboard/announce", time: a.created_at,
     }));
-
     setNotifs(result);
   }, [userRole]);
 
-  // Realtime subscription while dropdown is open
+  // Single always-on subscription — updates badge instantly, updates list if dropdown is open
+  const openRef = useRef(open);
+  useEffect(() => { openRef.current = open; }, [open]);
+
   useEffect(() => {
-    if (!open) return;
-    const supabase = createClient();
-    const channel = supabase
-      .channel("notif-list-rt")
-      .on("postgres_changes", { event: "*", schema: "public", table: "tasks" }, fetchNotifs)
-      .on("postgres_changes", { event: "*", schema: "public", table: "reimbursements" }, fetchNotifs)
-      .on("postgres_changes", { event: "*", schema: "public", table: "announcements" }, fetchNotifs)
-      .on("postgres_changes", { event: "*", schema: "public", table: "training_sessions" }, fetchNotifs)
+    fetchBadge();
+    const handleChange = () => {
+      fetchBadge();
+      if (openRef.current) fetchNotifs();
+    };
+    const channel = supabaseRef.current
+      .channel("notif-realtime")
+      .on("postgres_changes", { event: "*", schema: "public", table: "tasks" }, handleChange)
+      .on("postgres_changes", { event: "*", schema: "public", table: "reimbursements" }, handleChange)
+      .on("postgres_changes", { event: "*", schema: "public", table: "announcements" }, handleChange)
+      .on("postgres_changes", { event: "*", schema: "public", table: "training_sessions" }, handleChange)
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [open, fetchNotifs]);
+    return () => { supabaseRef.current.removeChannel(channel); };
+  }, [fetchBadge, fetchNotifs]);
 
   // Close on outside click
   useEffect(() => {

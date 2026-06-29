@@ -9,7 +9,11 @@ import {
   Link2, ThumbsUp, ThumbsDown, History, ExternalLink, FileCheck,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { approveTaskAction, changeTaskStatusAction, rejectTaskAction, submitTaskReviewAction } from "./actions";
+import {
+  createTaskAction, updateTaskAction, quickStatusAction,
+  submitForReviewAction, deleteTaskAction,
+  approveTaskAction, rejectTaskAction,
+} from "./actions";
 import Topbar from "@/components/layout/Topbar";
 import Avatar from "@/components/ui/Avatar";
 import type { Task, TaskLog, UserProfile } from "@/types";
@@ -64,7 +68,6 @@ const EMPTY_FORM = {
 };
 
 const APPROVE_ROLES = ["super_admin", "manager", "kep_trainer"];
-const STATUS_EDITOR_ROLES = ["super_admin", "manager", "program_admin", "kep_finance", "kep_trainer"];
 
 interface Props {
   initialTasks: Task[];
@@ -86,6 +89,7 @@ export default function TaskBoard({ initialTasks, profiles, currentUser, canSeeA
   const [toast, setToast]           = useState<{ msg: string; type: "ok" | "err" } | null>(null);
   const [popup, setPopup] = useState<{ type: "status" | "menu"; taskId: string; top: number; left: number } | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
+  const [statusLoading, setStatusLoading] = useState<string | null>(null);
 
   // Review flow
   const [reviewModal, setReviewModal]       = useState<{ task: Task } | null>(null);
@@ -106,7 +110,7 @@ export default function TaskBoard({ initialTasks, profiles, currentUser, canSeeA
 
   function showToast(msg: string, type: "ok" | "err" = "ok") {
     setToast({ msg, type });
-    setTimeout(() => setToast(null), 2800);
+    setTimeout(() => setToast(null), type === "err" ? 5000 : 2800);
   }
 
   const filtered = useMemo(() => tasks.filter(t => {
@@ -145,12 +149,6 @@ export default function TaskBoard({ initialTasks, profiles, currentUser, canSeeA
     e.preventDefault();
     if (!form.title.trim()) return;
     setSubmitting(true);
-    if (editing && form.status !== editing.status && !canChangeTaskStatus(editing, form.status)) {
-      showToast("Akses mengubah status task ditolak", "err");
-      setSubmitting(false);
-      return;
-    }
-
     const payload = {
       title:          form.title.trim(),
       description:    form.description.trim() || null,
@@ -158,23 +156,24 @@ export default function TaskBoard({ initialTasks, profiles, currentUser, canSeeA
       priority:       form.priority,
       assigned_to:    form.assigned_to || null,
       due_date:       form.due_date || null,
-      created_by:     currentUser.id,
       requires_proof: form.requires_proof,
     };
-    if (editing) {
-      const { data, error } = await supabase.from("tasks").update(payload).eq("id", editing.id).select().single();
-      if (!error && data) {
-        await supabase.from("task_logs").insert({ task_id: data.id, actor_id: currentUser.id, action: "edited" });
-        setTasks(prev => prev.map(t => t.id === editing.id ? data : t));
-        showToast("Task berhasil diperbarui");
-      } else showToast("Gagal memperbarui task", "err");
-    } else {
-      const { data, error } = await supabase.from("tasks").insert(payload).select().single();
-      if (!error && data) {
-        await supabase.from("task_logs").insert({ task_id: data.id, actor_id: currentUser.id, action: "created", to_status: data.status });
-        setTasks(prev => [data, ...prev]);
-        showToast("Task berhasil dibuat");
-      } else showToast("Gagal membuat task", "err");
+    try {
+      if (editing) {
+        const { data, error } = await updateTaskAction(editing.id, payload);
+        if (!error && data) {
+          setTasks(prev => prev.map(t => t.id === editing.id ? data : t));
+          showToast("Task berhasil diperbarui");
+        } else showToast(error ?? "Gagal memperbarui task", "err");
+      } else {
+        const { data, error } = await createTaskAction(payload);
+        if (!error && data) {
+          setTasks(prev => [data, ...prev]);
+          showToast("Task berhasil dibuat");
+        } else showToast(error ?? "Gagal membuat task", "err");
+      }
+    } catch {
+      showToast("Gagal menyimpan task", "err");
     }
     setSubmitting(false);
     setShowModal(false);
@@ -182,57 +181,49 @@ export default function TaskBoard({ initialTasks, profiles, currentUser, canSeeA
 
   async function handleDelete() {
     if (!deleteId) return;
-    const { error } = await supabase.from("tasks").delete().eq("id", deleteId);
-    if (!error) { setTasks(prev => prev.filter(t => t.id !== deleteId)); showToast("Task dihapus"); }
-    else showToast("Gagal menghapus task", "err");
+    try {
+      const { error } = await deleteTaskAction(deleteId);
+      if (!error) { setTasks(prev => prev.filter(t => t.id !== deleteId)); showToast("Task dihapus"); }
+      else showToast(error, "err");
+    } catch { showToast("Gagal menghapus task", "err"); }
     setDeleteId(null);
   }
 
-  async function quickStatus(task: Task, status: Task["status"]) {
-    if (!canChangeTaskStatus(task, status)) {
-      showToast("Akses mengubah status task ditolak", "err");
-      setPopup(null);
-      return;
-    }
-    if (task.status === status) {
-      setPopup(null);
-      return;
-    }
+  async function quickStatus(id: string, status: Task["status"]) {
     if (status === "review") {
-      setReviewModal({ task });
-      setReviewForm({ note: "", proof_url: "" });
-      setPopup(null);
+      const task = tasks.find(t => t.id === id);
+      if (task) { setReviewModal({ task }); setReviewForm({ note: "", proof_url: "" }); setPopup(null); }
       return;
     }
-    const result = await changeTaskStatusAction(task.id, status);
-    if (result.error) {
-      showToast(result.error, "err");
-      return;
-    }
-    setTasks(prev => prev.map(t => t.id === task.id ? { ...t, ...(result.task ?? { status }) } : t));
+    const prev = tasks.find(t => t.id === id);
+    setStatusLoading(id);
+    try {
+      const { error } = await quickStatusAction(id, status, prev?.status ?? "pending");
+      if (error) { showToast(error, "err"); }
+      else { setTasks(p => p.map(t => t.id === id ? { ...t, status } : t)); }
+    } catch { showToast("Gagal mengubah status. Coba refresh halaman.", "err"); }
+    finally { setStatusLoading(null); }
   }
 
   async function submitForReview(e: React.FormEvent) {
     e.preventDefault();
     if (!reviewModal) return;
     const { task } = reviewModal;
-    if (!canChangeTaskStatus(task, "review")) {
-      showToast("Akses mengubah status task ditolak", "err");
-      setReviewModal(null);
-      return;
-    }
-    if (task.requires_proof && !reviewForm.proof_url.trim()) {
-      showToast("Link bukti wajib diisi karena diminta oleh pembuat task", "err");
-      return;
-    }
     setSubmittingReview(true);
-    const updates = { status: "review" as Task["status"], completion_note: reviewForm.note.trim() || null, proof_url: reviewForm.proof_url.trim() || null };
-    const result = await submitTaskReviewAction(task.id, updates.completion_note, updates.proof_url);
-    if (!result.error) {
-      setTasks(prev => prev.map(t => t.id === task.id ? { ...t, ...(result.task ?? updates) } : t));
-      showToast("Berhasil dikirim untuk review");
-      setReviewModal(null);
-    } else showToast(result.error, "err");
+    try {
+      const { error } = await submitForReviewAction(
+        task.id,
+        task.status,
+        reviewForm.note.trim() || null,
+        reviewForm.proof_url.trim() || null,
+      );
+      if (!error) {
+        const updates = { status: "review" as Task["status"], completion_note: reviewForm.note.trim() || null, proof_url: reviewForm.proof_url.trim() || null };
+        setTasks(prev => prev.map(t => t.id === task.id ? { ...t, ...updates } : t));
+        showToast("Berhasil dikirim untuk review");
+        setReviewModal(null);
+      } else showToast(error, "err");
+    } catch { showToast("Gagal mengirim review", "err"); }
     setSubmittingReview(false);
   }
 
@@ -290,19 +281,6 @@ export default function TaskBoard({ initialTasks, profiles, currentUser, canSeeA
 
   const canManage  = ["super_admin", "manager", "program_admin", "kep_finance", "kep_trainer"].includes(currentUser.role);
   const canApprove = APPROVE_ROLES.includes(currentUser.role);
-
-  function canChangeTaskStatus(task: Task, nextStatus?: Task["status"]) {
-    const canEditAnyStatus = STATUS_EDITOR_ROLES.includes(currentUser.role);
-    const isTaskOwner = task.assigned_to === currentUser.id || task.created_by === currentUser.id;
-    if (task.status === "done" && !canApprove) return false;
-    if (nextStatus === "done") return canApprove;
-    return canEditAnyStatus || isTaskOwner;
-  }
-
-  function getStatusOptions(task: Task) {
-    return (Object.entries(STATUS_CFG) as [Task["status"], typeof STATUS_CFG[keyof typeof STATUS_CFG]][])
-      .filter(([key]) => canChangeTaskStatus(task, key));
-  }
 
   const assignableProfiles = currentUser.role === "kep_finance"
     ? profiles.filter(p => ["staff_finance", "staff_dokumen"].includes(p.role ?? ""))
@@ -442,8 +420,6 @@ export default function TaskBoard({ initialTasks, profiles, currentUser, canSeeA
               const accentColor = isUrgent ? (dl!.level === "overdue" ? "#ef4444" : "#f97316") : isSoon ? "#f59e0b" : "transparent";
               const assigneeProfile = profiles.find(p => p.id === task.assigned_to);
               const needsProof = task.requires_proof && !task.proof_url && task.status !== "done";
-              const statusOptions = getStatusOptions(task);
-              const canOpenStatusMenu = statusOptions.length > 0;
 
               return (
                 <motion.div key={task.id} layout initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }}
@@ -529,23 +505,20 @@ export default function TaskBoard({ initialTasks, profiles, currentUser, canSeeA
 
                   {/* Status badge */}
                   <div onMouseDown={e => e.stopPropagation()} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    {canOpenStatusMenu ? (
-                      <motion.button whileHover={{ opacity: 0.85 }} whileTap={{ scale: 0.97 }}
-                        onClick={e => {
-                          const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                          setPopup(popup?.taskId === task.id && popup.type === "status" ? null : { type: "status", taskId: task.id, top: rect.bottom + 6, left: rect.left });
-                        }}
-                        style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 10px", borderRadius: 6, background: sc.bg, fontSize: 11, fontWeight: 600, color: sc.color, border: `1px solid ${sc.color}30`, cursor: "pointer" }}>
-                        <StatusIcon size={10} strokeWidth={2.2} />
-                        {sc.label}
-                        <ChevronDown size={9} style={{ opacity: 0.6 }} />
-                      </motion.button>
-                    ) : (
-                      <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 10px", borderRadius: 6, background: sc.bg, fontSize: 11, fontWeight: 600, color: sc.color, border: `1px solid ${sc.color}30` }}>
-                        <StatusIcon size={10} strokeWidth={2.2} />
-                        {sc.label}
-                      </span>
-                    )}
+                    <motion.button whileHover={{ opacity: statusLoading === task.id ? 1 : 0.85 }} whileTap={{ scale: statusLoading === task.id ? 1 : 0.97 }}
+                      disabled={statusLoading === task.id}
+                      onClick={e => {
+                        if (statusLoading === task.id) return;
+                        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                        setPopup(popup?.taskId === task.id && popup.type === "status" ? null : { type: "status", taskId: task.id, top: rect.bottom + 6, left: rect.left });
+                      }}
+                      style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 10px", borderRadius: 6, background: sc.bg, fontSize: 11, fontWeight: 600, color: sc.color, border: `1px solid ${sc.color}30`, cursor: statusLoading === task.id ? "default" : "pointer", opacity: statusLoading === task.id ? 0.7 : 1 }}>
+                      {statusLoading === task.id
+                        ? <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ animation: "spin 0.8s linear infinite" }}><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+                        : <StatusIcon size={10} strokeWidth={2.2} />}
+                      {sc.label}
+                      {statusLoading !== task.id && <ChevronDown size={9} style={{ opacity: 0.6 }} />}
+                    </motion.button>
                     {/* Approve/Reject quick buttons for review tasks */}
                     {task.status === "review" && canApprove && (
                       <>
@@ -597,12 +570,12 @@ export default function TaskBoard({ initialTasks, profiles, currentUser, canSeeA
               {popup.type === "status" ? (
                 <>
                   <p style={{ fontSize: 10, fontWeight: 700, color: "#9ca3af", padding: "5px 8px 4px", letterSpacing: "0.07em", textTransform: "uppercase" }}>Ubah Status</p>
-                  {getStatusOptions(popupTask).map(([key, cfg]) => {
+                  {(Object.entries(STATUS_CFG) as [Task["status"], typeof STATUS_CFG[keyof typeof STATUS_CFG]][]).map(([key, cfg]) => {
                     const Icon = cfg.Icon;
                     const isCurrent = popupTask.status === key;
                     return (
                       <motion.button key={key} whileHover={{ background: isCurrent ? cfg.bg : "#f9fafb" }}
-                        onClick={() => { quickStatus(popupTask, key); if (key !== "review") setPopup(null); }}
+                        onClick={() => { quickStatus(popup.taskId, key); if (key !== "review") setPopup(null); }}
                         style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "7px 8px", borderRadius: 6, border: "none", background: isCurrent ? cfg.bg : "transparent", cursor: "pointer", textAlign: "left" }}>
                         <span style={{ width: 24, height: 24, borderRadius: 6, flexShrink: 0, background: cfg.bg, display: "flex", alignItems: "center", justifyContent: "center", border: isCurrent ? `1.5px solid ${cfg.color}50` : `1.5px solid ${cfg.color}20` }}>
                           <Icon size={12} style={{ color: cfg.color }} strokeWidth={2.2} />
@@ -683,28 +656,12 @@ export default function TaskBoard({ initialTasks, profiles, currentUser, canSeeA
                   </div>
                   <div>
                     <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}><CheckCircle size={11} style={{ display: "inline", marginRight: 4 }} />Status</label>
-                    {(() => {
-                      const statusOptions = editing
-                        ? getStatusOptions(editing)
-                        : (Object.entries(STATUS_CFG) as [Task["status"], typeof STATUS_CFG[keyof typeof STATUS_CFG]][]);
-                      if (editing && statusOptions.length === 0) {
-                        const cfg = STATUS_CFG[editing.status];
-                        const Icon = cfg.Icon;
-                        return (
-                          <div className="clean-input" style={{ width: "100%", boxSizing: "border-box", display: "flex", alignItems: "center", gap: 7, color: cfg.color, background: cfg.bg, borderColor: `${cfg.color}30` }}>
-                            <Icon size={13} strokeWidth={2.2} />
-                            <span style={{ fontWeight: 600 }}>{cfg.label}</span>
-                          </div>
-                        );
-                      }
-                      return (
-                        <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value as Task["status"] }))} className="clean-input" style={{ width: "100%", boxSizing: "border-box" }}>
-                          {statusOptions.map(([key, cfg]) => (
-                            <option key={key} value={key}>{cfg.label}</option>
-                          ))}
-                        </select>
-                      );
-                    })()}
+                    <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value as Task["status"] }))} className="clean-input" style={{ width: "100%", boxSizing: "border-box" }}>
+                      <option value="pending">Pending</option>
+                      <option value="in_progress">Dikerjakan</option>
+                      <option value="review">Review</option>
+                      <option value="done">Selesai</option>
+                    </select>
                   </div>
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>

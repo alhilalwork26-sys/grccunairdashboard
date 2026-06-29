@@ -8,6 +8,9 @@ import {
 import Topbar from "@/components/layout/Topbar";
 import Link from "next/link";
 import type { UserProfile } from "@/types";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 
 const PRIORITY_COLOR: Record<string, { color: string; bg: string }> = {
   low:    { color: "#9ca3af", bg: "#f3f4f6" },
@@ -80,6 +83,21 @@ function Section({ title, icon, color, count, href, linkLabel, children, empty, 
 }
 
 export default function NotificationsBoard({ user, overdueTasks, pendingReimbs, announcements, upcomingTrainings, reviewTasks, pendingKonten, openBriefs }: Props) {
+  const router = useRouter();
+
+  useEffect(() => {
+    const supabase = createClient();
+    const ch = supabase.channel("notifications-rt")
+      .on("postgres_changes", { event: "*", schema: "public", table: "tasks" },           () => router.refresh())
+      .on("postgres_changes", { event: "*", schema: "public", table: "announcements" },   () => router.refresh())
+      .on("postgres_changes", { event: "*", schema: "public", table: "reimbursements" },  () => router.refresh())
+      .on("postgres_changes", { event: "*", schema: "public", table: "training_sessions"},() => router.refresh())
+      .on("postgres_changes", { event: "*", schema: "public", table: "content_posts" },   () => router.refresh())
+      .on("postgres_changes", { event: "*", schema: "public", table: "creative_briefs" }, () => router.refresh())
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [router]);
+
   const totalAlerts = overdueTasks.length + pendingReimbs.length + reviewTasks.length + pendingKonten.length + openBriefs.length;
 
   return (

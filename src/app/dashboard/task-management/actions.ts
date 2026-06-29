@@ -1,11 +1,9 @@
 "use server";
 
 import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
-import { SUPABASE_ANON_KEY, SUPABASE_URL } from "@/lib/supabase/config";
-import type { Task, UserProfile } from "@/types";
-
-type CookieStore = Awaited<ReturnType<typeof cookies>>;
+import { SUPABASE_URL } from "@/lib/supabase/config";
+import { createClient } from "@/lib/supabase/server";
+import type { Task } from "@/types";
 
 function createAdminClient() {
   return createServerClient(
@@ -15,127 +13,181 @@ function createAdminClient() {
   );
 }
 
-function createSessionClient(cookieStore: CookieStore) {
-  return createServerClient(
-    SUPABASE_URL,
-    SUPABASE_ANON_KEY,
-    { cookies: { getAll: () => cookieStore.getAll(), setAll: () => {} } }
-  );
-}
-
-function createMutationClient(cookieStore: CookieStore) {
-  return process.env.SUPABASE_SERVICE_ROLE_KEY ? createAdminClient() : createSessionClient(cookieStore);
-}
-
 const APPROVE_ROLES = ["super_admin", "manager", "kep_trainer"];
-const STATUS_EDITOR_ROLES: UserProfile["role"][] = ["super_admin", "manager", "program_admin", "kep_finance", "kep_trainer"];
-const TASK_STATUSES: Task["status"][] = ["pending", "in_progress", "review", "done"];
+const MANAGE_ROLES  = ["super_admin", "manager", "program_admin", "kep_finance", "kep_trainer"];
 
-type AuthProfile = { userId: string; role: UserProfile["role"]; cookieStore: CookieStore };
-type StatusTask = Pick<Task, "id" | "status" | "assigned_to" | "created_by" | "requires_proof">;
+async function requireAuth(): Promise<{ userId: string; role: string } | { error: string }> {
+  // Reuse the same createClient used by page.tsx — identical cookie handling, known to work.
+  const supabase = await createClient();
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.user) return { error: "Sesi habis, silakan login ulang." };
 
-function canChangeTaskStatus(
-  task: StatusTask,
-  userId: string,
-  role: UserProfile["role"],
-  nextStatus?: Task["status"],
-) {
-  const canEditAnyStatus = STATUS_EDITOR_ROLES.includes(role);
-  const canApprove = APPROVE_ROLES.includes(role);
-  const isTaskOwner = task.assigned_to === userId || task.created_by === userId;
-  if (task.status === "done" && !canApprove) return false;
-  if (nextStatus === "done") return canApprove;
-  return canEditAnyStatus || isTaskOwner;
+  const admin = createAdminClient();
+  const { data: profile } = await admin
+    .from("profiles").select("role").eq("id", session.user.id).single();
+  return { userId: session.user.id, role: profile?.role ?? "" };
 }
 
-async function requireProfile(): Promise<AuthProfile | { error: string }> {
-  const cookieStore = await cookies();
-  const session = createSessionClient(cookieStore);
-  const { data: { user } } = await session.auth.getUser();
-  if (!user) return { error: "Tidak terautentikasi." };
-  const { data: profile } = await session
-    .from("profiles").select("role").eq("id", user.id).single();
-  if (!profile?.role) return { error: "Profil tidak ditemukan." };
-  return { userId: user.id, role: profile.role as UserProfile["role"], cookieStore };
+// ── CREATE ─────────────────────────────────────────────────────────────────
+
+export async function createTaskAction(payload: {
+  title: string;
+  description: string | null;
+  status: Task["status"];
+  priority: Task["priority"];
+  assigned_to: string | null;
+  due_date: string | null;
+  requires_proof: boolean;
+}): Promise<{ data: Task | null; error: string | null }> {
+  const auth = await requireAuth();
+  if ("error" in auth) return { ...auth, data: null };
+  if (!MANAGE_ROLES.includes(auth.role)) return { error: "Akses ditolak.", data: null };
+
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("tasks")
+    .insert({ ...payload, created_by: auth.userId })
+    .select()
+    .single();
+  if (error) return { error: error.message, data: null };
+
+  await admin.from("task_logs").insert({
+    task_id: data.id, actor_id: auth.userId,
+    action: "created", to_status: data.status,
+  });
+  return { data, error: null };
 }
 
-async function requireApprover(): Promise<{ userId: string } | { error: string }> {
-  const auth = await requireProfile();
-  if ("error" in auth) return auth;
-  if (!APPROVE_ROLES.includes(auth.role)) return { error: "Akses ditolak." };
-  return { userId: auth.userId };
+// ── UPDATE (full edit) ──────────────────────────────────────────────────────
+
+export async function updateTaskAction(
+  taskId: string,
+  payload: {
+    title: string;
+    description: string | null;
+    status: Task["status"];
+    priority: Task["priority"];
+    assigned_to: string | null;
+    due_date: string | null;
+    requires_proof: boolean;
+  }
+): Promise<{ data: Task | null; error: string | null }> {
+  const auth = await requireAuth();
+  if ("error" in auth) return { ...auth, data: null };
+
+  const admin = createAdminClient();
+  const { data: task } = await admin
+    .from("tasks").select("assigned_to, created_by").eq("id", taskId).single();
+  if (!task) return { error: "Task tidak ditemukan.", data: null };
+
+  const canManage  = MANAGE_ROLES.includes(auth.role);
+  const isAssignee = task.assigned_to === auth.userId;
+  const isCreator  = task.created_by === auth.userId;
+  if (!canManage && !isAssignee && !isCreator) return { error: "Akses ditolak.", data: null };
+
+  const { data, error } = await admin
+    .from("tasks").update(payload).eq("id", taskId).select().single();
+  if (error) return { error: error.message, data: null };
+
+  await admin.from("task_logs").insert({ task_id: taskId, actor_id: auth.userId, action: "edited" });
+  return { data, error: null };
 }
 
-export async function changeTaskStatusAction(
+// ── QUICK STATUS ────────────────────────────────────────────────────────────
+
+export async function quickStatusAction(
   taskId: string,
   status: Task["status"],
-): Promise<{ error: string | null; task?: Partial<Task> }> {
-  if (!TASK_STATUSES.includes(status)) return { error: "Status tidak valid." };
-  const auth = await requireProfile();
-  if ("error" in auth) return { error: auth.error };
+  fromStatus: Task["status"],
+): Promise<{ error: string | null }> {
+  const auth = await requireAuth();
+  if ("error" in auth) return auth;
 
-  const db = createMutationClient(auth.cookieStore);
-  const { data: task, error: taskError } = await db
-    .from("tasks")
-    .select("id,status,assigned_to,created_by,requires_proof")
-    .eq("id", taskId)
-    .single();
-  if (taskError || !task) return { error: "Task tidak ditemukan." };
+  const admin = createAdminClient();
+  const { data: task } = await admin
+    .from("tasks").select("assigned_to, created_by").eq("id", taskId).single();
+  if (!task) return { error: "Task tidak ditemukan." };
 
-  const currentTask = task as StatusTask;
-  if (!canChangeTaskStatus(currentTask, auth.userId, auth.role, status)) {
-    return { error: "Akses mengubah status task ditolak." };
-  }
-  if (currentTask.status === status) return { error: null, task: { status } };
+  const canManage  = MANAGE_ROLES.includes(auth.role);
+  const isAssignee = task.assigned_to === auth.userId;
+  const isCreator  = task.created_by === auth.userId;
+  if (!canManage && !isAssignee && !isCreator) return { error: "Akses ditolak." };
 
-  const approvedAt = status === "done" ? new Date().toISOString() : null;
-  const updates: Partial<Task> = status === "done"
-    ? { status, approved_by: auth.userId, approved_at: approvedAt }
-    : { status };
-  const { error } = await db.from("tasks").update(updates).eq("id", taskId);
+  const { error } = await admin.from("tasks").update({ status }).eq("id", taskId);
   if (error) return { error: error.message };
-  await db.from("task_logs").insert({
+
+  await admin.from("task_logs").insert({
     task_id: taskId, actor_id: auth.userId,
-    action: "status_changed", from_status: currentTask.status, to_status: status,
+    action: "status_changed", from_status: fromStatus, to_status: status,
   });
-  return { error: null, task: updates };
+  return { error: null };
 }
 
-export async function submitTaskReviewAction(
+// ── SUBMIT FOR REVIEW ───────────────────────────────────────────────────────
+
+export async function submitForReviewAction(
   taskId: string,
+  fromStatus: Task["status"],
   note: string | null,
   proofUrl: string | null,
-): Promise<{ error: string | null; task?: Partial<Task> }> {
-  const auth = await requireProfile();
-  if ("error" in auth) return { error: auth.error };
+): Promise<{ error: string | null }> {
+  const auth = await requireAuth();
+  if ("error" in auth) return auth;
 
-  const db = createMutationClient(auth.cookieStore);
-  const { data: task, error: taskError } = await db
-    .from("tasks")
-    .select("id,status,assigned_to,created_by,requires_proof")
-    .eq("id", taskId)
-    .single();
-  if (taskError || !task) return { error: "Task tidak ditemukan." };
+  const admin = createAdminClient();
+  const { data: task } = await admin
+    .from("tasks").select("assigned_to, created_by, requires_proof").eq("id", taskId).single();
+  if (!task) return { error: "Task tidak ditemukan." };
 
-  const currentTask = task as StatusTask;
-  if (!canChangeTaskStatus(currentTask, auth.userId, auth.role, "review")) {
-    return { error: "Akses mengubah status task ditolak." };
-  }
-  const cleanProofUrl = proofUrl?.trim() || null;
-  const cleanNote = note?.trim() || null;
-  if (currentTask.requires_proof && !cleanProofUrl) {
+  if (task.requires_proof && !proofUrl?.trim()) {
     return { error: "Link bukti wajib diisi karena diminta oleh pembuat task." };
   }
 
-  const updates: Partial<Task> = { status: "review", completion_note: cleanNote, proof_url: cleanProofUrl };
-  const { error } = await db.from("tasks").update(updates).eq("id", taskId);
+  const canManage  = MANAGE_ROLES.includes(auth.role);
+  const isAssignee = task.assigned_to === auth.userId;
+  const isCreator  = task.created_by === auth.userId;
+  if (!canManage && !isAssignee && !isCreator) return { error: "Akses ditolak." };
+
+  const updates = {
+    status: "review" as Task["status"],
+    completion_note: note || null,
+    proof_url: proofUrl || null,
+  };
+  const { error } = await admin.from("tasks").update(updates).eq("id", taskId);
   if (error) return { error: error.message };
-  await db.from("task_logs").insert({
+
+  await admin.from("task_logs").insert({
     task_id: taskId, actor_id: auth.userId,
-    action: "submitted_review", from_status: currentTask.status, to_status: "review",
-    note: cleanNote, proof_url: cleanProofUrl,
+    action: "submitted_review", from_status: fromStatus, to_status: "review",
+    note: note || null, proof_url: proofUrl || null,
   });
-  return { error: null, task: updates };
+  return { error: null };
+}
+
+// ── DELETE ─────────────────────────────────────────────────────────────────
+
+export async function deleteTaskAction(taskId: string): Promise<{ error: string | null }> {
+  const auth = await requireAuth();
+  if ("error" in auth) return auth;
+  if (!MANAGE_ROLES.includes(auth.role)) return { error: "Akses ditolak." };
+
+  const admin = createAdminClient();
+  const { error } = await admin.from("tasks").delete().eq("id", taskId);
+  if (error) return { error: error.message };
+  return { error: null };
+}
+
+// ── APPROVE / REJECT ────────────────────────────────────────────────────────
+
+async function requireApprover(): Promise<{ userId: string } | { error: string }> {
+  const supabase = await createClient();
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.user) return { error: "Sesi habis, silakan login ulang." };
+  const admin = createAdminClient();
+  const { data: profile } = await admin
+    .from("profiles").select("role").eq("id", session.user.id).single();
+  if (!profile || !APPROVE_ROLES.includes(profile.role)) return { error: "Akses ditolak." };
+  return { userId: session.user.id };
 }
 
 export async function approveTaskAction(taskId: string): Promise<{ error: string | null }> {

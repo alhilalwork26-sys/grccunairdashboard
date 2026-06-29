@@ -8,7 +8,8 @@ export type Role =
   | "kep_finance"
   | "staff_finance"
   | "staff_dokumen"
-  | "kep_trainer";
+  | "kep_trainer"
+  | "tim_riset";
 
 export interface UserProfile {
   id: string;
@@ -204,4 +205,5 @@ export const ROLE_LABELS: Record<Role, string> = {
   staff_finance: "Staff Finance",
   staff_dokumen: "Staff Dokumen",
   kep_trainer: "Kepala Trainer",
+  tim_riset: "Tim Riset",
 };

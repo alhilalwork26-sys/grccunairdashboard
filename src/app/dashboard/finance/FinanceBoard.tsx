@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, Fragment } from "react";
+import { useState, useRef, Fragment, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { createClient } from "@/lib/supabase/client";
 import type { UserProfile, FinanceTransaction, Reimbursement } from "@/types";
@@ -46,6 +46,44 @@ function storageStamp() {
   return new Date().getTime();
 }
 
+const WIB = 7 * 3600000; // UTC+7
+
+function getWeekKeyFromDate(utcDateStr: string): string {
+  const wib = new Date(new Date(utcDateStr).getTime() + WIB);
+  const day  = wib.getUTCDay();
+  const off  = day === 0 ? 6 : day - 1;
+  const mon  = new Date(wib);
+  mon.setUTCDate(mon.getUTCDate() - off);
+  return [mon.getUTCFullYear(), String(mon.getUTCMonth() + 1).padStart(2, "0"), String(mon.getUTCDate()).padStart(2, "0")].join("-");
+}
+
+function getWeekDeadline(weekKey: string): Date {
+  // Sunday of the week at 23:00 WIB = 16:00 UTC
+  const d = new Date(weekKey + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + 6);
+  d.setUTCHours(16, 0, 0, 0);
+  return d;
+}
+
+function getWeekLabel(weekKey: string): string {
+  const mon = new Date(weekKey + "T00:00:00Z");
+  const sun = new Date(mon);
+  sun.setUTCDate(sun.getUTCDate() + 6);
+  const sunShort = sun.toLocaleDateString("id-ID", { month: "short", timeZone: "UTC" });
+  const year = sun.getUTCFullYear();
+  if (mon.getUTCMonth() === sun.getUTCMonth()) {
+    return `${mon.getUTCDate()}–${sun.getUTCDate()} ${sunShort} ${year}`;
+  }
+  const monShort = mon.toLocaleDateString("id-ID", { day: "numeric", month: "short", timeZone: "UTC" });
+  return `${monShort} – ${sun.getUTCDate()} ${sunShort} ${year}`;
+}
+
+function getSundayStr(weekKey: string): string {
+  const d = new Date(weekKey + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + 6);
+  return d.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
+}
+
 function TimelineStep({ done, color, label, date, last }: { done: boolean; color: string; label: string; date: string; last?: boolean }) {
   return (
     <div style={{ display: "flex", gap: 10 }}>
@@ -74,9 +112,9 @@ export default function FinanceBoard({ currentUser, initialTransactions, initial
 
   const isFinanceRole = ["super_admin", "manager", "kep_finance", "staff_finance", "staff_dokumen"].includes(currentUser.role);
   const canManageTrx  = ["kep_finance", "staff_finance", "staff_dokumen"].includes(currentUser.role);
-  const canApprove    = ["super_admin", "manager", "kep_finance"].includes(currentUser.role);
-  const canPayOut     = ["super_admin", "manager", "kep_finance"].includes(currentUser.role);
-  const isViewOnly    = ["super_admin", "manager"].includes(currentUser.role) && !canManageTrx;
+  const canApprove    = currentUser.role === "kep_finance";
+  const canPayOut     = currentUser.role === "kep_finance";
+  const isViewOnly    = isFinanceRole && !canManageTrx;
 
   // Non-finance roles always land on reimbursement tab
   const [tab, setTab] = useState<"overview" | "transaksi" | "reimbursement">(isFinanceRole ? "reimbursement" : "reimbursement");
@@ -109,6 +147,40 @@ export default function FinanceBoard({ currentUser, initialTransactions, initial
   // Image expand
   const [expandedImg, setExpandedImg]       = useState<string | null>(null);
 
+  // Group collapse state — collapsed by default
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  function toggleGroup(key: string) {
+    setExpandedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  }
+
+  // Weekly countdown
+  const currentWeekKey = getWeekKeyFromDate(new Date().toISOString());
+  const [countdown, setCountdown] = useState<string>("");
+  const [weekClosed, setWeekClosed] = useState(() => Date.now() >= getWeekDeadline(getWeekKeyFromDate(new Date().toISOString())).getTime());
+
+  useEffect(() => {
+    function tick() {
+      const now = Date.now();
+      const wk  = getWeekKeyFromDate(new Date(now).toISOString());
+      const dl  = getWeekDeadline(wk).getTime();
+      const diff = dl - now;
+      if (diff <= 0) { setWeekClosed(true); setCountdown(""); return; }
+      setWeekClosed(false);
+      const d = Math.floor(diff / 86400000);
+      const h = Math.floor((diff % 86400000) / 3600000);
+      const m = Math.floor((diff % 3600000) / 60000);
+      const s = Math.floor((diff % 60000) / 1000);
+      setCountdown(d > 0 ? `${d}h ${h}j ${m}m` : `${h}j ${m}m ${s}d`);
+    }
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, []);
+
   // Review
   const [reviewTarget, setReviewTarget] = useState<Reimbursement | null>(null);
   const [reviewNote, setReviewNote]     = useState("");
@@ -140,16 +212,16 @@ export default function FinanceBoard({ currentUser, initialTransactions, initial
     return true;
   });
 
-  // ── Group by requester + minute (batch submissions land within the same minute) ──
+  // ── Group by requester + ISO week (Mon–Sun WIB), most recent first ──
   const reimbGroups = (() => {
-    const map = new Map<string, { key: string; requesterId: string; requesterName: string; date: string; items: Reimbursement[] }>();
+    const map = new Map<string, { key: string; requesterId: string; requesterName: string; weekKey: string; items: Reimbursement[] }>();
     for (const r of filteredReimb) {
-      const minute = r.created_at.slice(0, 16);
-      const gKey   = `${r.requested_by ?? "anon"}_${minute}`;
-      if (!map.has(gKey)) map.set(gKey, { key: gKey, requesterId: r.requested_by ?? "", requesterName: (r.requester as any)?.full_name ?? "—", date: r.created_at.slice(0, 10), items: [] });
+      const weekKey = getWeekKeyFromDate(r.created_at);
+      const gKey    = `${r.requested_by ?? "anon"}_${weekKey}`;
+      if (!map.has(gKey)) map.set(gKey, { key: gKey, requesterId: r.requested_by ?? "", requesterName: (r.requester as any)?.full_name ?? "—", weekKey, items: [] });
       map.get(gKey)!.items.push(r);
     }
-    return [...map.values()];
+    return [...map.values()].sort((a, b) => b.weekKey.localeCompare(a.weekKey));
   })();
 
   // ── CRUD: Transactions ──
@@ -233,6 +305,7 @@ export default function FinanceBoard({ currentUser, initialTransactions, initial
   };
 
   const handleReview = async (id: string, status: "approved" | "rejected" | "pending") => {
+    if (!canApprove) { showToast("Hanya Kepala Finance yang dapat menyetujui reimbursement", false); return; }
     setSubmitting(true);
     const payload: Record<string, unknown> = { status };
     if (status !== "pending") {
@@ -313,9 +386,10 @@ export default function FinanceBoard({ currentUser, initialTransactions, initial
             </motion.button>
           )}
           {tab === "reimbursement" && (
-            <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
-              onClick={() => { setReimbRows([newReimbRow()]); setShowReimbModal(true); }}
-              style={{ display: "flex", alignItems: "center", gap: 7, background: "linear-gradient(135deg, #6366f1, #4f46e5)", color: "#fff", border: "none", borderRadius: 10, padding: "9px 16px", cursor: "pointer", fontSize: 13, fontWeight: 600, boxShadow: "0 4px 14px rgba(99,102,241,0.35)" }}>
+            <motion.button
+              whileHover={{ scale: weekClosed ? 1 : 1.02 }} whileTap={{ scale: weekClosed ? 1 : 0.97 }}
+              onClick={() => { if (weekClosed) { showToast("Periode minggu ini sudah tutup. Dibuka kembali Senin mendatang.", false); return; } setReimbRows([newReimbRow()]); setShowReimbModal(true); }}
+              style={{ display: "flex", alignItems: "center", gap: 7, background: weekClosed ? "#e5e7eb" : "linear-gradient(135deg, #6366f1, #4f46e5)", color: weekClosed ? "#9ca3af" : "#fff", border: "none", borderRadius: 10, padding: "9px 16px", cursor: weekClosed ? "not-allowed" : "pointer", fontSize: 13, fontWeight: 600, boxShadow: weekClosed ? "none" : "0 4px 14px rgba(99,102,241,0.35)" }}>
               <Plus size={15} /> Ajukan Reimbursement
             </motion.button>
           )}
@@ -477,6 +551,36 @@ export default function FinanceBoard({ currentUser, initialTransactions, initial
             <motion.div key="reimbursement" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
               style={{ display: "flex", flexDirection: "column", gap: 16 }}>
 
+              {/* Weekly deadline countdown */}
+              <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }}
+                style={{
+                  display: "flex", alignItems: "center", gap: 14, padding: "14px 18px",
+                  background: weekClosed ? "linear-gradient(135deg, #fef2f2, #fee2e2)" : "linear-gradient(135deg, #eef2ff, #e0e7ff)",
+                  border: `1.5px solid ${weekClosed ? "#fecaca" : "#c7d2fe"}`, borderRadius: 12,
+                }}>
+                <div style={{ width: 36, height: 36, borderRadius: 10, background: weekClosed ? "#ef4444" : "#6366f1", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <Clock size={16} color="#fff" />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <p style={{ fontSize: 13, fontWeight: 700, color: weekClosed ? "#991b1b" : "#3730a3" }}>
+                    {weekClosed ? "Periode Minggu Ini Sudah Tutup" : `Periode: ${getWeekLabel(currentWeekKey)}`}
+                  </p>
+                  <p style={{ fontSize: 12, color: weekClosed ? "#b91c1c" : "#4f46e5", marginTop: 2 }}>
+                    {weekClosed
+                      ? "Pengajuan reimbursement dibuka kembali Senin mendatang."
+                      : `Tutup: ${getSundayStr(currentWeekKey)} pukul 23.00 WIB`}
+                  </p>
+                </div>
+                {!weekClosed && countdown && (
+                  <div style={{ textAlign: "right", flexShrink: 0 }}>
+                    <p style={{ fontSize: 10, color: "#6366f1", fontWeight: 600, marginBottom: 2, opacity: 0.7 }}>sisa waktu</p>
+                    <p style={{ fontSize: 20, fontWeight: 800, color: "#4f46e5", letterSpacing: "-0.03em", fontVariantNumeric: "tabular-nums", lineHeight: 1 }}>
+                      {countdown}
+                    </p>
+                  </div>
+                )}
+              </motion.div>
+
               {/* Notification banner for kep_finance when there are pending reimbs */}
               {currentUser.role === "kep_finance" && pendingReimb > 0 && (
                 <motion.div
@@ -515,8 +619,18 @@ export default function FinanceBoard({ currentUser, initialTransactions, initial
                 </div>
               )}
 
-              {/* Stats bar — only for kep_finance / manager / super_admin */}
-              {canApprove && (
+              {/* Info banner for finance roles that can't approve */}
+              {isFinanceRole && !canApprove && (
+                <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 16px", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 10 }}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                  <p style={{ fontSize: 12, color: "#1d4ed8", fontWeight: 500 }}>
+                    Persetujuan reimbursement hanya dapat dilakukan oleh <strong>Kepala Finance</strong>.
+                  </p>
+                </div>
+              )}
+
+              {/* Stats bar — for all finance roles */}
+              {isFinanceRole && (
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
                   {[
                     { label: "Menunggu Review", value: reimbursements.filter(r => r.status === "pending").length, suffix: "pengajuan", color: "#d97706", bg: "#fffbeb", border: "#fde68a" },
@@ -581,7 +695,7 @@ export default function FinanceBoard({ currentUser, initialTransactions, initial
                     <p style={{ fontSize: 15, fontWeight: 600, color: "#374151" }}>
                       {reimbSearch || reimbStatusFilter !== "all" ? "Tidak ada yang cocok" : "Belum ada pengajuan reimbursement"}
                     </p>
-                    {!reimbSearch && reimbStatusFilter === "all" && (
+                    {!reimbSearch && reimbStatusFilter === "all" && !weekClosed && (
                       <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
                         onClick={() => { setReimbRows([newReimbRow()]); setShowReimbModal(true); }}
                         style={{ marginTop: 18, background: "linear-gradient(135deg, #6366f1, #4f46e5)", color: "#fff", border: "none", borderRadius: 10, padding: "10px 22px", fontSize: 13, fontWeight: 600, cursor: "pointer", boxShadow: "0 4px 12px rgba(99,102,241,0.3)" }}>
@@ -751,17 +865,18 @@ export default function FinanceBoard({ currentUser, initialTransactions, initial
                       const approvCnt  = group.items.filter(r => r.status === "approved").length;
                       const rejectCnt  = group.items.filter(r => r.status === "rejected").length;
 
+                      const isExpanded = expandedGroups.has(group.key);
                       return (
                         <motion.div key={group.key} layout
                           initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.97 }}
                           transition={{ delay: gi * 0.04 }}
                           style={{ background: "#fff", border: "1px solid #e0e7ff", borderLeft: "3px solid #6366f1", borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 4px rgba(0,0,0,0.05)" }}>
 
-                          {/* Body */}
-                          <div style={{ padding: "16px 20px 14px" }}>
-                            {/* Header */}
-                            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 6 }}>
-                              <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                          {/* Clickable Header */}
+                          <div onClick={() => toggleGroup(group.key)}
+                            style={{ padding: "14px 20px", cursor: "pointer", userSelect: "none" }}>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", flex: 1, minWidth: 0 }}>
                                 <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: 20, background: "#eef2ff", color: "#4f46e5", border: "1px solid #c7d2fe" }}>
                                   {group.items.length} Reimbursement
                                 </span>
@@ -770,14 +885,31 @@ export default function FinanceBoard({ currentUser, initialTransactions, initial
                                 {approvCnt  > 0 && <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 20, background: "#f0fdf4", color: "#059669", border: "1px solid #a7f3d0" }}>{approvCnt} disetujui</span>}
                                 {rejectCnt  > 0 && <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 20, background: "#fef2f2", color: "#dc2626", border: "1px solid #fecaca" }}>{rejectCnt} ditolak</span>}
                               </div>
-                              <p style={{ fontSize: 15, fontWeight: 800, color: "#111827", letterSpacing: "-0.02em", lineHeight: 1, flexShrink: 0 }}>
-                                {fmtRupiah(totalAmt)}
-                              </p>
+                              <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                                <p style={{ fontSize: 15, fontWeight: 800, color: "#111827", letterSpacing: "-0.02em", lineHeight: 1 }}>
+                                  {fmtRupiah(totalAmt)}
+                                </p>
+                                <motion.div animate={{ rotate: isExpanded ? 180 : 0 }} transition={{ duration: 0.2 }}>
+                                  <ChevronDown size={16} color="#9ca3af" />
+                                </motion.div>
+                              </div>
                             </div>
-                            <p style={{ fontSize: 11, color: "#9ca3af", marginBottom: 12 }}>
-                              {group.requesterName} · Diajukan {fmtDateShort(group.date)}
+                            <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 5 }}>
+                              {group.requesterName} · Minggu {getWeekLabel(group.weekKey)}
                             </p>
+                          </div>
 
+                          {/* Collapsible body */}
+                          <AnimatePresence initial={false}>
+                            {isExpanded && (
+                              <motion.div
+                                key="body"
+                                initial={{ height: 0, opacity: 0 }}
+                                animate={{ height: "auto", opacity: 1 }}
+                                exit={{ height: 0, opacity: 0 }}
+                                transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                                style={{ overflow: "hidden" }}>
+                          <div style={{ padding: "0 20px 14px" }}>
                             {/* Item list */}
                             <div style={{ background: "#f9fafb", borderRadius: 10, border: "1px solid #f0f0f0", overflow: "hidden" }}>
                               {group.items.map((item, idx) => {
@@ -865,12 +997,15 @@ export default function FinanceBoard({ currentUser, initialTransactions, initial
                             </div>
                           </div>
 
-                          {/* Footer */}
+                          {/* Footer inside collapsible */}
                           <div style={{ padding: "8px 20px", borderTop: "1px solid #f3f4f6", background: "#fafafa" }}>
                             <span style={{ fontSize: 11, color: "#9ca3af" }}>
                               {group.items.length} item · Total {fmtRupiah(totalAmt)}
                             </span>
                           </div>
+                            </motion.div>
+                          )}
+                          </AnimatePresence>
                         </motion.div>
                       );
                     })}
@@ -1157,23 +1292,32 @@ export default function FinanceBoard({ currentUser, initialTransactions, initial
                     onChange={e => setReviewNote(e.target.value)}
                     style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 13, outline: "none", resize: "vertical", fontFamily: "inherit", lineHeight: 1.6, boxSizing: "border-box" }} />
                 </div>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
-                    onClick={() => handleReview(reviewTarget.id, "rejected")} disabled={submitting}
-                    style={{ flex: 1, minWidth: 90, padding: "11px", border: "1.5px solid #fecaca", borderRadius: 11, background: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700, color: "#dc2626", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-                    <XCircle size={15} /> Tolak
-                  </motion.button>
-                  <motion.button whileHover={{ scale: 1.02, background: "#fffbeb" }} whileTap={{ scale: 0.97 }}
-                    onClick={() => handleReview(reviewTarget.id, "pending")} disabled={submitting}
-                    style={{ flex: 1, minWidth: 90, padding: "11px", border: "1.5px solid #fde68a", borderRadius: 11, background: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700, color: "#d97706", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-                    <RotateCcw size={14} /> Menunggu
-                  </motion.button>
-                  <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
-                    onClick={() => handleReview(reviewTarget.id, "approved")} disabled={submitting}
-                    style={{ flex: 1, minWidth: 90, padding: "11px", border: "none", borderRadius: 11, background: "linear-gradient(135deg, #10b981, #047857)", cursor: "pointer", fontSize: 13, fontWeight: 700, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-                    <CheckCircle size={15} /> Setujui
-                  </motion.button>
-                </div>
+                {canApprove ? (
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
+                      onClick={() => handleReview(reviewTarget.id, "rejected")} disabled={submitting}
+                      style={{ flex: 1, minWidth: 90, padding: "11px", border: "1.5px solid #fecaca", borderRadius: 11, background: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700, color: "#dc2626", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                      <XCircle size={15} /> Tolak
+                    </motion.button>
+                    <motion.button whileHover={{ scale: 1.02, background: "#fffbeb" }} whileTap={{ scale: 0.97 }}
+                      onClick={() => handleReview(reviewTarget.id, "pending")} disabled={submitting}
+                      style={{ flex: 1, minWidth: 90, padding: "11px", border: "1.5px solid #fde68a", borderRadius: 11, background: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700, color: "#d97706", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                      <RotateCcw size={14} /> Tunda
+                    </motion.button>
+                    <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
+                      onClick={() => handleReview(reviewTarget.id, "approved")} disabled={submitting}
+                      style={{ flex: 1, minWidth: 90, padding: "11px", border: "none", borderRadius: 11, background: "linear-gradient(135deg, #10b981, #047857)", cursor: "pointer", fontSize: 13, fontWeight: 700, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                      <CheckCircle size={15} /> Setujui
+                    </motion.button>
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "13px 16px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 11 }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    <p style={{ fontSize: 12, color: "#dc2626", fontWeight: 600 }}>
+                      Hanya Kepala Finance yang dapat menyetujui atau menolak reimbursement.
+                    </p>
+                  </div>
+                )}
               </div>
             </motion.div>
           </motion.div>

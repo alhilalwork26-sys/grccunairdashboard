@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import CalendarBoard from "./CalendarBoard";
 import type { UserProfile } from "@/types";
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 
 export default async function CalendarPage() {
   const supabase = await createClient();
@@ -29,5 +30,10 @@ export default async function CalendarPage() {
     role: "super_admin", created_at: user!.created_at,
   };
 
-  return <CalendarBoard currentUser={currentUser} initialEvents={events ?? []} />;
+  const reqHeaders = await headers();
+  const host  = reqHeaders.get("x-forwarded-host") ?? reqHeaders.get("host") ?? "localhost:3000";
+  const proto = reqHeaders.get("x-forwarded-proto") ?? "http";
+  const calendarUrl = `${proto}://${host}/api/calendar/events?token=${process.env.CALENDAR_SECRET ?? ""}`;
+
+  return <CalendarBoard currentUser={currentUser} initialEvents={events ?? []} calendarUrl={calendarUrl} />;
 }

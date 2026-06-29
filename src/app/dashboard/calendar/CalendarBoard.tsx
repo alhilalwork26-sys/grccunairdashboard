@@ -4,7 +4,7 @@ import { useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { createClient } from "@/lib/supabase/client";
 import type { UserProfile, CalendarEvent } from "@/types";
-import { ChevronLeft, ChevronRight, Plus, X, Check, Clock, Calendar, CalendarDays, Trash2, AlertTriangle } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, X, Check, Clock, Calendar, CalendarDays, Trash2, AlertTriangle, Copy, ExternalLink } from "lucide-react";
 
 const TYPE_CFG = {
   meeting:  { label: "Meeting",   color: "#3b82f6", bg: "#eff6ff" },
@@ -31,12 +31,17 @@ const EMPTY_FORM = {
   type: "meeting" as CalendarEvent["type"],
 };
 
+function googleCalendarSubscribeUrl(icsUrl: string) {
+  return `https://calendar.google.com/calendar/r?cid=${encodeURIComponent(icsUrl)}`;
+}
+
 interface Props {
   currentUser: UserProfile;
   initialEvents: CalendarEvent[];
+  calendarUrl: string;
 }
 
-export default function CalendarBoard({ currentUser, initialEvents }: Props) {
+export default function CalendarBoard({ currentUser, initialEvents, calendarUrl }: Props) {
   const supabase = createClient();
   const canManage = ["super_admin", "manager", "program_admin", "kep_finance", "kep_trainer"].includes(currentUser.role);
 
@@ -56,6 +61,8 @@ export default function CalendarBoard({ currentUser, initialEvents }: Props) {
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [toast, setToast]         = useState<{ msg: string; ok: boolean } | null>(null);
   const [direction, setDirection] = useState(1);
+  const [showSubscribe, setShowSubscribe] = useState(false);
+  const [copied, setCopied]       = useState(false);
 
   const showToast = (msg: string, ok = true) => {
     setToast({ msg, ok });
@@ -233,7 +240,7 @@ export default function CalendarBoard({ currentUser, initialEvents }: Props) {
             <p style={{ fontSize: 12, color: "#9ca3af", marginTop: 1 }}>{monthEventsCount} event dimulai bulan ini</p>
           </div>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, position: "relative" }}>
           {!isCurrentMonthView && (
             <motion.button
               initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
@@ -249,6 +256,19 @@ export default function CalendarBoard({ currentUser, initialEvents }: Props) {
               <CalendarDays size={14} /> Hari Ini
             </motion.button>
           )}
+          <motion.button
+            whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
+            onClick={() => setShowSubscribe(p => !p)}
+            style={{
+              display: "flex", alignItems: "center", gap: 6,
+              padding: "8px 14px", borderRadius: 10,
+              background: showSubscribe ? "#f5f3ff" : "#faf5ff",
+              border: `1px solid ${showSubscribe ? "#c4b5fd" : "#ede9fe"}`,
+              color: "#7c3aed", fontSize: 13, fontWeight: 600, cursor: "pointer",
+            }}
+          >
+            <Calendar size={14} /> Langganan
+          </motion.button>
           {canManage && (
             <motion.button
               whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
@@ -264,6 +284,89 @@ export default function CalendarBoard({ currentUser, initialEvents }: Props) {
               <Plus size={15} /> Tambah Event
             </motion.button>
           )}
+
+          {/* Subscribe popup */}
+          <AnimatePresence>
+            {showSubscribe && (
+              <motion.div
+                initial={{ opacity: 0, y: -8, scale: 0.97 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -8, scale: 0.97 }}
+                transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+                style={{
+                  position: "absolute", top: "calc(100% + 8px)", right: 0, zIndex: 200,
+                  width: 340, background: "#fff", borderRadius: 16,
+                  boxShadow: "0 16px 48px rgba(0,0,0,0.14)", border: "1px solid #ede9fe",
+                  padding: 20,
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <div style={{ width: 28, height: 28, borderRadius: 8, background: "linear-gradient(135deg, #8b5cf6, #6d28d9)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <Calendar size={13} color="#fff" />
+                    </div>
+                    <div>
+                      <p style={{ fontSize: 13, fontWeight: 700, color: "#111827" }}>Tambah ke Google Calendar</p>
+                      <p style={{ fontSize: 11, color: "#9ca3af" }}>Sinkron otomatis semua event</p>
+                    </div>
+                  </div>
+                  <button onClick={() => setShowSubscribe(false)} style={{ background: "none", border: "none", cursor: "pointer", padding: 2 }}>
+                    <X size={14} color="#9ca3af" />
+                  </button>
+                </div>
+
+                {/* Steps */}
+                {[
+                  { n: 1, text: "Salin URL kalender di bawah" },
+                  { n: 2, text: "Buka Google Calendar → klik \"+\" di sebelah \"Kalender lain\"" },
+                  { n: 3, text: "Pilih \"Dari URL\" lalu tempel URL" },
+                  { n: 4, text: "Klik \"Tambahkan Kalender\" — selesai!" },
+                ].map(s => (
+                  <div key={s.n} style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 8 }}>
+                    <div style={{ width: 20, height: 20, borderRadius: "50%", background: "#f5f3ff", border: "1.5px solid #c4b5fd", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: "#7c3aed" }}>{s.n}</span>
+                    </div>
+                    <p style={{ fontSize: 12, color: "#374151", lineHeight: 1.5, marginTop: 1 }}>{s.text}</p>
+                  </div>
+                ))}
+
+                {/* URL box */}
+                <div style={{ marginTop: 12, background: "#f9fafb", border: "1.5px solid #e5e7eb", borderRadius: 10, padding: "10px 12px", display: "flex", alignItems: "center", gap: 8 }}>
+                  <p style={{ flex: 1, fontSize: 11, color: "#6b7280", wordBreak: "break-all", lineHeight: 1.4, fontFamily: "monospace" }}>
+                    {calendarUrl}
+                  </p>
+                  <motion.button
+                    whileTap={{ scale: 0.9 }}
+                    onClick={async () => {
+                      try { await navigator.clipboard.writeText(calendarUrl); } catch { }
+                      setCopied(true);
+                      setTimeout(() => setCopied(false), 2000);
+                    }}
+                    style={{ flexShrink: 0, padding: "5px 10px", borderRadius: 7, background: copied ? "#f0fdf4" : "#ede9fe", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}
+                  >
+                    {copied ? <Check size={12} color="#16a34a" /> : <Copy size={12} color="#7c3aed" />}
+                    <span style={{ fontSize: 11, fontWeight: 600, color: copied ? "#16a34a" : "#7c3aed" }}>{copied ? "Disalin!" : "Salin"}</span>
+                  </motion.button>
+                </div>
+
+                <motion.a
+                  href={googleCalendarSubscribeUrl(calendarUrl)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.98 }}
+                  style={{
+                    marginTop: 12, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                    width: "100%", padding: "10px 0", borderRadius: 10, textDecoration: "none",
+                    background: "linear-gradient(135deg, #8b5cf6, #6d28d9)",
+                    color: "#fff", fontSize: 13, fontWeight: 600, boxSizing: "border-box",
+                    boxShadow: "0 4px 12px rgba(139,92,246,0.3)",
+                  }}
+                >
+                  <ExternalLink size={13} /> Buka Google Calendar
+                </motion.a>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </div>
 

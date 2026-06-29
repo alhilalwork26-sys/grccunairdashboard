@@ -149,17 +149,24 @@ export default function Sidebar({ user, onClose }: SidebarProps) {
 
     fetchAllBadges();
 
+    // Debounce: batch rapid realtime events into a single fetch after 400ms idle
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const debouncedFetch = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => { if (mounted) fetchAllBadges(); }, 400);
+    };
+
     const channel = supabase
       .channel("sidebar-badges")
-      .on("postgres_changes", { event: "*", schema: "public", table: "tasks" },         fetchAllBadges)
-      .on("postgres_changes", { event: "*", schema: "public", table: "announcements" },  fetchAllBadges)
-      .on("postgres_changes", { event: "*", schema: "public", table: "reimbursements" },  fetchAllBadges)
-      .on("postgres_changes", { event: "*", schema: "public", table: "content_posts" },   fetchAllBadges)
-      .on("postgres_changes", { event: "*", schema: "public", table: "creative_briefs" }, fetchAllBadges)
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "chat_messages" }, fetchAllBadges)
+      .on("postgres_changes", { event: "*", schema: "public", table: "tasks" },             debouncedFetch)
+      .on("postgres_changes", { event: "*", schema: "public", table: "announcements" },     debouncedFetch)
+      .on("postgres_changes", { event: "*", schema: "public", table: "reimbursements" },    debouncedFetch)
+      .on("postgres_changes", { event: "*", schema: "public", table: "content_posts" },     debouncedFetch)
+      .on("postgres_changes", { event: "*", schema: "public", table: "creative_briefs" },   debouncedFetch)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "chat_messages" }, debouncedFetch)
       .subscribe();
 
-    return () => { mounted = false; supabase.removeChannel(channel); };
+    return () => { mounted = false; if (timer) clearTimeout(timer); supabase.removeChannel(channel); };
   }, [userId, userRole]);
 
   // Clear badge for the current page when navigating

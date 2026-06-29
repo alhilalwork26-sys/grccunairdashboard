@@ -1,13 +1,11 @@
 import { createClient } from "@/lib/supabase/server";
+import { getUser } from "@/lib/supabase/getUser";
 import DashboardHome from "./DashboardHome";
-import type { UserProfile } from "@/types";
 import { redirect } from "next/navigation";
 
 export default async function DashboardPage() {
-  const supabase = await createClient();
-  const { data: { session } } = await supabase.auth.getSession();
-  const user = session?.user;
-  if (!user) redirect("/login");
+  const { user, userId } = await getUser();
+  if (!user || !userId) redirect("/login");
 
   const today = new Date().toISOString().split("T")[0];
   const weekStart = (() => {
@@ -22,8 +20,9 @@ export default async function DashboardPage() {
     return d.toISOString().split("T")[0];
   })();
 
+  const supabase = await createClient();
+
   const [
-    { data: profile },
     { count: taskCount },
     { count: progressCount },
     { count: announceCount },
@@ -31,7 +30,6 @@ export default async function DashboardPage() {
     { data: recentTasks },
     { data: recentAnnouncements },
   ] = await Promise.all([
-    supabase.from("profiles").select("*").eq("id", user!.id).single(),
     supabase.from("tasks").select("*", { count: "exact", head: true }).in("status", ["pending", "in_progress"]),
     supabase.from("daily_progress").select("*", { count: "exact", head: true }).eq("date", today),
     supabase.from("announcements").select("*", { count: "exact", head: true }),
@@ -48,17 +46,9 @@ export default async function DashboardPage() {
       .limit(3),
   ]);
 
-  const userProfile: UserProfile = profile ?? {
-    id: user!.id,
-    email: user!.email ?? "",
-    full_name: user!.user_metadata?.full_name ?? user!.email ?? "",
-    role: "super_admin",
-    created_at: user!.created_at,
-  };
-
   return (
     <DashboardHome
-      user={userProfile}
+      user={user}
       stats={{
         activeTasks: taskCount ?? 0,
         progressToday: progressCount ?? 0,

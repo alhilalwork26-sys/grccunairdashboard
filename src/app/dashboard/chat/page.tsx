@@ -55,10 +55,15 @@ export default async function ChatPage() {
         .in("room_id", directIds)
         .neq("user_id", user.id);
 
-      dmRooms = (others ?? []).map(o => ({
-        room_id: o.room_id,
-        other_user: o.profile as unknown as UserProfile,
-      }));
+      const seen = new Set<string>();
+      dmRooms = (others ?? [])
+        .map(o => ({ room_id: o.room_id, other_user: o.profile as unknown as UserProfile }))
+        .filter(d => {
+          const uid = (d.other_user as UserProfile).id;
+          if (seen.has(uid)) return false;
+          seen.add(uid);
+          return true;
+        });
     }
   }
 

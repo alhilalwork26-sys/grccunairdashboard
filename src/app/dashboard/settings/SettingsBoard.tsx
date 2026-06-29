@@ -22,6 +22,7 @@ const ROLE_COLOR: Record<Role, { bg: string; text: string; border: string }> = {
   staff_finance:   { bg: "#f0fdfa", text: "#134e4a", border: "#99f6e4" },
   staff_dokumen:   { bg: "#eff6ff", text: "#1e3a8a", border: "#bfdbfe" },
   kep_trainer:     { bg: "#fdf4ff", text: "#581c87", border: "#f0abfc" },
+  tim_riset:       { bg: "#f0f9ff", text: "#075985", border: "#bae6fd" },
 };
 
 const MODULES = [
