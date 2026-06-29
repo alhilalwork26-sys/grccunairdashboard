@@ -199,8 +199,16 @@ export default function TaskBoard({ initialTasks, profiles, currentUser, canSeeA
     setStatusLoading(id);
     try {
       const { error } = await quickStatusAction(id, status, prev?.status ?? "pending");
-      if (error) { showToast(error, "err"); }
-      else { setTasks(p => p.map(t => t.id === id ? { ...t, status } : t)); }
+      if (error) {
+        if (error.toLowerCase().includes("sesi")) {
+          showToast("Sesi habis — mengalihkan ke login...", "err");
+          setTimeout(() => { window.location.href = "/login"; }, 1500);
+        } else {
+          showToast(error, "err");
+        }
+      } else {
+        setTasks(p => p.map(t => t.id === id ? { ...t, status } : t));
+      }
     } catch { showToast("Gagal mengubah status. Coba refresh halaman.", "err"); }
     finally { setStatusLoading(null); }
   }

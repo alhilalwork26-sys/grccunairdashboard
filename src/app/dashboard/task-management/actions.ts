@@ -17,15 +17,27 @@ const APPROVE_ROLES = ["super_admin", "manager", "kep_trainer"];
 const MANAGE_ROLES  = ["super_admin", "manager", "program_admin", "kep_finance", "kep_trainer"];
 
 async function requireAuth(): Promise<{ userId: string; role: string } | { error: string }> {
-  // Reuse the same createClient used by page.tsx — identical cookie handling, known to work.
-  const supabase = await createClient();
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session?.user) return { error: "Sesi habis, silakan login ulang." };
-
-  const admin = createAdminClient();
-  const { data: profile } = await admin
-    .from("profiles").select("role").eq("id", session.user.id).single();
-  return { userId: session.user.id, role: profile?.role ?? "" };
+  try {
+    const supabase = await createClient();
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError) {
+      console.error("[requireAuth] getSession error:", sessionError.message, sessionError.status);
+      return { error: "Sesi habis, silakan login ulang." };
+    }
+    if (!session?.user) {
+      console.warn("[requireAuth] no session in cookie");
+      return { error: "Sesi habis, silakan login ulang." };
+    }
+    const admin = createAdminClient();
+    const { data: profile } = await admin
+      .from("profiles").select("role").eq("id", session.user.id).single();
+    console.log("[requireAuth] ok — userId:", session.user.id, "role:", profile?.role);
+    return { userId: session.user.id, role: profile?.role ?? "" };
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("[requireAuth] threw:", msg);
+    return { error: "Sesi habis, silakan login ulang." };
+  }
 }
 
 // ── CREATE ─────────────────────────────────────────────────────────────────
@@ -100,8 +112,12 @@ export async function quickStatusAction(
   status: Task["status"],
   fromStatus: Task["status"],
 ): Promise<{ error: string | null }> {
+  console.log("[quickStatus] called — taskId:", taskId, "status:", status);
   const auth = await requireAuth();
-  if ("error" in auth) return auth;
+  if ("error" in auth) {
+    console.warn("[quickStatus] auth failed:", auth.error);
+    return auth;
+  }
 
   const admin = createAdminClient();
   const { data: task } = await admin
@@ -111,9 +127,11 @@ export async function quickStatusAction(
   const canManage  = MANAGE_ROLES.includes(auth.role);
   const isAssignee = task.assigned_to === auth.userId;
   const isCreator  = task.created_by === auth.userId;
+  console.log("[quickStatus] perm —", { canManage, isAssignee, isCreator, role: auth.role, userId: auth.userId, assignedTo: task.assigned_to });
   if (!canManage && !isAssignee && !isCreator) return { error: "Akses ditolak." };
 
   const { error } = await admin.from("tasks").update({ status }).eq("id", taskId);
+  console.log("[quickStatus] db update:", error ? error.message : "ok");
   if (error) return { error: error.message };
 
   await admin.from("task_logs").insert({
