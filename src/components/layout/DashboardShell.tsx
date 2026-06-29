@@ -6,7 +6,8 @@ import { Menu } from "lucide-react";
 import Sidebar from "./Sidebar";
 import type { UserProfile } from "@/types";
 import { useTheme } from "@/context/ThemeContext";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 
 export default function DashboardShell({
   user,
@@ -21,7 +22,23 @@ export default function DashboardShell({
   const [navVisible, setNavVisible]   = useState(false);
   const { isDark } = useTheme();
   const pathname   = usePathname();
+  const router     = useRouter();
   const prevPath   = useRef(pathname);
+
+  // Keep Supabase session alive: browser client refreshes tokens automatically
+  // and writes updated cookies so server actions can always read a fresh session.
+  useEffect(() => {
+    const supabase = createClient();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_OUT") {
+        router.push("/login");
+      } else if (event === "TOKEN_REFRESHED") {
+        // Token was refreshed — server actions will now read fresh cookie
+        console.log("[DashboardShell] token refreshed");
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, [router]);
 
   useEffect(() => {
     function check() { setIsMobile(window.innerWidth < 768); }
