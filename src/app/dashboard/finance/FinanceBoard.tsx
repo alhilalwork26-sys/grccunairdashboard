@@ -112,8 +112,8 @@ export default function FinanceBoard({ currentUser, initialTransactions, initial
 
   const isFinanceRole = ["super_admin", "manager", "kep_finance", "staff_finance", "staff_dokumen"].includes(currentUser.role);
   const canManageTrx  = ["kep_finance", "staff_finance", "staff_dokumen"].includes(currentUser.role);
-  const canApprove    = currentUser.role === "kep_finance";
-  const canPayOut     = currentUser.role === "kep_finance";
+  const canApprove    = ["kep_finance", "manager"].includes(currentUser.role);
+  const canPayOut     = ["kep_finance", "manager"].includes(currentUser.role);
   const isViewOnly    = isFinanceRole && !canManageTrx;
 
   // Non-finance roles always land on reimbursement tab
@@ -305,7 +305,7 @@ export default function FinanceBoard({ currentUser, initialTransactions, initial
   };
 
   const handleReview = async (id: string, status: "approved" | "rejected" | "pending") => {
-    if (!canApprove) { showToast("Hanya Kepala Finance yang dapat menyetujui reimbursement", false); return; }
+    if (!canApprove) { showToast("Hanya Kepala Finance atau Manager yang dapat menyetujui reimbursement", false); return; }
     setSubmitting(true);
     const payload: Record<string, unknown> = { status };
     if (status !== "pending") {
@@ -624,7 +624,7 @@ export default function FinanceBoard({ currentUser, initialTransactions, initial
                 <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 16px", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 10 }}>
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
                   <p style={{ fontSize: 12, color: "#1d4ed8", fontWeight: 500 }}>
-                    Persetujuan reimbursement hanya dapat dilakukan oleh <strong>Kepala Finance</strong>.
+                    Persetujuan reimbursement hanya dapat dilakukan oleh <strong>Kepala Finance</strong> atau <strong>Manager</strong>.
                   </p>
                 </div>
               )}
