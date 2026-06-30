@@ -137,16 +137,16 @@ export default function Topbar({ user, title }: TopbarProps) {
           whileHover={{ scale: 1.01 }}
           whileTap={{ scale: 0.99 }}
           onClick={() => setSearchOpen(true)}
+          className="topbar-search"
           style={{
-            display: "flex", alignItems: "center", gap: 8,
             background: searchBg, border: `1px solid ${searchBorder}`,
             borderRadius: 10, padding: "7px 12px",
-            width: 220, cursor: "text",
+            justifyContent: "center", overflow: "hidden",
           }}
         >
           <Search size={14} style={{ color: textMuted, flexShrink: 0 }} />
-          <span style={{ fontSize: 13, color: textMuted, flex: 1, textAlign: "left" }}>Cari...</span>
-          <kbd style={{ fontSize: 9, color: textMuted, background: kbdBg, border: `1px solid ${searchBorder}`, borderRadius: 4, padding: "1px 5px", whiteSpace: "nowrap" }}>
+          <span className="topbar-search-text" style={{ fontSize: 13, color: textMuted, flex: 1, textAlign: "left" }}>Cari...</span>
+          <kbd className="topbar-search-text" style={{ fontSize: 9, color: textMuted, background: kbdBg, border: `1px solid ${searchBorder}`, borderRadius: 4, padding: "1px 5px", whiteSpace: "nowrap" }}>
             ⌘K
           </kbd>
         </motion.button>
@@ -176,7 +176,7 @@ export default function Topbar({ user, title }: TopbarProps) {
 
         {/* User avatar + upload popover */}
         <div ref={menuRef} style={{ position: "relative", display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{ textAlign: "right" }}>
+          <div className="topbar-user-name">
             <p style={{ fontSize: 13, fontWeight: 600, color: textPrimary, lineHeight: 1.2 }}>
               {displayName}
             </p>

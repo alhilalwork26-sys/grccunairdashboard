@@ -374,7 +374,7 @@ export default function RABBoard({ currentUser, initialRAB }: Props) {
       <div className="board-root" style={{ display: "flex", flexDirection: "column", minHeight: "100vh", background: "#f9fafb" }}>
         <Topbar user={currentUser} title="RAB" />
 
-        <main style={{ flex: 1, padding: "24px 24px 40px" }}>
+        <main className="board-main" style={{ flex: 1 }}>
 
           {/* Header */}
           <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
@@ -528,7 +528,7 @@ export default function RABBoard({ currentUser, initialRAB }: Props) {
     return (
       <div className="board-root" style={{ display: "flex", flexDirection: "column", minHeight: "100vh", background: "#f9fafb" }}>
         <Topbar user={currentUser} title="RAB" />
-        <main style={{ flex: 1, padding: "24px 24px 40px", maxWidth: 900, margin: "0 auto", width: "100%" }}>
+        <main className="board-main" style={{ flex: 1, maxWidth: 900, margin: "0 auto", width: "100%" }}>
 
           {/* Back + actions */}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
@@ -721,7 +721,7 @@ export default function RABBoard({ currentUser, initialRAB }: Props) {
     <div className="board-root" style={{ display: "flex", flexDirection: "column", minHeight: "100vh", background: "#f9fafb" }}>
       <Topbar user={currentUser} title="RAB" />
 
-      <main style={{ flex: 1, padding: "24px 24px 60px", maxWidth: 860, margin: "0 auto", width: "100%" }}>
+      <main className="board-main" style={{ flex: 1, maxWidth: 860, margin: "0 auto", width: "100%" }}>
 
         {/* Form header */}
         <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}

@@ -406,7 +406,7 @@ export default function FinanceBoard({ currentUser, initialTransactions, initial
         ))}
       </div>
 
-      <div style={{ flex: 1, overflow: "auto", padding: "24px 28px" }}>
+      <div className="board-main" style={{ flex: 1, overflow: "auto" }}>
         <AnimatePresence mode="wait">
 
           {/* ── OVERVIEW TAB ── */}

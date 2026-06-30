@@ -118,7 +118,7 @@ export default function KampanyeBoard({ initialCampaigns, currentUser }: Props) 
   return (
     <div className="board-root" style={{ display: "flex", flexDirection: "column", minHeight: "100vh", background: "#f9fafb" }}>
       <Topbar user={currentUser} title="Kampanye" />
-      <div style={{ flex: 1, padding: "24px 24px 40px" }}>
+      <div className="board-main" style={{ flex: 1 }}>
 
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>

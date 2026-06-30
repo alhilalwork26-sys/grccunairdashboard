@@ -110,7 +110,7 @@ export default function ApprovalsBoard({ currentUser, pendingReimbursements, rev
         </div>
       </div>
 
-      <div style={{ flex: 1, overflow: "auto", padding: "24px 28px", display: "flex", flexDirection: "column", gap: 24 }}>
+      <div className="board-main" style={{ flex: 1, overflow: "auto", display: "flex", flexDirection: "column", gap: 24 }}>
         {/* Summary cards */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}>
           {[

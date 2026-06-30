@@ -472,7 +472,7 @@ export default function ChatBoard({currentUser,allUsers,dmRooms:initDms}:Props) 
           </motion.div>
 
           {/* Messages */}
-          <div style={{flex:1,overflowY:"auto",padding:"24px 28px 16px",display:"flex",flexDirection:"column",background:"#f8fafc"}}>
+          <div className="board-main" style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",background:"#f8fafc"}}>
             {loading ? (
               <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center"}}>
                 <motion.div animate={{rotate:360}} transition={{repeat:Infinity,duration:.9,ease:"linear"}}><Loader2 size={28} color="#c7d2fe" /></motion.div>

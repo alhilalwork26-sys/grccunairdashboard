@@ -389,7 +389,7 @@ export default function KontenBoard({ initialPosts, campaigns, currentUser, cale
     <div ref={rootRef} style={{ display: "flex", flexDirection: "column", minHeight: "100vh", background: "#f8fafc" }}>
       <Topbar user={currentUser} title="Konten Plan" />
 
-      <div style={{ flex: 1, padding: "24px 24px 48px", display: "flex", flexDirection: "column", gap: 18 }}>
+      <div className="board-main" style={{ flex: 1, display: "flex", flexDirection: "column", gap: 18 }}>
 
         {/* ── Header ── */}
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16 }}>

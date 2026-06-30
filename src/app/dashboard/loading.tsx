@@ -1,6 +1,6 @@
 export default function DashboardLoading() {
   return (
-    <div style={{ flex: 1, padding: "24px 28px", display: "flex", flexDirection: "column", gap: 20, background: "#f9fafb" }}>
+    <div className="board-main" style={{ flex: 1, display: "flex", flexDirection: "column", gap: 20, background: "#f9fafb" }}>
       {/* Topbar skeleton */}
       <div style={{ height: 52, background: "#fff", borderRadius: 14, border: "1px solid #f3f4f6" }} />
       {/* Content skeletons */}

@@ -210,7 +210,7 @@ export default function ReportBoard({
     <div className="board-root" style={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
       <Topbar user={user} title="Laporan & Rekap" />
 
-      <main style={{ flex: 1, padding: "24px 24px 40px", background: "#f9fafb", overflowY: "auto" }}>
+      <main className="board-main" style={{ flex: 1, background: "#f9fafb", overflowY: "auto" }}>
 
         {/* Header */}
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} style={{ marginBottom: 20 }}>

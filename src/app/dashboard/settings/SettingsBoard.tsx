@@ -256,7 +256,7 @@ export default function SettingsBoard({ currentUser, initialProfiles }: Props) {
         </motion.button>
       </div>
 
-      <div style={{ flex: 1, overflow: "auto", padding: "24px 28px", display: "flex", flexDirection: "column", gap: 20 }}>
+      <div className="board-main" style={{ flex: 1, overflow: "auto", display: "flex", flexDirection: "column", gap: 20 }}>
         {/* Role distribution */}
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           {roleStats.map((r, i) => {

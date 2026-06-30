@@ -77,7 +77,7 @@ export default function ProfileBoard({ user }: { user: UserProfile }) {
     <div className="board-root" style={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
       <Topbar user={user} title="Profil Saya" />
 
-      <main style={{ flex: 1, padding: "24px 24px 40px", background: "#f9fafb", overflowY: "auto" }}>
+      <main className="board-main" style={{ flex: 1, background: "#f9fafb", overflowY: "auto" }}>
 
         {/* Page header */}
         <motion.div

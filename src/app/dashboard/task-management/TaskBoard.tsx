@@ -304,7 +304,7 @@ export default function TaskBoard({ initialTasks, profiles, currentUser, canSeeA
     <div className="board-root" style={{ display: "flex", flexDirection: "column", minHeight: "100vh", background: "#f9fafb" }}>
       <Topbar user={currentUser} title="Task Management" />
 
-      <div style={{ flex: 1, padding: "24px 24px 40px" }}>
+      <div className="board-main">
 
         {/* Header */}
         <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
@@ -340,7 +340,7 @@ export default function TaskBoard({ initialTasks, profiles, currentUser, canSeeA
         })()}
 
         {/* Stats */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
+        <div className="stats-grid-4" style={{ marginBottom: 20 }}>
           {[
             { label: "Total Task",   value: stats.total,       color: "#111827", border: "#e5e7eb" },
             { label: "Pending",      value: stats.pending,     color: "#f59e0b", border: "#fde68a" },
@@ -403,8 +403,10 @@ export default function TaskBoard({ initialTasks, profiles, currentUser, canSeeA
             </div>
           </div>
 
+          {/* Table — scrollable on mobile */}
+          <div className="board-table-wrap">
           {/* Table header */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 160px 100px 110px 130px 48px", padding: "9px 18px", borderBottom: "1px solid #f9fafb", fontSize: 11, fontWeight: 700, color: "#9ca3af", letterSpacing: "0.06em", textTransform: "uppercase" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 160px 100px 110px 130px 48px", padding: "9px 18px", borderBottom: "1px solid #f9fafb", fontSize: 11, fontWeight: 700, color: "#9ca3af", letterSpacing: "0.06em", textTransform: "uppercase", minWidth: 640 }}>
             <span>Task</span><span>Assign ke</span><span>Prioritas</span><span>Deadline</span><span>Status</span><span></span>
           </div>
 
@@ -433,7 +435,7 @@ export default function TaskBoard({ initialTasks, profiles, currentUser, canSeeA
                 <motion.div key={task.id} layout initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: 12, transition: { duration: 0.15 } }} transition={{ delay: i * 0.04, duration: 0.3 }}
                   whileHover={{ background: isUrgent ? "#fef9f9" : "#fafafa" }}
-                  style={{ display: "grid", gridTemplateColumns: "1fr 160px 100px 110px 130px 48px", alignItems: "center", padding: "13px 18px", borderBottom: "1px solid #f9fafb", borderLeft: `3px solid ${accentColor}`, background: isUrgent ? "#fffafa" : "transparent", transition: "background 0.15s", cursor: "default" }}>
+                  style={{ display: "grid", gridTemplateColumns: "1fr 160px 100px 110px 130px 48px", alignItems: "center", padding: "13px 18px", borderBottom: "1px solid #f9fafb", borderLeft: `3px solid ${accentColor}`, background: isUrgent ? "#fffafa" : "transparent", transition: "background 0.15s", cursor: "default", minWidth: 640 }}>
 
                   {/* Title + meta indicators */}
                   <div style={{ minWidth: 0 }}>
@@ -561,6 +563,7 @@ export default function TaskBoard({ initialTasks, profiles, currentUser, canSeeA
               );
             })}
           </AnimatePresence>
+          </div>{/* end board-table-wrap */}
         </motion.div>
       </div>
 

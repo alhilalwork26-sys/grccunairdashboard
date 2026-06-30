@@ -373,7 +373,7 @@ export default function CalendarBoard({ currentUser, initialEvents, calendarUrl 
       {/* Main layout */}
       <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
         {/* Calendar grid */}
-        <div style={{ flex: 1, padding: 24, overflow: "auto", display: "flex", flexDirection: "column", gap: 16 }}>
+        <div className="board-main" style={{ flex: 1, overflow: "auto", display: "flex", flexDirection: "column", gap: 16 }}>
           {/* Month nav */}
           <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #e5e7eb", padding: "16px 20px" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>

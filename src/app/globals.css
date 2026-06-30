@@ -49,6 +49,11 @@ button:active, a:active { transform: scale(0.97); }
   grid-template-columns: 1fr 1fr;
   gap: 16px;
 }
+.stats-grid-4 {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
 .stats-grid-3 {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -62,17 +67,64 @@ button:active, a:active { transform: scale(0.97); }
 .hide-mobile { display: flex; }
 .show-mobile { display: none; }
 
-/* Desktop topbar: no left padding offset needed */
+/* Dashboard home main layout */
+.dashboard-home-main {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+}
+/* Tasks + announcements side-by-side */
+.tasks-announce-grid {
+  display: grid;
+  grid-template-columns: 1fr 240px;
+  gap: 14px;
+}
+
+/* Board pages: responsive padding + overflow */
+.board-main {
+  flex: 1;
+  padding: 24px 24px 40px;
+  overflow-y: auto;
+}
+.board-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Topbar: desktop has no hamburger offset */
 .dashboard-topbar { padding-left: 24px !important; }
+/* Search bar in topbar */
+.topbar-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 220px;
+  cursor: text;
+}
+.topbar-search-text { display: flex; align-items: center; gap: 8px; flex: 1; }
+.topbar-user-name   { display: block; text-align: right; }
 
 @media (max-width: 768px) {
-  .phase-grid { grid-template-columns: 1fr; }
-  .stats-grid-3 { grid-template-columns: 1fr 1fr; }
-  .stats-grid-2 { grid-template-columns: 1fr; }
-  .hide-mobile { display: none !important; }
-  .show-mobile { display: flex !important; }
+  .phase-grid    { grid-template-columns: 1fr; }
+  .stats-grid-4  { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .stats-grid-3  { grid-template-columns: 1fr 1fr; }
+  .stats-grid-2  { grid-template-columns: 1fr; }
+  .hide-mobile   { display: none !important; }
+  .show-mobile   { display: flex !important; }
+
   /* Mobile topbar: offset for hamburger button */
   .dashboard-topbar { padding-left: 60px !important; }
+  /* Search icon-only on mobile */
+  .topbar-search  { width: 36px !important; min-width: 36px; padding: 7px !important; }
+  .topbar-search-text { display: none; }
+  .topbar-user-name   { display: none; }
+
+  /* Dashboard home: stack vertically */
+  .dashboard-home-main { flex-direction: column; }
+  .tasks-announce-grid { grid-template-columns: 1fr; }
+
+  /* Board pages: tighter mobile padding */
+  .board-main { padding: 16px 14px 32px; }
 }
 
 /* ── Dark mode ── */

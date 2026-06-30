@@ -148,7 +148,7 @@ export default function BriefBoard({ initialBriefs, kreatifProfiles, currentUser
     <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh", background: "#f8fafc" }}>
       <Topbar user={currentUser} title="Brief Kreatif" />
 
-      <div style={{ flex: 1, padding: "24px 24px 48px", display: "flex", flexDirection: "column", gap: 20 }}>
+      <div className="board-main" style={{ flex: 1, display: "flex", flexDirection: "column", gap: 20 }}>
 
         {/* ── Header ── */}
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16 }}>

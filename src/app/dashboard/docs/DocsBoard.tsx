@@ -395,7 +395,7 @@ export default function DocsBoard({ currentUser, initialDocs, totalCount, pageSi
       </div>
 
       {/* Main content */}
-      <div style={{ flex: 1, overflow: "auto", padding: "20px 28px", display: "flex", flexDirection: "column", gap: 14 }}>
+      <div className="board-main" style={{ flex: 1, overflow: "auto", display: "flex", flexDirection: "column", gap: 14 }}>
 
         {/* Search + controls row */}
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>

@@ -61,7 +61,7 @@ export default function DashboardHome({ user, stats, recentTasks, recentAnnounce
     <div className="board-root" style={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
       <Topbar user={user} title="Dashboard" />
 
-      <main style={{ flex: 1, padding: "24px 24px 40px", overflowY: "auto", background: "#f9fafb" }}>
+      <main className="board-main" style={{ overflowY: "auto", background: "#f9fafb" }}>
 
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45 }} style={{ marginBottom: 20 }}>
           <h2 style={{ fontSize: 22, fontWeight: 800, color: "#111827", letterSpacing: "-0.03em" }}>
@@ -70,11 +70,11 @@ export default function DashboardHome({ user, stats, recentTasks, recentAnnounce
           <p style={{ fontSize: 13, color: "#6b7280", marginTop: 3 }}>Ringkasan aktivitas tim GRCC hari ini.</p>
         </motion.div>
 
-        <div style={{ display: "flex", gap: 20, alignItems: "flex-start" }}>
+        <div className="dashboard-home-main">
           <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 16 }}>
 
             {/* Stat cards */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 12 }}>
+            <div className="stats-grid-4">
               {STAT_CARDS.map((s, i) => {
                 const Icon = s.icon;
                 return (
@@ -101,7 +101,7 @@ export default function DashboardHome({ user, stats, recentTasks, recentAnnounce
             </div>
 
             {/* Recent tasks + announcements */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 240px", gap: 14 }}>
+            <div className="tasks-announce-grid">
 
               {/* Tasks */}
               <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}
@@ -202,6 +202,7 @@ export default function DashboardHome({ user, stats, recentTasks, recentAnnounce
           <motion.div
             initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}
             transition={{ delay: 0.35, duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+            className="hide-mobile"
             style={{ width: 260, flexShrink: 0 }}>
             <CalendarPanel />
           </motion.div>

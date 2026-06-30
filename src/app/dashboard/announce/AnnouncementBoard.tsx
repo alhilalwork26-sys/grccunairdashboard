@@ -221,7 +221,7 @@ export default function AnnouncementBoard({ currentUser, initialAnnouncements }:
       </div>
 
       {/* Content */}
-      <div style={{ flex: 1, overflow: "auto", padding: "24px 28px", display: "flex", flexDirection: "column", gap: 20 }}>
+      <div className="board-main" style={{ flex: 1, overflow: "auto", display: "flex", flexDirection: "column", gap: 20 }}>
         {filtered.length === 0 ? (
           <motion.div
             initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
