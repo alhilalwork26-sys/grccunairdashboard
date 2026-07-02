@@ -3,6 +3,7 @@
 import { useState, useRef, Fragment, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { createClient } from "@/lib/supabase/client";
+import { uploadPayProofAction, reviewReimbursementAction } from "./actions";
 import type { UserProfile, FinanceTransaction, Reimbursement } from "@/types";
 import {
   Wallet, Plus, X, Check,
@@ -307,22 +308,15 @@ export default function FinanceBoard({ currentUser, initialTransactions, initial
   const handleReview = async (id: string, status: "approved" | "rejected" | "pending") => {
     if (!canApprove) { showToast("Hanya Kepala Finance atau Manager yang dapat menyetujui reimbursement", false); return; }
     setSubmitting(true);
-    const payload: Record<string, unknown> = { status };
-    if (status !== "pending") {
-      payload.reviewed_by  = currentUser.id;
-      payload.reviewed_at  = new Date().toISOString();
-      payload.review_note  = reviewNote.trim() || null;
+    const { error } = await reviewReimbursementAction(id, status, reviewNote.trim() || undefined);
+    if (error) {
+      showToast(error, false);
     } else {
-      payload.reviewed_by = null;
-      payload.reviewed_at = null;
-      payload.review_note = null;
-    }
-    const { data, error } = await supabase.from("reimbursements").update(payload).eq("id", id)
-      .select("*, requester:profiles!reimbursements_requested_by_fkey(full_name, role), reviewer:profiles!reimbursements_reviewed_by_fkey(full_name)")
-      .single();
-    if (error) showToast(error.message, false);
-    else {
-      setReimbursements(prev => prev.map(r => r.id === id ? data : r));
+      // Refresh local state: re-fetch the updated row via anon client (read is allowed)
+      const { data: updated } = await supabase.from("reimbursements")
+        .select("*, requester:profiles!reimbursements_requested_by_fkey(full_name, role), reviewer:profiles!reimbursements_reviewed_by_fkey(full_name)")
+        .eq("id", id).single();
+      if (updated) setReimbursements(prev => prev.map(r => r.id === id ? updated : r));
       showToast(status === "approved" ? "Disetujui" : status === "rejected" ? "Ditolak" : "Dikembalikan ke menunggu");
     }
     setSubmitting(false);
@@ -333,18 +327,24 @@ export default function FinanceBoard({ currentUser, initialTransactions, initial
   const handlePayProof = async () => {
     if (!payProofTarget || !payProofFile) return;
     setUploadingPayProof(true);
+    // Upload file via anon client (storage policy allows authenticated upload)
     const ext  = payProofFile.name.split(".").pop();
     const path = `payment/${payProofTarget.id}/${storageStamp()}.${ext}`;
     const { error: upErr } = await supabase.storage.from("receipts").upload(path, payProofFile, { upsert: true, contentType: payProofFile.type });
     if (upErr) { showToast("Gagal upload bukti bayar: " + upErr.message, false); setUploadingPayProof(false); return; }
     const { data: { publicUrl } } = supabase.storage.from("receipts").getPublicUrl(path);
-    const { data, error } = await supabase.from("reimbursements")
-      .update({ payment_proof_url: publicUrl, paid_at: new Date().toISOString(), paid_by: currentUser.id })
-      .eq("id", payProofTarget.id)
-      .select("*, requester:profiles!reimbursements_requested_by_fkey(full_name, role), reviewer:profiles!reimbursements_reviewed_by_fkey(full_name)")
-      .single();
-    if (error) showToast(error.message, false);
-    else { setReimbursements(prev => prev.map(r => r.id === payProofTarget.id ? data : r)); showToast("Bukti pembayaran berhasil diupload"); }
+    // Use server action (admin client) to update DB — bypasses RLS
+    const { error } = await uploadPayProofAction(payProofTarget.id, publicUrl);
+    if (error) {
+      showToast("Gagal upload bukti bayar: " + error, false);
+    } else {
+      // Re-fetch updated row for local state
+      const { data: updated } = await supabase.from("reimbursements")
+        .select("*, requester:profiles!reimbursements_requested_by_fkey(full_name, role), reviewer:profiles!reimbursements_reviewed_by_fkey(full_name)")
+        .eq("id", payProofTarget.id).single();
+      if (updated) setReimbursements(prev => prev.map(r => r.id === payProofTarget.id ? updated : r));
+      showToast("Bukti pembayaran berhasil diupload");
+    }
     setUploadingPayProof(false);
     setPayProofTarget(null);
     setPayProofFile(null);
