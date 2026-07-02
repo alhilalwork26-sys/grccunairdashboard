@@ -329,7 +329,8 @@ export default function FinanceBoard({ currentUser, initialTransactions, initial
     setUploadingPayProof(true);
     // Upload file via anon client (storage policy allows authenticated upload)
     const ext  = payProofFile.name.split(".").pop();
-    const path = `payment/${payProofTarget.id}/${storageStamp()}.${ext}`;
+    // Path must start with currentUser.id — storage RLS policy: foldername(name)[1] = auth.uid()
+    const path = `${currentUser.id}/payment/${payProofTarget.id}/${storageStamp()}.${ext}`;
     const { error: upErr } = await supabase.storage.from("receipts").upload(path, payProofFile, { upsert: true, contentType: payProofFile.type });
     if (upErr) { showToast("Gagal upload bukti bayar: " + upErr.message, false); setUploadingPayProof(false); return; }
     const { data: { publicUrl } } = supabase.storage.from("receipts").getPublicUrl(path);
