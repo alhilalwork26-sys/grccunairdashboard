@@ -200,7 +200,7 @@ export default function TaskBoard({ initialTasks, profiles, currentUser, canSeeA
     try {
       const { error } = await quickStatusAction(id, status, prev?.status ?? "pending");
       if (error) {
-        if (error.toLowerCase().includes("sesi")) {
+        if (error === "Sesi habis, silakan login ulang.") {
           showToast("Sesi habis — mengalihkan ke login...", "err");
           setTimeout(() => { window.location.href = "/login"; }, 1500);
         } else {

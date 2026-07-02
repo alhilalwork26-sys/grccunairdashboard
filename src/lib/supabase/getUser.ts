@@ -16,19 +16,17 @@ export const getUser = cache(async (): Promise<{ user: UserProfile | null; userI
   }
   if (!session) return { user: null, userId: null };
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("id", session.user.id)
-    .single();
+  try {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", session.user.id)
+      .single();
 
-  const user: UserProfile = profile ?? {
-    id: session.user.id,
-    email: session.user.email ?? "",
-    full_name: session.user.user_metadata?.full_name ?? "",
-    role: "super_admin",
-    created_at: session.user.created_at,
-  };
+    if (!profile) return { user: null, userId: null };
 
-  return { user, userId: session.user.id };
+    return { user: profile as UserProfile, userId: session.user.id };
+  } catch {
+    return { user: null, userId: null };
+  }
 });

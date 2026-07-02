@@ -20,22 +20,13 @@ async function requireAuth(): Promise<{ userId: string; role: string } | { error
   try {
     const supabase = await createClient();
     const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-    if (sessionError) {
-      console.error("[requireAuth] getSession error:", sessionError.message, sessionError.status);
-      return { error: "Sesi habis, silakan login ulang." };
-    }
-    if (!session?.user) {
-      console.warn("[requireAuth] no session in cookie");
-      return { error: "Sesi habis, silakan login ulang." };
-    }
+    if (sessionError) return { error: "Sesi habis, silakan login ulang." };
+    if (!session?.user) return { error: "Sesi habis, silakan login ulang." };
     const admin = createAdminClient();
     const { data: profile } = await admin
       .from("profiles").select("role").eq("id", session.user.id).single();
-    console.log("[requireAuth] ok — userId:", session.user.id, "role:", profile?.role);
     return { userId: session.user.id, role: profile?.role ?? "" };
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.error("[requireAuth] threw:", msg);
+  } catch {
     return { error: "Sesi habis, silakan login ulang." };
   }
 }
@@ -112,12 +103,8 @@ export async function quickStatusAction(
   status: Task["status"],
   fromStatus: Task["status"],
 ): Promise<{ error: string | null }> {
-  console.log("[quickStatus] called — taskId:", taskId, "status:", status);
   const auth = await requireAuth();
-  if ("error" in auth) {
-    console.warn("[quickStatus] auth failed:", auth.error);
-    return auth;
-  }
+  if ("error" in auth) return auth;
 
   const admin = createAdminClient();
   const { data: task } = await admin
@@ -127,11 +114,9 @@ export async function quickStatusAction(
   const canManage  = MANAGE_ROLES.includes(auth.role);
   const isAssignee = task.assigned_to === auth.userId;
   const isCreator  = task.created_by === auth.userId;
-  console.log("[quickStatus] perm —", { canManage, isAssignee, isCreator, role: auth.role, userId: auth.userId, assignedTo: task.assigned_to });
   if (!canManage && !isAssignee && !isCreator) return { error: "Akses ditolak." };
 
   const { error } = await admin.from("tasks").update({ status }).eq("id", taskId);
-  console.log("[quickStatus] db update:", error ? error.message : "ok");
   if (error) return { error: error.message };
 
   await admin.from("task_logs").insert({
@@ -198,14 +183,18 @@ export async function deleteTaskAction(taskId: string): Promise<{ error: string 
 // ── APPROVE / REJECT ────────────────────────────────────────────────────────
 
 async function requireApprover(): Promise<{ userId: string } | { error: string }> {
-  const supabase = await createClient();
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session?.user) return { error: "Sesi habis, silakan login ulang." };
-  const admin = createAdminClient();
-  const { data: profile } = await admin
-    .from("profiles").select("role").eq("id", session.user.id).single();
-  if (!profile || !APPROVE_ROLES.includes(profile.role)) return { error: "Akses ditolak." };
-  return { userId: session.user.id };
+  try {
+    const supabase = await createClient();
+    const { data, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError || !data.session?.user) return { error: "Sesi habis, silakan login ulang." };
+    const admin = createAdminClient();
+    const { data: profile } = await admin
+      .from("profiles").select("role").eq("id", data.session.user.id).single();
+    if (!profile || !APPROVE_ROLES.includes(profile.role)) return { error: "Akses ditolak." };
+    return { userId: data.session.user.id };
+  } catch {
+    return { error: "Sesi habis, silakan login ulang." };
+  }
 }
 
 export async function approveTaskAction(taskId: string): Promise<{ error: string | null }> {
