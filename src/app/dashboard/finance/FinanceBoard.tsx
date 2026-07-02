@@ -709,304 +709,330 @@ export default function FinanceBoard({ currentUser, initialTransactions, initial
                     {reimbGroups.map((group, gi) => {
                       const isOwn = group.requesterId === currentUser.id;
 
-                      /* ── Single reimbursement ── */
-                      if (group.items.length === 1) {
-                        const r         = group.items[0];
-                        const st        = STATUS_REIMB[r.status];
-                        const requester = (r.requester as any)?.full_name || "—";
-                        const reviewer  = (r.reviewer  as any)?.full_name || null;
-                        const accentColor = r.status === "approved" ? "#10b981" : r.status === "rejected" ? "#ef4444" : "#f59e0b";
-                        const isPaid    = !!r.paid_at;
+                      /* ── Unified rendering (single & multi) ── */
+                      const isSingle   = group.items.length === 1;
+                      const singleItem = isSingle ? group.items[0] : null;
+                      const singleSt   = singleItem ? STATUS_REIMB[singleItem.status] : null;
+                      const singleIsPaid    = singleItem ? !!singleItem.paid_at : false;
+                      const singleReviewer  = singleItem ? (singleItem.reviewer as any)?.full_name || null : null;
 
-                        return (
-                          <motion.div key={r.id} layout
-                            initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.97 }}
-                            transition={{ delay: gi * 0.04 }}
-                            style={{ background: "#fff", border: "1px solid #f0f0f0", borderLeft: `3px solid ${accentColor}`, borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 4px rgba(0,0,0,0.05)" }}>
-                            <div style={{ padding: "16px 20px 14px" }}>
-                              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 10 }}>
-                                <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: 20, background: st.bg, color: st.color, border: `1px solid ${st.border}` }}>
-                                    {st.icon} {st.label}
-                                  </span>
-                                  {r.category && (
-                                    <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 11, fontWeight: 500, padding: "3px 8px", borderRadius: 20, background: "#f3f4f6", color: "#6b7280" }}>
-                                      <Tag size={9} /> {r.category}
-                                    </span>
-                                  )}
-                                  {isPaid && (
-                                    <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 20, background: "#f0fdf4", color: "#059669", border: "1px solid #a7f3d0" }}>
-                                      <Banknote size={10} /> Sudah Dibayar
-                                    </span>
-                                  )}
-                                  {isOwn && !isPaid && (
-                                    <span style={{ fontSize: 9, fontWeight: 700, color: "#6366f1", background: "#eef2ff", border: "1px solid #c7d2fe", borderRadius: 20, padding: "2px 7px" }}>Milikmu</span>
-                                  )}
-                                </div>
-                                <p style={{ fontSize: 15, fontWeight: 800, color: r.status === "approved" ? "#059669" : r.status === "rejected" ? "#9ca3af" : "#111827", letterSpacing: "-0.02em", lineHeight: 1, flexShrink: 0 }}>
-                                  {fmtRupiah(r.amount)}
-                                </p>
-                              </div>
-                              <p style={{ fontSize: 14, fontWeight: 700, color: "#111827", lineHeight: 1.35, marginBottom: r.description ? 4 : 0 }}>{r.title}</p>
-                              {r.description && <p style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.55 }}>{r.description}</p>}
-                              {r.review_note && (
-                                <div style={{ marginTop: 10, padding: "8px 11px", background: r.status === "approved" ? "#f0fdf4" : "#fef2f2", border: `1px solid ${r.status === "approved" ? "#a7f3d0" : "#fecaca"}`, borderRadius: 8, fontSize: 11.5, color: r.status === "approved" ? "#059669" : "#dc2626", lineHeight: 1.5 }}>
-                                  <strong>Catatan{reviewer ? ` dari ${reviewer}` : ""}:</strong> {r.review_note}
-                                </div>
-                              )}
-                              {(r.receipt_path || r.payment_proof_url) && (
-                                <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                                  {r.receipt_path && (
-                                    <div>
-                                      {isImg(r.receipt_path) ? (
-                                        <>
-                                          <button onClick={() => setExpandedImg(expandedImg === r.receipt_path ? null : r.receipt_path!)}
-                                            style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 10px", borderRadius: 7, border: "1px solid #e5e7eb", background: "#f9fafb", fontSize: 11, fontWeight: 600, color: "#374151", cursor: "pointer" }}>
-                                            <ImageIcon size={11} color="#6366f1" /> Bukti Pengajuan
-                                            {expandedImg === r.receipt_path ? <ChevronUp size={10} color="#9ca3af" /> : <ChevronDown size={10} color="#9ca3af" />}
-                                          </button>
-                                          {expandedImg === r.receipt_path && (
-                                            <div style={{ marginTop: 6, borderRadius: 8, overflow: "hidden", border: "1px solid #e5e7eb", maxWidth: 280 }}>
-                                              <img src={r.receipt_path} alt="Bukti" style={{ width: "100%", maxHeight: 180, objectFit: "contain", display: "block", background: "#f9fafb" }} />
-                                            </div>
-                                          )}
-                                        </>
-                                      ) : (
-                                        <a href={r.receipt_path} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 10px", borderRadius: 7, border: "1px solid #e5e7eb", background: "#f9fafb", fontSize: 11, fontWeight: 600, color: "#374151", textDecoration: "none" }}>
-                                          <FileText size={11} color="#6366f1" /> Bukti Pengajuan (PDF)
-                                        </a>
-                                      )}
-                                    </div>
-                                  )}
-                                  {r.payment_proof_url && (
-                                    <div>
-                                      {isImg(r.payment_proof_url) ? (
-                                        <>
-                                          <button onClick={() => setExpandedImg(expandedImg === r.payment_proof_url ? null : r.payment_proof_url!)}
-                                            style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 10px", borderRadius: 7, border: "1px solid #a7f3d0", background: "#f0fdf4", fontSize: 11, fontWeight: 600, color: "#059669", cursor: "pointer" }}>
-                                            <ImageIcon size={11} color="#10b981" /> Bukti Pembayaran
-                                            {expandedImg === r.payment_proof_url ? <ChevronUp size={10} color="#9ca3af" /> : <ChevronDown size={10} color="#9ca3af" />}
-                                          </button>
-                                          {expandedImg === r.payment_proof_url && (
-                                            <div style={{ marginTop: 6, borderRadius: 8, overflow: "hidden", border: "1px solid #a7f3d0", maxWidth: 280 }}>
-                                              <img src={r.payment_proof_url} alt="Bukti Bayar" style={{ width: "100%", maxHeight: 180, objectFit: "contain", display: "block", background: "#f0fdf4" }} />
-                                            </div>
-                                          )}
-                                        </>
-                                      ) : (
-                                        <a href={r.payment_proof_url} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 10px", borderRadius: 7, border: "1px solid #a7f3d0", background: "#f0fdf4", fontSize: 11, fontWeight: 600, color: "#059669", textDecoration: "none" }}>
-                                          <FileText size={11} color="#10b981" /> Bukti Pembayaran (PDF)
-                                        </a>
-                                      )}
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                              <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid #f3f4f6" }}>
-                                <TimelineStep done color="#6366f1" label={`Diajukan oleh ${requester}`} date={fmtDate(r.created_at)} last={r.status === "pending" && !r.reviewed_at} />
-                                {r.status !== "pending" && (
-                                  <TimelineStep done color={r.status === "approved" ? "#10b981" : "#ef4444"}
-                                    label={r.status === "approved" ? `Disetujui${reviewer ? ` oleh ${reviewer}` : ""}` : `Ditolak${reviewer ? ` oleh ${reviewer}` : ""}`}
-                                    date={r.reviewed_at ? fmtDate(r.reviewed_at) : ""}
-                                    last={r.status !== "approved" || isPaid} />
-                                )}
-                                {r.status === "approved" && (
-                                  <TimelineStep done={isPaid} color="#10b981"
-                                    label={isPaid ? "Sudah Dibayar" : "Menunggu Pembayaran"}
-                                    date={r.paid_at ? fmtDate(r.paid_at) : ""} last />
-                                )}
-                              </div>
-                            </div>
-                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 20px", borderTop: "1px solid #f3f4f6", background: "#fafafa", gap: 12, flexWrap: "wrap" }}>
-                              <div style={{ fontSize: 11, color: "#9ca3af" }}>
-                                {r.expense_date && (
-                                  <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
-                                    <CalendarDays size={10} /> Tgl pengeluaran: <strong style={{ color: "#374151" }}>{fmtDateShort(r.expense_date)}</strong>
-                                  </span>
-                                )}
-                              </div>
-                              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                                {canApprove && r.status === "pending" && (
-                                  <motion.button whileHover={{ background: "#ede9fe" }} whileTap={{ scale: 0.97 }}
-                                    onClick={() => { setReviewTarget(r); setReviewNote(""); }}
-                                    style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "5px 12px", border: "1px solid #c4b5fd", borderRadius: 7, background: "#f5f3ff", cursor: "pointer", fontSize: 11, fontWeight: 700, color: "#6d28d9", whiteSpace: "nowrap", transition: "background 0.12s" }}>
-                                    <Eye size={11} /> Review
-                                  </motion.button>
-                                )}
-                                {canApprove && r.status !== "pending" && !isPaid && (
-                                  <motion.button whileHover={{ background: "#fffbeb" }} whileTap={{ scale: 0.97 }}
-                                    onClick={() => handleReview(r.id, "pending")}
-                                    style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "5px 10px", border: "1px solid #fde68a", borderRadius: 7, background: "#fff", cursor: "pointer", fontSize: 11, fontWeight: 600, color: "#d97706", whiteSpace: "nowrap", transition: "background 0.12s" }}>
-                                    <RotateCcw size={11} /> Tinjau Ulang
-                                  </motion.button>
-                                )}
-                                {canPayOut && r.status === "approved" && !isPaid && (
-                                  <motion.button whileHover={{ background: "#f0fdf4" }} whileTap={{ scale: 0.97 }}
-                                    onClick={() => { setPayProofTarget(r); setPayProofFile(null); }}
-                                    style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "5px 12px", border: "1px solid #a7f3d0", borderRadius: 7, background: "#fff", cursor: "pointer", fontSize: 11, fontWeight: 700, color: "#059669", whiteSpace: "nowrap", transition: "background 0.12s" }}>
-                                    <Upload size={11} /> Bukti Bayar
-                                  </motion.button>
-                                )}
-                                {isOwn && r.status === "pending" && (
-                                  <motion.button whileHover={{ background: "#fef2f2" }} whileTap={{ scale: 0.97 }}
-                                    onClick={() => setDeleteReimbId(r.id)}
-                                    style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "5px 10px", border: "1px solid #fecaca", borderRadius: 7, background: "#fff", cursor: "pointer", fontSize: 11, fontWeight: 600, color: "#dc2626", whiteSpace: "nowrap", transition: "background 0.12s" }}>
-                                    <Trash2 size={11} /> Batalkan
-                                  </motion.button>
-                                )}
-                              </div>
-                            </div>
-                          </motion.div>
-                        );
-                      }
-
-                      /* ── Grouped (batch) reimbursements ── */
                       const totalAmt   = group.items.reduce((s, r) => s + r.amount, 0);
                       const pendingCnt = group.items.filter(r => r.status === "pending").length;
                       const approvCnt  = group.items.filter(r => r.status === "approved").length;
                       const rejectCnt  = group.items.filter(r => r.status === "rejected").length;
+                      const isExpanded = isSingle || expandedGroups.has(group.key);
 
-                      const isExpanded = expandedGroups.has(group.key);
                       return (
                         <motion.div key={group.key} layout
                           initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.97 }}
                           transition={{ delay: gi * 0.04 }}
                           style={{ background: "#fff", border: "1px solid #e0e7ff", borderLeft: "3px solid #6366f1", borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 4px rgba(0,0,0,0.05)" }}>
 
-                          {/* Clickable Header */}
-                          <div onClick={() => toggleGroup(group.key)}
-                            style={{ padding: "14px 20px", cursor: "pointer", userSelect: "none" }}>
+                          {/* Header */}
+                          <div onClick={() => !isSingle && toggleGroup(group.key)}
+                            style={{ padding: "14px 20px", cursor: isSingle ? "default" : "pointer", userSelect: "none" }}>
                             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
                               <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", flex: 1, minWidth: 0 }}>
-                                <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: 20, background: "#eef2ff", color: "#4f46e5", border: "1px solid #c7d2fe" }}>
-                                  {group.items.length} Reimbursement
-                                </span>
+                                {isSingle ? (
+                                  <>
+                                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: 20, background: singleSt!.bg, color: singleSt!.color, border: `1px solid ${singleSt!.border}` }}>
+                                      {singleSt!.icon} {singleSt!.label}
+                                    </span>
+                                    {singleItem!.category && (
+                                      <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 11, fontWeight: 500, padding: "3px 8px", borderRadius: 20, background: "#f3f4f6", color: "#6b7280" }}>
+                                        <Tag size={9} /> {singleItem!.category}
+                                      </span>
+                                    )}
+                                    {singleIsPaid && (
+                                      <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 20, background: "#f0fdf4", color: "#059669", border: "1px solid #a7f3d0" }}>
+                                        <Banknote size={10} /> Sudah Dibayar
+                                      </span>
+                                    )}
+                                  </>
+                                ) : (
+                                  <>
+                                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: 20, background: "#eef2ff", color: "#4f46e5", border: "1px solid #c7d2fe" }}>
+                                      {group.items.length} Reimbursement
+                                    </span>
+                                    {pendingCnt > 0 && <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 20, background: "#fffbeb", color: "#d97706", border: "1px solid #fde68a" }}>{pendingCnt} menunggu</span>}
+                                    {approvCnt  > 0 && <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 20, background: "#f0fdf4", color: "#059669", border: "1px solid #a7f3d0" }}>{approvCnt} disetujui</span>}
+                                    {rejectCnt  > 0 && <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 20, background: "#fef2f2", color: "#dc2626", border: "1px solid #fecaca" }}>{rejectCnt} ditolak</span>}
+                                  </>
+                                )}
                                 {isOwn && <span style={{ fontSize: 9, fontWeight: 700, color: "#6366f1", background: "#eef2ff", border: "1px solid #c7d2fe", borderRadius: 20, padding: "2px 7px" }}>Milikmu</span>}
-                                {pendingCnt > 0 && <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 20, background: "#fffbeb", color: "#d97706", border: "1px solid #fde68a" }}>{pendingCnt} menunggu</span>}
-                                {approvCnt  > 0 && <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 20, background: "#f0fdf4", color: "#059669", border: "1px solid #a7f3d0" }}>{approvCnt} disetujui</span>}
-                                {rejectCnt  > 0 && <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 20, background: "#fef2f2", color: "#dc2626", border: "1px solid #fecaca" }}>{rejectCnt} ditolak</span>}
                               </div>
                               <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-                                <p style={{ fontSize: 15, fontWeight: 800, color: "#111827", letterSpacing: "-0.02em", lineHeight: 1 }}>
+                                <p style={{ fontSize: 15, fontWeight: 800, color: isSingle ? (singleItem!.status === "approved" ? "#059669" : singleItem!.status === "rejected" ? "#9ca3af" : "#111827") : "#111827", letterSpacing: "-0.02em", lineHeight: 1 }}>
                                   {fmtRupiah(totalAmt)}
                                 </p>
-                                <motion.div animate={{ rotate: isExpanded ? 180 : 0 }} transition={{ duration: 0.2 }}>
-                                  <ChevronDown size={16} color="#9ca3af" />
-                                </motion.div>
+                                {!isSingle && (
+                                  <motion.div animate={{ rotate: isExpanded ? 180 : 0 }} transition={{ duration: 0.2 }}>
+                                    <ChevronDown size={16} color="#9ca3af" />
+                                  </motion.div>
+                                )}
                               </div>
                             </div>
-                            <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 5 }}>
+                            {isSingle && (
+                              <p style={{ fontSize: 14, fontWeight: 700, color: "#111827", lineHeight: 1.35, marginTop: 5 }}>{singleItem!.title}</p>
+                            )}
+                            <p style={{ fontSize: 11, color: "#9ca3af", marginTop: isSingle ? 3 : 5 }}>
                               {group.requesterName} · Minggu {getWeekLabel(group.weekKey)}
                             </p>
                           </div>
 
-                          {/* Collapsible body */}
-                          <AnimatePresence initial={false}>
-                            {isExpanded && (
-                              <motion.div
-                                key="body"
-                                initial={{ height: 0, opacity: 0 }}
-                                animate={{ height: "auto", opacity: 1 }}
-                                exit={{ height: 0, opacity: 0 }}
-                                transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-                                style={{ overflow: "hidden" }}>
-                          <div style={{ padding: "0 20px 14px" }}>
-                            {/* Item list */}
-                            <div style={{ background: "#f9fafb", borderRadius: 10, border: "1px solid #f0f0f0", overflow: "hidden" }}>
-                              {group.items.map((item, idx) => {
-                                const st       = STATUS_REIMB[item.status];
-                                const isPaid   = !!item.paid_at;
-                                const reviewer = (item.reviewer as any)?.full_name || null;
-                                return (
-                                  <div key={item.id}>
-                                    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", background: idx % 2 === 0 ? "#f9fafb" : "#fff", borderTop: idx > 0 ? "1px solid #f0f0f0" : "none" }}>
-                                      <span style={{ fontSize: 11, fontWeight: 700, color: "#d1d5db", flexShrink: 0, minWidth: 16, textAlign: "right" }}>{idx + 1}.</span>
-                                      <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 20, background: st.bg, color: st.color, border: `1px solid ${st.border}`, flexShrink: 0, whiteSpace: "nowrap" }}>
-                                        {st.icon} {st.label}
-                                      </span>
-                                      <div style={{ flex: 1, minWidth: 0 }}>
-                                        <p style={{ fontSize: 12, fontWeight: 600, color: "#111827", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</p>
-                                        {item.category && <p style={{ fontSize: 10, color: "#9ca3af", marginTop: 1 }}>{item.category}</p>}
-                                      </div>
-                                      <span style={{ fontSize: 12, fontWeight: 700, color: item.status === "approved" ? "#059669" : item.status === "rejected" ? "#9ca3af" : "#374151", flexShrink: 0, letterSpacing: "-0.02em" }}>
-                                        {fmtRupiah(item.amount)}
-                                      </span>
-                                      {/* Per-item actions */}
-                                      <div style={{ display: "flex", alignItems: "center", gap: 3, flexShrink: 0 }}>
-                                        {item.receipt_path && (
-                                          isImg(item.receipt_path) ? (
-                                            <button onClick={() => setExpandedImg(expandedImg === item.receipt_path ? null : item.receipt_path!)}
-                                              title="Lihat Bukti"
-                                              style={{ display: "inline-flex", alignItems: "center", padding: "3px 6px", borderRadius: 5, border: "1px solid #e5e7eb", background: expandedImg === item.receipt_path ? "#eef2ff" : "#fff", cursor: "pointer" }}>
-                                              <ImageIcon size={10} color="#6366f1" />
+                          {/* Body */}
+                          {isSingle ? (
+                            /* Single-item: always visible, rich detail */
+                            <div>
+                              <div style={{ padding: "0 20px 14px" }}>
+                                {singleItem!.description && (
+                                  <p style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.55, marginBottom: 10 }}>{singleItem!.description}</p>
+                                )}
+                                {singleItem!.review_note && (
+                                  <div style={{ marginBottom: 10, padding: "8px 11px", background: singleItem!.status === "approved" ? "#f0fdf4" : "#fef2f2", border: `1px solid ${singleItem!.status === "approved" ? "#a7f3d0" : "#fecaca"}`, borderRadius: 8, fontSize: 11.5, color: singleItem!.status === "approved" ? "#059669" : "#dc2626", lineHeight: 1.5 }}>
+                                    <strong>Catatan{singleReviewer ? ` dari ${singleReviewer}` : ""}:</strong> {singleItem!.review_note}
+                                  </div>
+                                )}
+                                {(singleItem!.receipt_path || singleItem!.payment_proof_url) && (
+                                  <div style={{ marginBottom: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                                    {singleItem!.receipt_path && (
+                                      <div>
+                                        {isImg(singleItem!.receipt_path) ? (
+                                          <>
+                                            <button onClick={() => setExpandedImg(expandedImg === singleItem!.receipt_path ? null : singleItem!.receipt_path!)}
+                                              style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 10px", borderRadius: 7, border: "1px solid #e5e7eb", background: "#f9fafb", fontSize: 11, fontWeight: 600, color: "#374151", cursor: "pointer" }}>
+                                              <ImageIcon size={11} color="#6366f1" /> Bukti Pengajuan
+                                              {expandedImg === singleItem!.receipt_path ? <ChevronUp size={10} color="#9ca3af" /> : <ChevronDown size={10} color="#9ca3af" />}
                                             </button>
-                                          ) : (
-                                            <a href={item.receipt_path} target="_blank" rel="noopener noreferrer" title="Buka PDF"
-                                              style={{ display: "inline-flex", alignItems: "center", padding: "3px 6px", borderRadius: 5, border: "1px solid #e5e7eb", background: "#fff" }}>
-                                              <FileText size={10} color="#6366f1" />
-                                            </a>
-                                          )
+                                            {expandedImg === singleItem!.receipt_path && (
+                                              <div style={{ marginTop: 6, borderRadius: 8, overflow: "hidden", border: "1px solid #e5e7eb", maxWidth: 280 }}>
+                                                <img src={singleItem!.receipt_path} alt="Bukti" style={{ width: "100%", maxHeight: 180, objectFit: "contain", display: "block", background: "#f9fafb" }} />
+                                              </div>
+                                            )}
+                                          </>
+                                        ) : (
+                                          <a href={singleItem!.receipt_path} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 10px", borderRadius: 7, border: "1px solid #e5e7eb", background: "#f9fafb", fontSize: 11, fontWeight: 600, color: "#374151", textDecoration: "none" }}>
+                                            <FileText size={11} color="#6366f1" /> Bukti Pengajuan (PDF)
+                                          </a>
                                         )}
-                                        {canApprove && item.status === "pending" && (
-                                          <button onClick={() => { setReviewTarget(item); setReviewNote(""); }}
-                                            style={{ display: "inline-flex", alignItems: "center", gap: 3, padding: "3px 8px", border: "1px solid #c4b5fd", borderRadius: 5, background: "#f5f3ff", cursor: "pointer", fontSize: 10, fontWeight: 700, color: "#6d28d9" }}>
-                                            <Eye size={9} /> Review
-                                          </button>
-                                        )}
-                                        {canApprove && item.status !== "pending" && !isPaid && (
-                                          <button onClick={() => handleReview(item.id, "pending")} title="Tinjau Ulang"
-                                            style={{ display: "inline-flex", alignItems: "center", padding: "3px 6px", border: "1px solid #fde68a", borderRadius: 5, background: "#fff", cursor: "pointer" }}>
-                                            <RotateCcw size={9} color="#d97706" />
-                                          </button>
-                                        )}
-                                        {canPayOut && item.status === "approved" && !isPaid && (
-                                          <button onClick={() => { setPayProofTarget(item); setPayProofFile(null); }}
-                                            style={{ display: "inline-flex", alignItems: "center", gap: 3, padding: "3px 8px", border: "1px solid #a7f3d0", borderRadius: 5, background: "#f0fdf4", cursor: "pointer", fontSize: 10, fontWeight: 700, color: "#059669" }}>
-                                            <Upload size={9} /> Bayar
-                                          </button>
-                                        )}
-                                        {isOwn && item.status === "pending" && (
-                                          <button onClick={() => setDeleteReimbId(item.id)} title="Batalkan"
-                                            style={{ display: "inline-flex", alignItems: "center", padding: "3px 6px", border: "1px solid #fecaca", borderRadius: 5, background: "#fff", cursor: "pointer" }}>
-                                            <Trash2 size={9} color="#dc2626" />
-                                          </button>
-                                        )}
-                                      </div>
-                                    </div>
-                                    {/* Inline image preview */}
-                                    {expandedImg === item.receipt_path && item.receipt_path && (
-                                      <div style={{ padding: "0 12px 10px", background: idx % 2 === 0 ? "#f9fafb" : "#fff" }}>
-                                        <div style={{ borderRadius: 8, overflow: "hidden", border: "1px solid #e5e7eb", maxWidth: 260 }}>
-                                          <img src={item.receipt_path} alt="Bukti" style={{ width: "100%", maxHeight: 160, objectFit: "contain", display: "block", background: "#f9fafb" }} />
-                                        </div>
                                       </div>
                                     )}
-                                    {/* Review note */}
-                                    {item.review_note && (
-                                      <div style={{ margin: "0 12px 8px", padding: "6px 10px", background: item.status === "approved" ? "#f0fdf4" : "#fef2f2", border: `1px solid ${item.status === "approved" ? "#a7f3d0" : "#fecaca"}`, borderRadius: 7, fontSize: 11, color: item.status === "approved" ? "#059669" : "#dc2626" }}>
-                                        <strong>Catatan{reviewer ? ` dari ${reviewer}` : ""}:</strong> {item.review_note}
+                                    {singleItem!.payment_proof_url && (
+                                      <div>
+                                        {isImg(singleItem!.payment_proof_url) ? (
+                                          <>
+                                            <button onClick={() => setExpandedImg(expandedImg === singleItem!.payment_proof_url ? null : singleItem!.payment_proof_url!)}
+                                              style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 10px", borderRadius: 7, border: "1px solid #a7f3d0", background: "#f0fdf4", fontSize: 11, fontWeight: 600, color: "#059669", cursor: "pointer" }}>
+                                              <ImageIcon size={11} color="#10b981" /> Bukti Pembayaran
+                                              {expandedImg === singleItem!.payment_proof_url ? <ChevronUp size={10} color="#9ca3af" /> : <ChevronDown size={10} color="#9ca3af" />}
+                                            </button>
+                                            {expandedImg === singleItem!.payment_proof_url && (
+                                              <div style={{ marginTop: 6, borderRadius: 8, overflow: "hidden", border: "1px solid #a7f3d0", maxWidth: 280 }}>
+                                                <img src={singleItem!.payment_proof_url} alt="Bukti Bayar" style={{ width: "100%", maxHeight: 180, objectFit: "contain", display: "block", background: "#f0fdf4" }} />
+                                              </div>
+                                            )}
+                                          </>
+                                        ) : (
+                                          <a href={singleItem!.payment_proof_url} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 10px", borderRadius: 7, border: "1px solid #a7f3d0", background: "#f0fdf4", fontSize: 11, fontWeight: 600, color: "#059669", textDecoration: "none" }}>
+                                            <FileText size={11} color="#10b981" /> Bukti Pembayaran (PDF)
+                                          </a>
+                                        )}
                                       </div>
                                     )}
                                   </div>
-                                );
-                              })}
+                                )}
+                                <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid #f3f4f6" }}>
+                                  <TimelineStep done color="#6366f1" label={`Diajukan oleh ${group.requesterName}`} date={fmtDate(singleItem!.created_at)} last={singleItem!.status === "pending" && !singleItem!.reviewed_at} />
+                                  {singleItem!.status !== "pending" && (
+                                    <TimelineStep done color={singleItem!.status === "approved" ? "#10b981" : "#ef4444"}
+                                      label={singleItem!.status === "approved" ? `Disetujui${singleReviewer ? ` oleh ${singleReviewer}` : ""}` : `Ditolak${singleReviewer ? ` oleh ${singleReviewer}` : ""}`}
+                                      date={singleItem!.reviewed_at ? fmtDate(singleItem!.reviewed_at) : ""}
+                                      last={singleItem!.status !== "approved" || singleIsPaid} />
+                                  )}
+                                  {singleItem!.status === "approved" && (
+                                    <TimelineStep done={singleIsPaid} color="#10b981"
+                                      label={singleIsPaid ? "Sudah Dibayar" : "Menunggu Pembayaran"}
+                                      date={singleItem!.paid_at ? fmtDate(singleItem!.paid_at) : ""} last />
+                                  )}
+                                </div>
+                              </div>
+                              {/* Single footer with actions */}
+                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 20px", borderTop: "1px solid #f3f4f6", background: "#fafafa", gap: 12, flexWrap: "wrap" }}>
+                                <div style={{ fontSize: 11, color: "#9ca3af" }}>
+                                  {singleItem!.expense_date && (
+                                    <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
+                                      <CalendarDays size={10} /> Tgl pengeluaran: <strong style={{ color: "#374151" }}>{fmtDateShort(singleItem!.expense_date)}</strong>
+                                    </span>
+                                  )}
+                                </div>
+                                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                  {canApprove && singleItem!.status === "pending" && (
+                                    <motion.button whileHover={{ background: "#ede9fe" }} whileTap={{ scale: 0.97 }}
+                                      onClick={() => { setReviewTarget(singleItem!); setReviewNote(""); }}
+                                      style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "5px 12px", border: "1px solid #c4b5fd", borderRadius: 7, background: "#f5f3ff", cursor: "pointer", fontSize: 11, fontWeight: 700, color: "#6d28d9", whiteSpace: "nowrap", transition: "background 0.12s" }}>
+                                      <Eye size={11} /> Review
+                                    </motion.button>
+                                  )}
+                                  {canApprove && singleItem!.status !== "pending" && !singleIsPaid && (
+                                    <motion.button whileHover={{ background: "#fffbeb" }} whileTap={{ scale: 0.97 }}
+                                      onClick={() => handleReview(singleItem!.id, "pending")}
+                                      style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "5px 10px", border: "1px solid #fde68a", borderRadius: 7, background: "#fff", cursor: "pointer", fontSize: 11, fontWeight: 600, color: "#d97706", whiteSpace: "nowrap", transition: "background 0.12s" }}>
+                                      <RotateCcw size={11} /> Tinjau Ulang
+                                    </motion.button>
+                                  )}
+                                  {canPayOut && singleItem!.status === "approved" && !singleIsPaid && (
+                                    <motion.button whileHover={{ background: "#f0fdf4" }} whileTap={{ scale: 0.97 }}
+                                      onClick={() => { setPayProofTarget(singleItem!); setPayProofFile(null); }}
+                                      style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "5px 12px", border: "1px solid #a7f3d0", borderRadius: 7, background: "#fff", cursor: "pointer", fontSize: 11, fontWeight: 700, color: "#059669", whiteSpace: "nowrap", transition: "background 0.12s" }}>
+                                      <Upload size={11} /> Bukti Bayar
+                                    </motion.button>
+                                  )}
+                                  {canPayOut && singleIsPaid && (
+                                    <motion.button whileHover={{ background: "#fffbeb" }} whileTap={{ scale: 0.97 }}
+                                      onClick={() => { setPayProofTarget(singleItem!); setPayProofFile(null); }}
+                                      style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "5px 12px", border: "1px solid #fbbf24", borderRadius: 7, background: "#fff", cursor: "pointer", fontSize: 11, fontWeight: 700, color: "#d97706", whiteSpace: "nowrap", transition: "background 0.12s" }}>
+                                      <RotateCcw size={11} /> Ganti Bukti
+                                    </motion.button>
+                                  )}
+                                  {isOwn && singleItem!.status === "pending" && (
+                                    <motion.button whileHover={{ background: "#fef2f2" }} whileTap={{ scale: 0.97 }}
+                                      onClick={() => setDeleteReimbId(singleItem!.id)}
+                                      style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "5px 10px", border: "1px solid #fecaca", borderRadius: 7, background: "#fff", cursor: "pointer", fontSize: 11, fontWeight: 600, color: "#dc2626", whiteSpace: "nowrap", transition: "background 0.12s" }}>
+                                      <Trash2 size={11} /> Batalkan
+                                    </motion.button>
+                                  )}
+                                </div>
+                              </div>
                             </div>
-
-                            {/* Shared timeline */}
-                            <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid #f3f4f6" }}>
-                              <TimelineStep done color="#6366f1" label={`Diajukan oleh ${group.requesterName}`} date={fmtDate(group.items[0].created_at)} last />
-                            </div>
-                          </div>
-
-                          {/* Footer inside collapsible */}
-                          <div style={{ padding: "8px 20px", borderTop: "1px solid #f3f4f6", background: "#fafafa" }}>
-                            <span style={{ fontSize: 11, color: "#9ca3af" }}>
-                              {group.items.length} item · Total {fmtRupiah(totalAmt)}
-                            </span>
-                          </div>
-                            </motion.div>
+                          ) : (
+                            /* Multi-item: collapsible body */
+                            <AnimatePresence initial={false}>
+                              {isExpanded && (
+                                <motion.div
+                                  key="body"
+                                  initial={{ height: 0, opacity: 0 }}
+                                  animate={{ height: "auto", opacity: 1 }}
+                                  exit={{ height: 0, opacity: 0 }}
+                                  transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                                  style={{ overflow: "hidden" }}>
+                                  <div style={{ padding: "0 20px 14px" }}>
+                                    <div style={{ background: "#f9fafb", borderRadius: 10, border: "1px solid #f0f0f0", overflow: "hidden" }}>
+                                      {group.items.map((item, idx) => {
+                                        const st       = STATUS_REIMB[item.status];
+                                        const isPaid   = !!item.paid_at;
+                                        const reviewer = (item.reviewer as any)?.full_name || null;
+                                        return (
+                                          <div key={item.id}>
+                                            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", background: idx % 2 === 0 ? "#f9fafb" : "#fff", borderTop: idx > 0 ? "1px solid #f0f0f0" : "none" }}>
+                                              <span style={{ fontSize: 11, fontWeight: 700, color: "#d1d5db", flexShrink: 0, minWidth: 16, textAlign: "right" }}>{idx + 1}.</span>
+                                              <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 20, background: st.bg, color: st.color, border: `1px solid ${st.border}`, flexShrink: 0, whiteSpace: "nowrap" }}>
+                                                {st.icon} {st.label}
+                                              </span>
+                                              <div style={{ flex: 1, minWidth: 0 }}>
+                                                <p style={{ fontSize: 12, fontWeight: 600, color: "#111827", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</p>
+                                                {item.category && <p style={{ fontSize: 10, color: "#9ca3af", marginTop: 1 }}>{item.category}</p>}
+                                              </div>
+                                              <span style={{ fontSize: 12, fontWeight: 700, color: item.status === "approved" ? "#059669" : item.status === "rejected" ? "#9ca3af" : "#374151", flexShrink: 0, letterSpacing: "-0.02em" }}>
+                                                {fmtRupiah(item.amount)}
+                                              </span>
+                                              <div style={{ display: "flex", alignItems: "center", gap: 3, flexShrink: 0 }}>
+                                                {item.receipt_path && (
+                                                  isImg(item.receipt_path) ? (
+                                                    <button onClick={() => setExpandedImg(expandedImg === item.receipt_path ? null : item.receipt_path!)}
+                                                      title="Lihat Bukti"
+                                                      style={{ display: "inline-flex", alignItems: "center", padding: "3px 6px", borderRadius: 5, border: "1px solid #e5e7eb", background: expandedImg === item.receipt_path ? "#eef2ff" : "#fff", cursor: "pointer" }}>
+                                                      <ImageIcon size={10} color="#6366f1" />
+                                                    </button>
+                                                  ) : (
+                                                    <a href={item.receipt_path} target="_blank" rel="noopener noreferrer" title="Buka PDF"
+                                                      style={{ display: "inline-flex", alignItems: "center", padding: "3px 6px", borderRadius: 5, border: "1px solid #e5e7eb", background: "#fff" }}>
+                                                      <FileText size={10} color="#6366f1" />
+                                                    </a>
+                                                  )
+                                                )}
+                                                {item.payment_proof_url && (
+                                                  isImg(item.payment_proof_url) ? (
+                                                    <button onClick={() => setExpandedImg(expandedImg === item.payment_proof_url ? null : item.payment_proof_url!)}
+                                                      title="Lihat Bukti Bayar"
+                                                      style={{ display: "inline-flex", alignItems: "center", padding: "3px 6px", borderRadius: 5, border: "1px solid #a7f3d0", background: expandedImg === item.payment_proof_url ? "#f0fdf4" : "#fff", cursor: "pointer" }}>
+                                                      <ImageIcon size={10} color="#10b981" />
+                                                    </button>
+                                                  ) : (
+                                                    <a href={item.payment_proof_url} target="_blank" rel="noopener noreferrer" title="Bukti Pembayaran PDF"
+                                                      style={{ display: "inline-flex", alignItems: "center", padding: "3px 6px", borderRadius: 5, border: "1px solid #a7f3d0", background: "#fff" }}>
+                                                      <FileText size={10} color="#10b981" />
+                                                    </a>
+                                                  )
+                                                )}
+                                                {canApprove && item.status === "pending" && (
+                                                  <button onClick={() => { setReviewTarget(item); setReviewNote(""); }}
+                                                    style={{ display: "inline-flex", alignItems: "center", gap: 3, padding: "3px 8px", border: "1px solid #c4b5fd", borderRadius: 5, background: "#f5f3ff", cursor: "pointer", fontSize: 10, fontWeight: 700, color: "#6d28d9" }}>
+                                                    <Eye size={9} /> Review
+                                                  </button>
+                                                )}
+                                                {canApprove && item.status !== "pending" && !isPaid && (
+                                                  <button onClick={() => handleReview(item.id, "pending")} title="Tinjau Ulang"
+                                                    style={{ display: "inline-flex", alignItems: "center", padding: "3px 6px", border: "1px solid #fde68a", borderRadius: 5, background: "#fff", cursor: "pointer" }}>
+                                                    <RotateCcw size={9} color="#d97706" />
+                                                  </button>
+                                                )}
+                                                {canPayOut && item.status === "approved" && !isPaid && (
+                                                  <button onClick={() => { setPayProofTarget(item); setPayProofFile(null); }}
+                                                    style={{ display: "inline-flex", alignItems: "center", gap: 3, padding: "3px 8px", border: "1px solid #a7f3d0", borderRadius: 5, background: "#f0fdf4", cursor: "pointer", fontSize: 10, fontWeight: 700, color: "#059669" }}>
+                                                    <Upload size={9} /> Bayar
+                                                  </button>
+                                                )}
+                                                {canPayOut && isPaid && (
+                                                  <button onClick={() => { setPayProofTarget(item); setPayProofFile(null); }}
+                                                    title="Ganti Bukti Bayar"
+                                                    style={{ display: "inline-flex", alignItems: "center", gap: 3, padding: "3px 8px", border: "1px solid #fbbf24", borderRadius: 5, background: "#fffbeb", cursor: "pointer", fontSize: 10, fontWeight: 700, color: "#d97706" }}>
+                                                    <RotateCcw size={9} /> Ganti
+                                                  </button>
+                                                )}
+                                                {isOwn && item.status === "pending" && (
+                                                  <button onClick={() => setDeleteReimbId(item.id)} title="Batalkan"
+                                                    style={{ display: "inline-flex", alignItems: "center", padding: "3px 6px", border: "1px solid #fecaca", borderRadius: 5, background: "#fff", cursor: "pointer" }}>
+                                                    <Trash2 size={9} color="#dc2626" />
+                                                  </button>
+                                                )}
+                                              </div>
+                                            </div>
+                                            {expandedImg === item.receipt_path && item.receipt_path && (
+                                              <div style={{ padding: "0 12px 10px", background: idx % 2 === 0 ? "#f9fafb" : "#fff" }}>
+                                                <div style={{ borderRadius: 8, overflow: "hidden", border: "1px solid #e5e7eb", maxWidth: 260 }}>
+                                                  <img src={item.receipt_path} alt="Bukti" style={{ width: "100%", maxHeight: 160, objectFit: "contain", display: "block", background: "#f9fafb" }} />
+                                                </div>
+                                              </div>
+                                            )}
+                                            {expandedImg === item.payment_proof_url && item.payment_proof_url && (
+                                              <div style={{ padding: "0 12px 10px", background: idx % 2 === 0 ? "#f9fafb" : "#fff" }}>
+                                                <div style={{ borderRadius: 8, overflow: "hidden", border: "1px solid #a7f3d0", maxWidth: 260 }}>
+                                                  <img src={item.payment_proof_url} alt="Bukti Bayar" style={{ width: "100%", maxHeight: 160, objectFit: "contain", display: "block", background: "#f0fdf4" }} />
+                                                </div>
+                                              </div>
+                                            )}
+                                            {item.review_note && (
+                                              <div style={{ margin: "0 12px 8px", padding: "6px 10px", background: item.status === "approved" ? "#f0fdf4" : "#fef2f2", border: `1px solid ${item.status === "approved" ? "#a7f3d0" : "#fecaca"}`, borderRadius: 7, fontSize: 11, color: item.status === "approved" ? "#059669" : "#dc2626" }}>
+                                                <strong>Catatan{reviewer ? ` dari ${reviewer}` : ""}:</strong> {item.review_note}
+                                              </div>
+                                            )}
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                    <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid #f3f4f6" }}>
+                                      <TimelineStep done color="#6366f1" label={`Diajukan oleh ${group.requesterName}`} date={fmtDate(group.items[0].created_at)} last />
+                                    </div>
+                                  </div>
+                                  <div style={{ padding: "8px 20px", borderTop: "1px solid #f3f4f6", background: "#fafafa" }}>
+                                    <span style={{ fontSize: 11, color: "#9ca3af" }}>
+                                      {group.items.length} item · Total {fmtRupiah(totalAmt)}
+                                    </span>
+                                  </div>
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
                           )}
-                          </AnimatePresence>
                         </motion.div>
                       );
                     })}
