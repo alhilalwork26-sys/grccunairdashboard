@@ -26,8 +26,8 @@ function isAuthenticated(request: NextRequest): boolean {
       const expiresAt: number = session?.expires_at ?? 0;
       return expiresAt > Math.floor(Date.now() / 1000);
     } catch {
-      // Cookie exists but unreadable — trust it to avoid redirect loops
-      return true;
+      // Cookie unreadable — treat as unauthenticated to prevent redirect loops
+      return false;
     }
   }
 }
@@ -46,9 +46,10 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
-  if (isAuth && isLoginPage) {
-    return NextResponse.redirect(new URL("/dashboard", request.url));
-  }
+  // Do NOT redirect /login → /dashboard here.
+  // If we do, a stale-but-parseable cookie causes a loop:
+  // middleware says "authenticated" → /dashboard → server rejects → /login → loop.
+  // The server layout handles the post-login redirect via window.location.href.
 
   return NextResponse.next();
 }
