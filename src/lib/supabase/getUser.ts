@@ -6,7 +6,14 @@ import type { UserProfile } from "@/types";
 // If both layout.tsx and page.tsx call getUser(), Supabase is only hit once.
 export const getUser = cache(async (): Promise<{ user: UserProfile | null; userId: string | null }> => {
   const supabase = await createClient();
-  const { data: { session } } = await supabase.auth.getSession();
+  let session;
+  try {
+    const { data, error } = await supabase.auth.getSession();
+    if (error) return { user: null, userId: null };
+    session = data.session;
+  } catch {
+    return { user: null, userId: null };
+  }
   if (!session) return { user: null, userId: null };
 
   const { data: profile } = await supabase
