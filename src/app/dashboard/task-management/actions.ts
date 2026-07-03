@@ -19,13 +19,12 @@ const MANAGE_ROLES  = ["super_admin", "manager", "program_admin", "kep_finance",
 async function requireAuth(): Promise<{ userId: string; role: string } | { error: string }> {
   try {
     const supabase = await createClient();
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-    if (sessionError) return { error: "Sesi habis, silakan login ulang." };
-    if (!session?.user) return { error: "Sesi habis, silakan login ulang." };
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) return { error: "Sesi habis, silakan login ulang." };
     const admin = createAdminClient();
     const { data: profile } = await admin
-      .from("profiles").select("role").eq("id", session.user.id).single();
-    return { userId: session.user.id, role: profile?.role ?? "" };
+      .from("profiles").select("role").eq("id", user.id).single();
+    return { userId: user.id, role: profile?.role ?? "" };
   } catch {
     return { error: "Sesi habis, silakan login ulang." };
   }

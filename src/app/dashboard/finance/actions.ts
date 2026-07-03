@@ -15,13 +15,13 @@ function createAdminClient() {
 async function requireFinanceAuth(): Promise<{ userId: string; role: string } | { error: string }> {
   try {
     const supabase = await createClient();
-    const { data, error } = await supabase.auth.getSession();
-    if (error || !data.session?.user) return { error: "Sesi habis, silakan login ulang." };
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) return { error: "Sesi habis, silakan login ulang." };
     const admin = createAdminClient();
     const { data: profile } = await admin
-      .from("profiles").select("role").eq("id", data.session.user.id).single();
+      .from("profiles").select("role").eq("id", user.id).single();
     if (!profile) return { error: "Sesi habis, silakan login ulang." };
-    return { userId: data.session.user.id, role: profile.role };
+    return { userId: user.id, role: profile.role };
   } catch {
     return { error: "Sesi habis, silakan login ulang." };
   }
