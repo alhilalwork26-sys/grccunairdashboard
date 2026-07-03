@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus, Search, X, Edit2, Trash2, Calendar, ChevronDown,
@@ -95,6 +95,9 @@ export default function TaskBoard({ initialTasks, profiles, currentUser, canSeeA
   const [reviewModal, setReviewModal]       = useState<{ task: Task } | null>(null);
   const [reviewForm, setReviewForm]         = useState({ note: "", proof_url: "" });
   const [submittingReview, setSubmittingReview] = useState(false);
+  const [uploadingProof, setUploadingProof] = useState(false);
+  const [proofFileName, setProofFileName]   = useState<string | null>(null);
+  const proofFileRef = useRef<HTMLInputElement>(null);
 
   // Reject flow
   const [rejectModal, setRejectModal]       = useState<{ taskId: string } | null>(null);
@@ -192,7 +195,7 @@ export default function TaskBoard({ initialTasks, profiles, currentUser, canSeeA
   async function quickStatus(id: string, status: Task["status"]) {
     if (status === "review") {
       const task = tasks.find(t => t.id === id);
-      if (task) { setReviewModal({ task }); setReviewForm({ note: "", proof_url: "" }); setPopup(null); }
+      if (task) { setReviewModal({ task }); setReviewForm({ note: "", proof_url: "" }); setProofFileName(null); setPopup(null); }
       return;
     }
     const prev = tasks.find(t => t.id === id);
@@ -213,6 +216,20 @@ export default function TaskBoard({ initialTasks, profiles, currentUser, canSeeA
     finally { setStatusLoading(null); }
   }
 
+  async function handleProofFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || !reviewModal) return;
+    setUploadingProof(true);
+    const ext  = file.name.split(".").pop();
+    const path = `${currentUser.id}/task-proof/${reviewModal.task.id}/${new Date().getTime()}.${ext}`;
+    const { error: upErr } = await supabase.storage.from("receipts").upload(path, file, { upsert: true, contentType: file.type });
+    if (upErr) { showToast("Gagal upload: " + upErr.message, "err"); setUploadingProof(false); return; }
+    const { data: { publicUrl } } = supabase.storage.from("receipts").getPublicUrl(path);
+    setReviewForm(f => ({ ...f, proof_url: publicUrl }));
+    setProofFileName(file.name);
+    setUploadingProof(false);
+  }
+
   async function submitForReview(e: React.FormEvent) {
     e.preventDefault();
     if (!reviewModal) return;
@@ -230,6 +247,7 @@ export default function TaskBoard({ initialTasks, profiles, currentUser, canSeeA
         setTasks(prev => prev.map(t => t.id === task.id ? { ...t, ...updates } : t));
         showToast("Berhasil dikirim untuk review");
         setReviewModal(null);
+        setProofFileName(null);
       } else showToast(error, "err");
     } catch { showToast("Gagal mengirim review", "err"); }
     setSubmittingReview(false);
@@ -751,14 +769,34 @@ export default function TaskBoard({ initialTasks, profiles, currentUser, canSeeA
                 </div>
                 <div>
                   <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}>
-                    <Link2 size={11} style={{ display: "inline", marginRight: 4 }} />
-                    Link bukti pengerjaan {reviewModal.task.requires_proof ? <span style={{ color: "#ef4444" }}>*</span> : <span style={{ color: "#9ca3af", fontWeight: 400 }}>(opsional)</span>}
+                    Bukti pengerjaan {reviewModal.task.requires_proof ? <span style={{ color: "#ef4444" }}>*</span> : <span style={{ color: "#9ca3af", fontWeight: 400 }}>(opsional)</span>}
                   </label>
-                  <input value={reviewForm.proof_url} onChange={e => setReviewForm(f => ({ ...f, proof_url: e.target.value }))}
+                  {/* Upload file */}
+                  <input ref={proofFileRef} type="file" accept="image/jpeg,image/png,image/webp,application/pdf" style={{ display: "none" }} onChange={handleProofFileSelect} />
+                  <motion.button type="button" whileHover={{ opacity: 0.85 }} whileTap={{ scale: 0.97 }}
+                    disabled={uploadingProof}
+                    onClick={() => proofFileRef.current?.click()}
+                    style={{ display: "flex", alignItems: "center", gap: 7, padding: "8px 14px", borderRadius: 9, border: "1.5px dashed #d1d5db", background: proofFileName ? "#f0fdf4" : "#f9fafb", color: proofFileName ? "#059669" : "#6b7280", fontSize: 12, fontWeight: 600, cursor: "pointer", width: "100%", marginBottom: 8 }}>
+                    {uploadingProof
+                      ? <><div style={{ width: 12, height: 12, border: "2px solid #d1d5db", borderTopColor: "#7c3aed", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} /> Mengupload...</>
+                      : proofFileName
+                        ? <><CheckCircle size={13} /> {proofFileName}</>
+                        : <><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> Upload file (jpg/png/pdf)</>
+                    }
+                  </motion.button>
+                  {/* OR paste URL */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                    <div style={{ flex: 1, height: 1, background: "#e5e7eb" }} />
+                    <span style={{ fontSize: 11, color: "#9ca3af" }}>atau tempel link</span>
+                    <div style={{ flex: 1, height: 1, background: "#e5e7eb" }} />
+                  </div>
+                  <input value={proofFileName ? "" : reviewForm.proof_url}
+                    onChange={e => { setProofFileName(null); setReviewForm(f => ({ ...f, proof_url: e.target.value })); }}
                     placeholder="https://drive.google.com/... atau link lainnya"
-                    type="url" className="clean-input" style={{ width: "100%", boxSizing: "border-box" }} />
-                  {reviewModal.task.requires_proof && (
-                    <p style={{ fontSize: 11, color: "#f59e0b", marginTop: 5 }}>Pembuat task mewajibkan bukti pengerjaan berupa link.</p>
+                    disabled={!!proofFileName}
+                    type="url" className="clean-input" style={{ width: "100%", boxSizing: "border-box", opacity: proofFileName ? 0.45 : 1 }} />
+                  {reviewModal.task.requires_proof && !proofFileName && !reviewForm.proof_url && (
+                    <p style={{ fontSize: 11, color: "#f59e0b", marginTop: 5 }}>Wajib upload file atau tempel link bukti pengerjaan.</p>
                   )}
                 </div>
                 <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
