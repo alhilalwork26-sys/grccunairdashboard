@@ -29,6 +29,7 @@ const EMPTY_FORM = {
   title: "", description: "", start_date: "",
   end_date: "", start_time: "", end_time: "",
   type: "meeting" as CalendarEvent["type"],
+  meet_link: "",
 };
 
 function googleCalendarSubscribeUrl(icsUrl: string) {
@@ -151,7 +152,7 @@ export default function CalendarBoard({ currentUser, initialEvents, calendarUrl 
       title: e.title, description: e.description ?? "",
       start_date: e.start_date, end_date: e.end_date ?? "",
       start_time: e.start_time ?? "", end_time: e.end_time ?? "",
-      type: e.type,
+      type: e.type, meet_link: e.meet_link ?? "",
     });
     setShowModal(true);
   };
@@ -179,6 +180,7 @@ export default function CalendarBoard({ currentUser, initialEvents, calendarUrl 
       start_time: form.start_time || null,
       end_time: form.end_time || null,
       type: form.type,
+      meet_link: form.meet_link.trim() || null,
       created_by: currentUser.id,
     };
     if (editing) {
@@ -645,6 +647,15 @@ export default function CalendarBoard({ currentUser, initialEvents, calendarUrl 
                               </span>
                             </div>
                           )}
+                          {e.meet_link && (
+                            <a
+                              href={e.meet_link} target="_blank" rel="noopener noreferrer"
+                              style={{ display: "inline-flex", alignItems: "center", gap: 4, marginTop: 6, fontSize: 11, fontWeight: 600, color: "#8b5cf6", textDecoration: "none", background: "#ede9fe", padding: "3px 8px", borderRadius: 6 }}
+                            >
+                              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                              Buka Meeting
+                            </a>
+                          )}
                         </div>
                         {canManage && (
                           <div style={{ display: "flex", gap: 2, marginLeft: 8, flexShrink: 0 }}>
@@ -857,6 +868,19 @@ export default function CalendarBoard({ currentUser, initialEvents, calendarUrl 
                     rows={3} placeholder="Deskripsi event (opsional)..." value={form.description}
                     onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
                     style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 13, outline: "none", resize: "vertical", fontFamily: "inherit", lineHeight: 1.6, boxSizing: "border-box" }}
+                    onFocus={e => (e.target.style.borderColor = "#8b5cf6")}
+                    onBlur={e => (e.target.style.borderColor = "#e5e7eb")}
+                  />
+                </div>
+
+                {/* Meet Link */}
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}>Link Zoom / GMeet <span style={{ fontWeight: 400, color: "#9ca3af" }}>(opsional)</span></label>
+                  <input
+                    type="url" placeholder="https://zoom.us/j/... atau meet.google.com/..."
+                    value={form.meet_link}
+                    onChange={e => setForm(f => ({ ...f, meet_link: e.target.value }))}
+                    style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 13, outline: "none", boxSizing: "border-box" }}
                     onFocus={e => (e.target.style.borderColor = "#8b5cf6")}
                     onBlur={e => (e.target.style.borderColor = "#e5e7eb")}
                   />

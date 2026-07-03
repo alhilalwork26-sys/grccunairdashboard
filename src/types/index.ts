@@ -79,6 +79,7 @@ export interface CalendarEvent {
   start_time?: string | null;
   end_time?: string | null;
   type: "meeting" | "deadline" | "event" | "holiday" | "training";
+  meet_link?: string | null;
   color?: string | null;
   created_by?: string | null;
   created_at: string;
