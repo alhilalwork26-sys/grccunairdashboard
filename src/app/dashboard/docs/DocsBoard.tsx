@@ -12,16 +12,16 @@ import {
   Edit3, ZoomIn,
 } from "lucide-react";
 
-const CATEGORIES = ["Umum", "Keuangan", "Marketing", "Pelatihan", "HR", "Legal", "Lainnya"];
+const FIXED_CATS = ["Pelatihan Publik", "Pelatihan In-House", "Pendampingan", "Pameran/Wayang", "Keuangan"];
+const CATEGORIES = [...FIXED_CATS, "Lainnya"];
 
 const CAT_COLOR: Record<string, { bg: string; text: string; border: string }> = {
-  Umum:      { bg: "#f3f4f6", text: "#374151", border: "#e5e7eb" },
-  Keuangan:  { bg: "#ecfdf5", text: "#065f46", border: "#a7f3d0" },
-  Marketing: { bg: "#fce7f3", text: "#9d174d", border: "#fbcfe8" },
-  Pelatihan: { bg: "#fffbeb", text: "#92400e", border: "#fde68a" },
-  HR:        { bg: "#eff6ff", text: "#1e40af", border: "#bfdbfe" },
-  Legal:     { bg: "#f5f3ff", text: "#5b21b6", border: "#ddd6fe" },
-  Lainnya:   { bg: "#fff7ed", text: "#7c2d12", border: "#fed7aa" },
+  "Pelatihan Publik":  { bg: "#fffbeb", text: "#92400e", border: "#fde68a" },
+  "Pelatihan In-House":{ bg: "#fef9c3", text: "#713f12", border: "#fef08a" },
+  Pendampingan:        { bg: "#eff6ff", text: "#1e40af", border: "#bfdbfe" },
+  "Pameran/Wayang":    { bg: "#f5f3ff", text: "#5b21b6", border: "#ddd6fe" },
+  Keuangan:            { bg: "#ecfdf5", text: "#065f46", border: "#a7f3d0" },
+  Lainnya:             { bg: "#fff7ed", text: "#7c2d12", border: "#fed7aa" },
 };
 
 function getFileIcon(type: string | null | undefined, size = 20) {
@@ -52,7 +52,7 @@ function fmtDate(s: string) {
   return new Date(s).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
 }
 
-const EMPTY_FORM = { title: "", description: "", category: "Umum", is_locked: false, password: "" };
+const EMPTY_FORM = { title: "", description: "", category: "Pelatihan Publik", is_locked: false, password: "" };
 
 type SortField = "date" | "name" | "size" | "category";
 
@@ -94,7 +94,7 @@ export default function DocsBoard({ currentUser, initialDocs, totalCount, pageSi
 
   // Edit metadata
   const [editTarget, setEditTarget] = useState<Document | null>(null);
-  const [editForm, setEditForm] = useState({ title: "", description: "", category: "Umum" });
+  const [editForm, setEditForm] = useState({ title: "", description: "", category: "Pelatihan Publik" });
   const [editSaving, setEditSaving] = useState(false);
 
   // Preview
@@ -124,7 +124,8 @@ export default function DocsBoard({ currentUser, initialDocs, totalCount, pageSi
   const filtered = docs.filter(d => {
     const matchSearch = d.title.toLowerCase().includes(search.toLowerCase()) ||
       d.file_name.toLowerCase().includes(search.toLowerCase());
-    const matchCat = catFilter === "all" || d.category.toLowerCase() === catFilter.toLowerCase();
+    const matchCat = catFilter === "all"
+      || (catFilter === "Lainnya" ? !FIXED_CATS.includes(d.category) : d.category.toLowerCase() === catFilter.toLowerCase());
     return matchSearch && matchCat;
   });
 
@@ -387,7 +388,9 @@ export default function DocsBoard({ currentUser, initialDocs, totalCount, pageSi
                 color: catFilter === t.key ? "#d97706" : "#9ca3af",
                 borderRadius: 20, padding: "1px 5px",
               }}>
-                {docs.filter(d => d.category.toLowerCase() === t.key.toLowerCase()).length}
+                {t.key === "Lainnya"
+                  ? docs.filter(d => !FIXED_CATS.includes(d.category)).length
+                  : docs.filter(d => d.category.toLowerCase() === t.key.toLowerCase()).length}
               </span>
             )}
           </button>
@@ -463,7 +466,7 @@ export default function DocsBoard({ currentUser, initialDocs, totalCount, pageSi
             <AnimatePresence mode="popLayout">
               {sorted.map((doc, i) => {
                 const fileColor = getFileColor(doc.file_type);
-                const catStyle = CAT_COLOR[doc.category] ?? CAT_COLOR["Umum"];
+                const catStyle = CAT_COLOR[doc.category] ?? CAT_COLOR["Lainnya"];
                 const uploader = (doc.profiles as any)?.full_name || "—";
                 const canEdit = canManage || doc.uploaded_by === currentUser.id;
                 return (
@@ -613,7 +616,7 @@ export default function DocsBoard({ currentUser, initialDocs, totalCount, pageSi
             <AnimatePresence>
               {sorted.map((doc, i) => {
                 const fileColor = getFileColor(doc.file_type);
-                const catStyle = CAT_COLOR[doc.category] ?? CAT_COLOR["Umum"];
+                const catStyle = CAT_COLOR[doc.category] ?? CAT_COLOR["Lainnya"];
                 const uploader = (doc.profiles as any)?.full_name || "—";
                 const canEdit = canManage || doc.uploaded_by === currentUser.id;
                 return (
@@ -782,19 +785,31 @@ export default function DocsBoard({ currentUser, initialDocs, totalCount, pageSi
                   <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}>Kategori</label>
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                     {CATEGORIES.map(cat => {
-                      const s = CAT_COLOR[cat] ?? CAT_COLOR["Umum"];
+                      const s = CAT_COLOR[cat] ?? CAT_COLOR["Lainnya"];
+                      const isActive = cat === "Lainnya"
+                        ? !FIXED_CATS.includes(form.category)
+                        : form.category === cat;
                       return (
                         <motion.button key={cat} whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.97 }}
-                          onClick={() => setForm(f => ({ ...f, category: cat }))}
+                          onClick={() => setForm(f => ({ ...f, category: cat === "Lainnya" ? "Lainnya" : cat }))}
                           style={{
                             padding: "5px 12px", borderRadius: 20, cursor: "pointer", fontSize: 11, fontWeight: 600,
-                            border: form.category === cat ? `1.5px solid ${s.text}` : "1.5px solid #e5e7eb",
-                            background: form.category === cat ? s.bg : "#f9fafb",
-                            color: form.category === cat ? s.text : "#9ca3af", transition: "all 0.12s",
+                            border: isActive ? `1.5px solid ${s.text}` : "1.5px solid #e5e7eb",
+                            background: isActive ? s.bg : "#f9fafb",
+                            color: isActive ? s.text : "#9ca3af", transition: "all 0.12s",
                           }}>{cat}</motion.button>
                       );
                     })}
                   </div>
+                  {!FIXED_CATS.includes(form.category) && (
+                    <input
+                      type="text"
+                      placeholder="Ketik kategori lainnya..."
+                      value={form.category === "Lainnya" ? "" : form.category}
+                      onChange={e => setForm(f => ({ ...f, category: e.target.value.trim() || "Lainnya" }))}
+                      style={{ marginTop: 8, width: "100%", padding: "8px 12px", border: "1.5px solid #fde68a", borderRadius: 8, fontSize: 12, outline: "none", boxSizing: "border-box", fontFamily: "inherit" }}
+                    />
+                  )}
                 </div>
 
                 <div>
@@ -908,19 +923,31 @@ export default function DocsBoard({ currentUser, initialDocs, totalCount, pageSi
                   <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}>Kategori</label>
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                     {CATEGORIES.map(cat => {
-                      const s = CAT_COLOR[cat] ?? CAT_COLOR["Umum"];
+                      const s = CAT_COLOR[cat] ?? CAT_COLOR["Lainnya"];
+                      const isActive = cat === "Lainnya"
+                        ? !FIXED_CATS.includes(editForm.category)
+                        : editForm.category === cat;
                       return (
                         <motion.button key={cat} whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.97 }}
-                          onClick={() => setEditForm(f => ({ ...f, category: cat }))}
+                          onClick={() => setEditForm(f => ({ ...f, category: cat === "Lainnya" ? "Lainnya" : cat }))}
                           style={{
                             padding: "5px 12px", borderRadius: 20, cursor: "pointer", fontSize: 11, fontWeight: 600,
-                            border: editForm.category === cat ? `1.5px solid ${s.text}` : "1.5px solid #e5e7eb",
-                            background: editForm.category === cat ? s.bg : "#f9fafb",
-                            color: editForm.category === cat ? s.text : "#9ca3af", transition: "all 0.12s",
+                            border: isActive ? `1.5px solid ${s.text}` : "1.5px solid #e5e7eb",
+                            background: isActive ? s.bg : "#f9fafb",
+                            color: isActive ? s.text : "#9ca3af", transition: "all 0.12s",
                           }}>{cat}</motion.button>
                       );
                     })}
                   </div>
+                  {!FIXED_CATS.includes(editForm.category) && (
+                    <input
+                      type="text"
+                      placeholder="Ketik kategori lainnya..."
+                      value={editForm.category === "Lainnya" ? "" : editForm.category}
+                      onChange={e => setEditForm(f => ({ ...f, category: e.target.value.trim() || "Lainnya" }))}
+                      style={{ marginTop: 8, width: "100%", padding: "8px 12px", border: "1.5px solid #fde68a", borderRadius: 8, fontSize: 12, outline: "none", boxSizing: "border-box", fontFamily: "inherit" }}
+                    />
+                  )}
                 </div>
 
                 <div>
