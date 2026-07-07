@@ -59,10 +59,10 @@ function getWeekKeyFromDate(utcDateStr: string): string {
 }
 
 function getWeekDeadline(weekKey: string): Date {
-  // Sunday of the week at 23:00 WIB = 16:00 UTC
+  // Sunday of the week at 17:00 WIB = 10:00 UTC
   const d = new Date(weekKey + "T00:00:00Z");
   d.setUTCDate(d.getUTCDate() + 6);
-  d.setUTCHours(16, 0, 0, 0);
+  d.setUTCHours(10, 0, 0, 0);
   return d;
 }
 
@@ -594,7 +594,7 @@ export default function FinanceBoard({ currentUser, initialTransactions, initial
                   <p style={{ fontSize: 12, color: weekClosed ? "#b91c1c" : "#4f46e5", marginTop: 2 }}>
                     {weekClosed
                       ? "Pengajuan reimbursement dibuka kembali Senin mendatang."
-                      : `Tutup: ${getSundayStr(currentWeekKey)} pukul 23.00 WIB`}
+                      : `Tutup: ${getSundayStr(currentWeekKey)} pukul 17.00 WIB`}
                   </p>
                 </div>
                 {!weekClosed && countdown && (
