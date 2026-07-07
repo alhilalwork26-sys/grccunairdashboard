@@ -2,11 +2,16 @@ import webpush from "web-push";
 import { createServerClient } from "@supabase/ssr";
 import { SUPABASE_URL } from "@/lib/supabase/config";
 
-webpush.setVapidDetails(
-  process.env.VAPID_SUBJECT!,
-  process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!,
-  process.env.VAPID_PRIVATE_KEY!
-);
+let vapidInitialized = false;
+function ensureVapid() {
+  if (vapidInitialized) return;
+  const subject = process.env.VAPID_SUBJECT;
+  const pubKey  = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+  const privKey = process.env.VAPID_PRIVATE_KEY;
+  if (!subject || !pubKey || !privKey) return;
+  webpush.setVapidDetails(subject, pubKey, privKey);
+  vapidInitialized = true;
+}
 
 function adminClient() {
   return createServerClient(SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
@@ -22,6 +27,9 @@ export interface PushPayload {
 }
 
 export async function sendPushToUser(userId: string, payload: PushPayload) {
+  ensureVapid();
+  if (!vapidInitialized) return; // VAPID keys missing — skip silently
+
   const admin = adminClient();
   const { data: subs } = await admin
     .from("push_subscriptions")
@@ -37,7 +45,6 @@ export async function sendPushToUser(userId: string, payload: PushPayload) {
         { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
         message
       ).catch(async (err) => {
-        // Subscription expired / unsubscribed — hapus dari DB
         if (err.statusCode === 410 || err.statusCode === 404) {
           await admin.from("push_subscriptions").delete().eq("endpoint", sub.endpoint);
         }
