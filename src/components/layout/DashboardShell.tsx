@@ -8,6 +8,7 @@ import type { UserProfile } from "@/types";
 import { useTheme } from "@/context/ThemeContext";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import PushNotificationManager from "@/components/PushNotificationManager";
 
 const IDLE_MS   = 30 * 60 * 1000; // 30 minutes
 const WARN_MS   = 28 * 60 * 1000; // warn at 28 min (2 min before logout)
@@ -221,6 +222,8 @@ export default function DashboardShell({
           </AnimatePresence>
         </>
       )}
+
+      <PushNotificationManager />
 
       {/* ── Main content with page transition ──────────────────────── */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>

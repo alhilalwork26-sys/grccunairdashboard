@@ -3,6 +3,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { SUPABASE_URL } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
+import { sendPushToUser } from "@/lib/webpush";
 
 function createAdminClient() {
   return createServerClient(
@@ -84,11 +85,21 @@ export async function reviewReimbursementAction(
   if (!CAN_PAY_ROLES.includes(auth.role)) return { error: "Akses ditolak." };
 
   const admin = createAdminClient();
+  const { data: reimb } = await admin
+    .from("reimbursements")
+    .select("user_id, title")
+    .eq("id", reimbursementId)
+    .single();
+
   const payload: Record<string, unknown> = { status };
   if (status !== "pending") {
     payload.reviewed_by = auth.userId;
     payload.reviewed_at = new Date().toISOString();
     if (reviewNote !== undefined) payload.review_note = reviewNote;
+  } else {
+    payload.reviewed_by = null;
+    payload.reviewed_at = null;
+    payload.review_note = null;
   }
 
   const { error } = await admin
@@ -97,5 +108,18 @@ export async function reviewReimbursementAction(
     .eq("id", reimbursementId);
 
   if (error) return { error: error.message };
+
+  if (reimb?.user_id && reimb.user_id !== auth.userId && status !== "pending") {
+    const isApproved = status === "approved";
+    sendPushToUser(reimb.user_id, {
+      title: isApproved ? "Reimb disetujui!" : "Reimb ditolak",
+      body: isApproved
+        ? `Pengajuan reimb "${reimb.title}" kamu disetujui`
+        : `Pengajuan reimb "${reimb.title}" ditolak${reviewNote ? `: ${reviewNote}` : ""}`,
+      url: "/dashboard/finance",
+      tag: `reimb-${status}-${reimbursementId}`,
+    });
+  }
+
   return { error: null };
 }

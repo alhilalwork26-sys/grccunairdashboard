@@ -16,6 +16,15 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "GRCC UNAIR Dashboard",
   description: "Internal management system for GRCC UNAIR",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "GRCC Dashboard",
+  },
+  other: {
+    "mobile-web-app-capable": "yes",
+  },
 };
 
 export default function RootLayout({
@@ -26,6 +35,9 @@ export default function RootLayout({
   return (
     // suppressHydrationWarning prevents mismatch warning when ThemeProvider adds "dark" class client-side
     <html lang="id" className={`${geistSans.variable} ${geistMono.variable} h-full`} suppressHydrationWarning>
+      <head>
+        <meta name="theme-color" content="#1e40af" />
+      </head>
       <body className="min-h-full flex flex-col antialiased">
         <ThemeProvider>{children}</ThemeProvider>
       </body>
