@@ -66,8 +66,8 @@ export default function PushNotificationManager() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ endpoint: json.endpoint, keys: json.keys }),
         });
-      } catch {
-        // Permission denied or browser doesn't support — silent fail
+      } catch (err) {
+        console.warn("[Push] Setup failed:", err);
       }
     }
 

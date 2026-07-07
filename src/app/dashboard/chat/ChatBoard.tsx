@@ -6,6 +6,7 @@ import { Hash, Send, Loader2, MessageSquare, Users, Trash2, SquarePen, Search, X
 import Topbar from "@/components/layout/Topbar";
 import type { UserProfile } from "@/types";
 import { createClient } from "@/lib/supabase/client";
+import { sendChatMessageAction } from "./actions";
 
 const GLOBAL_ROOM_ID = "00000000-0000-0000-0000-000000000001";
 
@@ -237,14 +238,10 @@ export default function ChatBoard({currentUser,allUsers,dmRooms:initDms}:Props) 
     setSending(true); setInput("");
     if(taRef.current) taRef.current.style.height="auto";
     const now=new Date().toISOString();
-    const{data:inserted,error}=await supabase
-      .from("chat_messages")
-      .insert({room_id:roomId,sender_id:currentUser.id,content:text})
-      .select("*,sender:profiles(id,full_name,role,avatar_url)")
-      .single();
+    const{data:inserted,error}=await sendChatMessageAction(roomId,text);
     if(error){ setInput(text); setSending(false); return; }
     // Immediately add to UI without waiting for realtime (dedup handles double-fire)
-    if(inserted) setMsgs(prev=>prev.some(m=>m.id===(inserted as ChatMessage).id)?prev:[...prev,inserted as ChatMessage]);
+    if(inserted) setMsgs(prev=>prev.some(m=>m.id===(inserted as unknown as ChatMessage).id)?prev:[...prev,inserted as unknown as ChatMessage]);
     setLastMsgAt(prev=>({...prev,[roomId]:now}));
     setSending(false); taRef.current?.focus();
   }
