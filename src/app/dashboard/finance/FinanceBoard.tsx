@@ -3,7 +3,7 @@
 import { useState, useRef, Fragment, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { createClient } from "@/lib/supabase/client";
-import { uploadPayProofAction, reviewReimbursementAction } from "./actions";
+import { uploadPayProofAction, uploadGroupPayProofAction, reviewReimbursementAction } from "./actions";
 import type { UserProfile, FinanceTransaction, Reimbursement } from "@/types";
 import {
   Wallet, Plus, X, Check,
@@ -139,8 +139,10 @@ export default function FinanceBoard({ currentUser, initialTransactions, initial
   const [deleteReimbId, setDeleteReimbId]   = useState<string | null>(null);
   const batchFileRef                        = useRef<HTMLInputElement>(null);
 
-  // Payment proof upload
+  // Payment proof upload — single item (Ganti Bukti on single-item group)
   const [payProofTarget, setPayProofTarget] = useState<Reimbursement | null>(null);
+  // Payment proof upload — group (one proof for all items)
+  const [payProofGroupTarget, setPayProofGroupTarget] = useState<{ items: Reimbursement[]; name: string; total: number } | null>(null);
   const [payProofFile, setPayProofFile]     = useState<File | null>(null);
   const [uploadingPayProof, setUploadingPayProof] = useState(false);
   const payProofFileRef                     = useRef<HTMLInputElement>(null);
@@ -350,6 +352,29 @@ export default function FinanceBoard({ currentUser, initialTransactions, initial
     setPayProofTarget(null);
     setPayProofFile(null);
     if (payProofFileRef.current) payProofFileRef.current.value = "";
+  };
+
+  const handlePayProofGroup = async () => {
+    if (!payProofGroupTarget || !payProofFile) return;
+    setUploadingPayProof(true);
+    const ext  = payProofFile.name.split(".").pop();
+    const path = `${currentUser.id}/payment/grp-${payProofGroupTarget.items[0].id}/${storageStamp()}.${ext}`;
+    const { error: upErr } = await supabase.storage.from("receipts").upload(path, payProofFile, { upsert: true, contentType: payProofFile.type });
+    if (upErr) { showToast("Gagal upload: " + upErr.message, false); setUploadingPayProof(false); return; }
+    const { data: { publicUrl } } = supabase.storage.from("receipts").getPublicUrl(path);
+    const ids = payProofGroupTarget.items.map(r => r.id);
+    const { error } = await uploadGroupPayProofAction(ids, publicUrl);
+    if (error) {
+      showToast("Gagal: " + error, false);
+    } else {
+      const now = new Date().toISOString();
+      setReimbursements(prev => prev.map(r => ids.includes(r.id) ? { ...r, payment_proof_url: publicUrl, paid_at: now, paid_by: currentUser.id } : r));
+      showToast("Bukti pembayaran berhasil diupload untuk semua item");
+      setPayProofGroupTarget(null);
+      setPayProofFile(null);
+      if (payProofFileRef.current) payProofFileRef.current.value = "";
+    }
+    setUploadingPayProof(false);
   };
 
   const filteredTrx = transactions.filter(t => typeFilter === "all" || t.type === typeFilter);
@@ -950,20 +975,6 @@ export default function FinanceBoard({ currentUser, initialTransactions, initial
                                                     </a>
                                                   )
                                                 )}
-                                                {item.payment_proof_url && (
-                                                  isImg(item.payment_proof_url) ? (
-                                                    <button onClick={() => setExpandedImg(expandedImg === item.payment_proof_url ? null : item.payment_proof_url!)}
-                                                      title="Lihat Bukti Bayar"
-                                                      style={{ display: "inline-flex", alignItems: "center", padding: "3px 6px", borderRadius: 5, border: "1px solid #a7f3d0", background: expandedImg === item.payment_proof_url ? "#f0fdf4" : "#fff", cursor: "pointer" }}>
-                                                      <ImageIcon size={10} color="#10b981" />
-                                                    </button>
-                                                  ) : (
-                                                    <a href={item.payment_proof_url} target="_blank" rel="noopener noreferrer" title="Bukti Pembayaran PDF"
-                                                      style={{ display: "inline-flex", alignItems: "center", padding: "3px 6px", borderRadius: 5, border: "1px solid #a7f3d0", background: "#fff" }}>
-                                                      <FileText size={10} color="#10b981" />
-                                                    </a>
-                                                  )
-                                                )}
                                                 {canApprove && item.status === "pending" && (
                                                   <button onClick={() => { setReviewTarget(item); setReviewNote(""); }}
                                                     style={{ display: "inline-flex", alignItems: "center", gap: 3, padding: "3px 8px", border: "1px solid #c4b5fd", borderRadius: 5, background: "#f5f3ff", cursor: "pointer", fontSize: 10, fontWeight: 700, color: "#6d28d9" }}>
@@ -974,19 +985,6 @@ export default function FinanceBoard({ currentUser, initialTransactions, initial
                                                   <button onClick={() => handleReview(item.id, "pending")} title="Tinjau Ulang"
                                                     style={{ display: "inline-flex", alignItems: "center", padding: "3px 6px", border: "1px solid #fde68a", borderRadius: 5, background: "#fff", cursor: "pointer" }}>
                                                     <RotateCcw size={9} color="#d97706" />
-                                                  </button>
-                                                )}
-                                                {canPayOut && item.status === "approved" && !isPaid && (
-                                                  <button onClick={() => { setPayProofTarget(item); setPayProofFile(null); }}
-                                                    style={{ display: "inline-flex", alignItems: "center", gap: 3, padding: "3px 8px", border: "1px solid #a7f3d0", borderRadius: 5, background: "#f0fdf4", cursor: "pointer", fontSize: 10, fontWeight: 700, color: "#059669" }}>
-                                                    <Upload size={9} /> Bayar
-                                                  </button>
-                                                )}
-                                                {canPayOut && isPaid && (
-                                                  <button onClick={() => { setPayProofTarget(item); setPayProofFile(null); }}
-                                                    title="Ganti Bukti Bayar"
-                                                    style={{ display: "inline-flex", alignItems: "center", gap: 3, padding: "3px 8px", border: "1px solid #fbbf24", borderRadius: 5, background: "#fffbeb", cursor: "pointer", fontSize: 10, fontWeight: 700, color: "#d97706" }}>
-                                                    <RotateCcw size={9} /> Ganti
                                                   </button>
                                                 )}
                                                 {isOwn && item.status === "pending" && (
@@ -1004,13 +1002,6 @@ export default function FinanceBoard({ currentUser, initialTransactions, initial
                                                 </div>
                                               </div>
                                             )}
-                                            {expandedImg === item.payment_proof_url && item.payment_proof_url && (
-                                              <div style={{ padding: "0 12px 10px", background: idx % 2 === 0 ? "#f9fafb" : "#fff" }}>
-                                                <div style={{ borderRadius: 8, overflow: "hidden", border: "1px solid #a7f3d0", maxWidth: 260 }}>
-                                                  <img src={item.payment_proof_url} alt="Bukti Bayar" style={{ width: "100%", maxHeight: 160, objectFit: "contain", display: "block", background: "#f0fdf4" }} />
-                                                </div>
-                                              </div>
-                                            )}
                                             {item.review_note && (
                                               <div style={{ margin: "0 12px 8px", padding: "6px 10px", background: item.status === "approved" ? "#f0fdf4" : "#fef2f2", border: `1px solid ${item.status === "approved" ? "#a7f3d0" : "#fecaca"}`, borderRadius: 7, fontSize: 11, color: item.status === "approved" ? "#059669" : "#dc2626" }}>
                                                 <strong>Catatan{reviewer ? ` dari ${reviewer}` : ""}:</strong> {item.review_note}
@@ -1024,11 +1015,64 @@ export default function FinanceBoard({ currentUser, initialTransactions, initial
                                       <TimelineStep done color="#6366f1" label={`Diajukan oleh ${group.requesterName}`} date={fmtDate(group.items[0].created_at)} last />
                                     </div>
                                   </div>
-                                  <div style={{ padding: "8px 20px", borderTop: "1px solid #f3f4f6", background: "#fafafa" }}>
-                                    <span style={{ fontSize: 11, color: "#9ca3af" }}>
-                                      {group.items.length} item · Total {fmtRupiah(totalAmt)}
-                                    </span>
-                                  </div>
+                                  {/* Group-level payment proof footer */}
+                                  {(() => {
+                                    const groupPaid    = group.items.every(r => !!r.paid_at);
+                                    const allApproved  = group.items.every(r => r.status === "approved");
+                                    const anyApproved  = group.items.some(r => r.status === "approved" && !r.paid_at);
+                                    const groupProofUrl = group.items.find(r => !!r.payment_proof_url)?.payment_proof_url ?? null;
+                                    return (
+                                      <div style={{ padding: "10px 20px", borderTop: "1px solid #f3f4f6", background: "#fafafa", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+                                        <span style={{ fontSize: 11, color: "#9ca3af" }}>
+                                          {group.items.length} item · Total {fmtRupiah(totalAmt)}
+                                          {groupPaid && <span style={{ marginLeft: 6, color: "#10b981", fontWeight: 600 }}>· Sudah Dibayar</span>}
+                                        </span>
+                                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                          {/* View group proof */}
+                                          {groupProofUrl && (
+                                            isImg(groupProofUrl) ? (
+                                              <button onClick={() => setExpandedImg(expandedImg === groupProofUrl ? null : groupProofUrl)}
+                                                title="Lihat Bukti Bayar"
+                                                style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 8px", borderRadius: 6, border: "1px solid #a7f3d0", background: expandedImg === groupProofUrl ? "#f0fdf4" : "#fff", cursor: "pointer", fontSize: 10, fontWeight: 600, color: "#059669" }}>
+                                                <ImageIcon size={10} /> Bukti Bayar
+                                              </button>
+                                            ) : (
+                                              <a href={groupProofUrl} target="_blank" rel="noopener noreferrer"
+                                                style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 8px", borderRadius: 6, border: "1px solid #a7f3d0", background: "#fff", fontSize: 10, fontWeight: 600, color: "#059669", textDecoration: "none" }}>
+                                                <FileText size={10} /> Bukti Bayar
+                                              </a>
+                                            )
+                                          )}
+                                          {/* Upload group proof — all approved, not yet paid */}
+                                          {canPayOut && allApproved && anyApproved && (
+                                            <button onClick={() => { setPayProofGroupTarget({ items: group.items, name: group.requesterName, total: totalAmt }); setPayProofFile(null); }}
+                                              style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 10px", borderRadius: 6, border: "1px solid #a7f3d0", background: "#f0fdf4", cursor: "pointer", fontSize: 10, fontWeight: 700, color: "#059669" }}>
+                                              <Upload size={10} /> Upload Bukti Bayar
+                                            </button>
+                                          )}
+                                          {/* Ganti group proof — already paid */}
+                                          {canPayOut && groupPaid && (
+                                            <button onClick={() => { setPayProofGroupTarget({ items: group.items, name: group.requesterName, total: totalAmt }); setPayProofFile(null); }}
+                                              title="Ganti Bukti Bayar"
+                                              style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 10px", borderRadius: 6, border: "1px solid #fbbf24", background: "#fffbeb", cursor: "pointer", fontSize: 10, fontWeight: 700, color: "#d97706" }}>
+                                              <RotateCcw size={10} /> Ganti Bukti
+                                            </button>
+                                          )}
+                                        </div>
+                                      </div>
+                                    );
+                                  })()}
+                                  {/* Expanded group proof image */}
+                                  {(() => {
+                                    const groupProofUrl = group.items.find(r => !!r.payment_proof_url)?.payment_proof_url ?? null;
+                                    return groupProofUrl && expandedImg === groupProofUrl && isImg(groupProofUrl) ? (
+                                      <div style={{ padding: "0 20px 12px", background: "#fafafa" }}>
+                                        <div style={{ borderRadius: 8, overflow: "hidden", border: "1px solid #a7f3d0", maxWidth: 300 }}>
+                                          <img src={groupProofUrl} alt="Bukti Bayar" style={{ width: "100%", maxHeight: 180, objectFit: "contain", display: "block", background: "#f0fdf4" }} />
+                                        </div>
+                                      </div>
+                                    ) : null;
+                                  })()}
                                 </motion.div>
                               )}
                             </AnimatePresence>
@@ -1408,6 +1452,78 @@ export default function FinanceBoard({ currentUser, initialTransactions, initial
                   </button>
                   <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
                     onClick={handlePayProof} disabled={!payProofFile || uploadingPayProof}
+                    style={{ flex: 1, padding: "11px", border: "none", borderRadius: 11, background: payProofFile ? "linear-gradient(135deg, #10b981, #047857)" : "#e5e7eb", cursor: payProofFile ? "pointer" : "not-allowed", fontSize: 13, fontWeight: 700, color: payProofFile ? "#fff" : "#9ca3af", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                    {uploadingPayProof ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+                    {uploadingPayProof ? "Mengupload..." : "Upload Bukti"}
+                  </motion.button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Group Payment Proof Upload Modal */}
+      <AnimatePresence>
+        {payProofGroupTarget && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            style={{ position: "fixed", inset: 0, zIndex: 50, background: "rgba(0,0,0,0.45)", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}
+            onClick={e => { if (e.target === e.currentTarget) { setPayProofGroupTarget(null); setPayProofFile(null); } }}>
+            <motion.div initial={{ opacity: 0, scale: 0.94, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.94, y: 8 }}
+              transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
+              style={{ background: "#fff", borderRadius: 20, width: "100%", maxWidth: 440, boxShadow: "0 25px 60px rgba(0,0,0,0.18)" }}>
+              <div style={{ padding: "20px 24px 16px", borderBottom: "1px solid #f3f4f6", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div>
+                  <h2 style={{ fontSize: 16, fontWeight: 700, color: "#111827" }}>Upload Bukti Pembayaran</h2>
+                  <p style={{ fontSize: 13, color: "#6b7280", marginTop: 3 }}>
+                    {payProofGroupTarget.name} · <strong style={{ color: "#059669" }}>{fmtRupiah(payProofGroupTarget.total)}</strong>
+                    <span style={{ marginLeft: 6, fontSize: 11, color: "#9ca3af" }}>({payProofGroupTarget.items.length} item)</span>
+                  </p>
+                </div>
+                <button onClick={() => { setPayProofGroupTarget(null); setPayProofFile(null); }} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}>
+                  <X size={18} color="#9ca3af" />
+                </button>
+              </div>
+              <div style={{ padding: "20px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 8 }}>Foto / File Bukti Transfer</label>
+                  <div onClick={() => payProofFileRef.current?.click()}
+                    style={{ border: "2px dashed #a7f3d0", borderRadius: 12, padding: "20px", textAlign: "center", cursor: "pointer", background: "#f0fdf4" }}>
+                    {payProofFile ? (
+                      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+                        {payProofFile.type.startsWith("image/") ? (
+                          <img src={URL.createObjectURL(payProofFile)} alt="preview" style={{ maxHeight: 160, maxWidth: "100%", borderRadius: 8, objectFit: "contain" }} />
+                        ) : (
+                          <FileText size={32} color="#10b981" />
+                        )}
+                        <p style={{ fontSize: 12, fontWeight: 600, color: "#059669" }}>{payProofFile.name}</p>
+                        <p style={{ fontSize: 11, color: "#9ca3af" }}>{(payProofFile.size / 1024).toFixed(0)} KB</p>
+                      </div>
+                    ) : (
+                      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+                        <Upload size={28} color="#10b981" />
+                        <p style={{ fontSize: 13, fontWeight: 600, color: "#059669" }}>Klik untuk pilih file</p>
+                        <p style={{ fontSize: 11, color: "#9ca3af" }}>JPG, PNG, PDF · Maks 10MB</p>
+                      </div>
+                    )}
+                  </div>
+                  <input ref={payProofFileRef} type="file" accept="image/*,application/pdf" style={{ display: "none" }}
+                    onChange={e => { const f = e.target.files?.[0]; if (f) setPayProofFile(f); }} />
+                </div>
+                {payProofFile && (
+                  <div style={{ background: "#f0fdf4", border: "1px solid #a7f3d0", borderRadius: 10, padding: "10px 14px" }}>
+                    <p style={{ fontSize: 12, color: "#059669", fontWeight: 600 }}>
+                      Bukti ini akan diterapkan ke semua {payProofGroupTarget.items.length} item sekaligus dan tercatat sebagai &quot;Sudah Dibayar&quot;.
+                    </p>
+                  </div>
+                )}
+                <div style={{ display: "flex", gap: 10 }}>
+                  <button onClick={() => { setPayProofGroupTarget(null); setPayProofFile(null); }}
+                    style={{ flex: 1, padding: "11px", border: "1px solid #e5e7eb", borderRadius: 11, background: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600, color: "#374151" }}>
+                    Batal
+                  </button>
+                  <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
+                    onClick={handlePayProofGroup} disabled={!payProofFile || uploadingPayProof}
                     style={{ flex: 1, padding: "11px", border: "none", borderRadius: 11, background: payProofFile ? "linear-gradient(135deg, #10b981, #047857)" : "#e5e7eb", cursor: payProofFile ? "pointer" : "not-allowed", fontSize: 13, fontWeight: 700, color: payProofFile ? "#fff" : "#9ca3af", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
                     {uploadingPayProof ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
                     {uploadingPayProof ? "Mengupload..." : "Upload Bukti"}

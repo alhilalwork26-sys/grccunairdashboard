@@ -51,6 +51,29 @@ export async function uploadPayProofAction(
   return { error: null };
 }
 
+export async function uploadGroupPayProofAction(
+  reimbursementIds: string[],
+  paymentProofUrl: string,
+): Promise<{ error: string | null }> {
+  const auth = await requireFinanceAuth();
+  if ("error" in auth) return auth;
+  if (!CAN_PAY_ROLES.includes(auth.role)) return { error: "Akses ditolak." };
+  if (!reimbursementIds.length) return { error: null };
+
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from("reimbursements")
+    .update({
+      payment_proof_url: paymentProofUrl,
+      paid_at: new Date().toISOString(),
+      paid_by: auth.userId,
+    })
+    .in("id", reimbursementIds);
+
+  if (error) return { error: error.message };
+  return { error: null };
+}
+
 export async function reviewReimbursementAction(
   reimbursementId: string,
   status: "approved" | "rejected" | "pending",
