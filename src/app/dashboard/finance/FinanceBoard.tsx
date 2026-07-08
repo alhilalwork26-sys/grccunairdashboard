@@ -959,14 +959,14 @@ export default function FinanceBoard({ currentUser, initialTransactions, initial
                                       <Trash2 size={11} /> Batalkan
                                     </motion.button>
                                   )}
-                                  {(isOwn || canApprove) && singleItem!.status !== "pending" && !showArchived && (
+                                  {singleItem!.status !== "pending" && !showArchived && (
                                     <motion.button whileHover={{ background: "#fffbeb" }} whileTap={{ scale: 0.97 }}
                                       onClick={() => handleArchive([singleItem!.id])}
                                       style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "5px 10px", border: "1px solid #fde68a", borderRadius: 7, background: "#fff", cursor: "pointer", fontSize: 11, fontWeight: 600, color: "#d97706", whiteSpace: "nowrap", transition: "background 0.12s" }}>
                                       <Archive size={11} /> Arsipkan
                                     </motion.button>
                                   )}
-                                  {showArchived && (isOwn || canApprove) && (
+                                  {showArchived && (
                                     <motion.button whileHover={{ background: "#f0fdf4" }} whileTap={{ scale: 0.97 }}
                                       onClick={() => handleArchive([singleItem!.id], false)}
                                       style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "5px 10px", border: "1px solid #a7f3d0", borderRadius: 7, background: "#fff", cursor: "pointer", fontSize: 11, fontWeight: 600, color: "#059669", whiteSpace: "nowrap", transition: "background 0.12s" }}>
@@ -1106,13 +1106,13 @@ export default function FinanceBoard({ currentUser, initialTransactions, initial
                                             </button>
                                           )}
                                           {/* Arsipkan grup — semua selesai (tidak ada yang pending) */}
-                                          {(isOwn || canApprove) && pendingCnt === 0 && !showArchived && (
+                                          {pendingCnt === 0 && !showArchived && (
                                             <button onClick={() => handleArchive(group.items.map(r => r.id))}
                                               style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 10px", borderRadius: 6, border: "1px solid #fde68a", background: "#fffbeb", cursor: "pointer", fontSize: 10, fontWeight: 700, color: "#d97706" }}>
                                               <Archive size={10} /> Arsipkan
                                             </button>
                                           )}
-                                          {showArchived && (isOwn || canApprove) && (
+                                          {showArchived && (
                                             <button onClick={() => handleArchive(group.items.map(r => r.id), false)}
                                               style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 10px", borderRadius: 6, border: "1px solid #a7f3d0", background: "#f0fdf4", cursor: "pointer", fontSize: 10, fontWeight: 700, color: "#059669" }}>
                                               <Archive size={10} /> Buka Arsip

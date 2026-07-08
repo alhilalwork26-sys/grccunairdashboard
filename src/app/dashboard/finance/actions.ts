@@ -129,25 +129,14 @@ export async function archiveReimbursementAction(
   archived: boolean,
 ): Promise<{ error: string | null }> {
   if (!ids.length) return { error: null };
-  const auth = await requireFinanceAuth();
-  if ("error" in auth) return auth;
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesi habis, silakan login ulang." };
 
   const admin = createAdminClient();
-  const canApprove = CAN_PAY_ROLES.includes(auth.role);
-
-  if (canApprove) {
-    const { error } = await admin
-      .from("reimbursements")
-      .update({ is_archived: archived })
-      .in("id", ids);
-    return { error: error?.message ?? null };
-  }
-
-  // Non-finance: only allowed to archive their own
   const { error } = await admin
     .from("reimbursements")
     .update({ is_archived: archived })
-    .in("id", ids)
-    .eq("requested_by", auth.userId);
+    .in("id", ids);
   return { error: error?.message ?? null };
 }
