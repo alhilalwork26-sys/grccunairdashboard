@@ -57,3 +57,28 @@ export async function sendPushToUser(userId: string, payload: PushPayload) {
 export async function sendPushToUsers(userIds: string[], payload: PushPayload) {
   await Promise.allSettled(userIds.map((id) => sendPushToUser(id, payload)));
 }
+
+export async function sendPushToAll(payload: PushPayload, excludeUserId?: string) {
+  ensureVapid();
+  if (!vapidInitialized) return;
+
+  const admin = adminClient();
+  let q = admin.from("push_subscriptions").select("user_id, endpoint, p256dh, auth");
+  if (excludeUserId) q = q.neq("user_id", excludeUserId);
+  const { data: subs } = await q;
+  if (!subs?.length) return;
+
+  const message = JSON.stringify(payload);
+  await Promise.allSettled(
+    subs.map((sub) =>
+      webpush.sendNotification(
+        { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+        message
+      ).catch(async (err) => {
+        if ([401, 403, 404, 410].includes(err.statusCode)) {
+          await admin.from("push_subscriptions").delete().eq("endpoint", sub.endpoint);
+        }
+      })
+    )
+  );
+}

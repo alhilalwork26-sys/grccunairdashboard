@@ -4,6 +4,7 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { createClient } from "@/lib/supabase/client";
 import type { UserProfile } from "@/types";
+import { createAnnouncementAction } from "./actions";
 import {
   Plus, X, Check, Pin, PinOff, Megaphone,
   Edit2, Trash2, Bell, Info, AlertTriangle, PartyPopper,
@@ -102,12 +103,10 @@ export default function AnnouncementBoard({ currentUser, initialAnnouncements }:
         showToast("Pengumuman diperbarui");
       }
     } else {
-      const { data, error } = await supabase
-        .from("announcements").insert(payload)
-        .select("*, profiles(full_name, role)").single();
+      const { data, error } = await createAnnouncementAction(payload);
       if (error) showToast("Gagal menyimpan", false);
       else {
-        setItems(prev => [data, ...prev].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0)));
+        setItems(prev => [data as unknown as Announcement, ...prev].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0)));
         showToast("Pengumuman ditambahkan");
       }
     }
