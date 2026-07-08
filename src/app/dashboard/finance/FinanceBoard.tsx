@@ -3,7 +3,7 @@
 import { useState, useRef, Fragment, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { createClient } from "@/lib/supabase/client";
-import { uploadPayProofAction, uploadGroupPayProofAction, reviewReimbursementAction } from "./actions";
+import { uploadPayProofAction, uploadGroupPayProofAction, reviewReimbursementAction, archiveReimbursementAction } from "./actions";
 import type { UserProfile, FinanceTransaction, Reimbursement } from "@/types";
 import {
   Wallet, Plus, X, Check,
@@ -11,7 +11,7 @@ import {
   Edit2, Trash2, ArrowUpRight, ArrowDownRight, FileText,
   Search, Upload, Paperclip, Receipt,
   Loader2, Tag, CalendarDays, ImageIcon, Banknote, RotateCcw,
-  ChevronDown, ChevronUp, ExternalLink,
+  ChevronDown, ChevronUp, ExternalLink, Archive,
 } from "lucide-react";
 
 const EXPENSE_CATEGORIES    = ["Operasional", "Marketing", "Training", "SDM", "Teknologi", "Transportasi", "Konsumsi", "Lainnya"];
@@ -133,6 +133,7 @@ export default function FinanceBoard({ currentUser, initialTransactions, initial
   const [showReimbModal, setShowReimbModal] = useState(false);
   const [reimbRows, setReimbRows]           = useState<ReturnType<typeof newReimbRow>[]>([newReimbRow()]);
   const [reimbStatusFilter, setReimbStatusFilter] = useState<"all" | "pending" | "approved" | "rejected">("all");
+  const [showArchived, setShowArchived] = useState(false);
   const [reimbSearch, setReimbSearch]       = useState("");
   const [fileTargetKey, setFileTargetKey]   = useState<string | null>(null);
   const [uploadingReceipt, setUploadingReceipt] = useState(false);
@@ -200,8 +201,10 @@ export default function FinanceBoard({ currentUser, initialTransactions, initial
   const totalIncome  = transactions.filter(t => t.type === "income"  && t.status === "confirmed").reduce((s, t) => s + t.amount, 0);
   const totalExpense = transactions.filter(t => t.type === "expense" && t.status === "confirmed").reduce((s, t) => s + t.amount, 0);
   const balance      = totalIncome - totalExpense;
-  const pendingReimb = reimbursements.filter(r => r.status === "pending").length;
-  const approvedReimbTotal = reimbursements.filter(r => r.status === "approved").reduce((s, r) => s + r.amount, 0);
+  const activeReimb    = reimbursements.filter(r => !r.is_archived);
+  const archivedCount  = reimbursements.filter(r => r.is_archived).length;
+  const pendingReimb   = activeReimb.filter(r => r.status === "pending").length;
+  const approvedReimbTotal = activeReimb.filter(r => r.status === "approved").reduce((s, r) => s + r.amount, 0);
 
   const expenseByCategory = EXPENSE_CATEGORIES.map(cat => ({
     cat,
@@ -210,6 +213,7 @@ export default function FinanceBoard({ currentUser, initialTransactions, initial
 
   // ── Filtered reimbursements ──
   const filteredReimb = reimbursements.filter(r => {
+    if (showArchived ? !r.is_archived : r.is_archived) return false;
     if (reimbStatusFilter !== "all" && r.status !== reimbStatusFilter) return false;
     if (reimbSearch && !r.title.toLowerCase().includes(reimbSearch.toLowerCase())) return false;
     return true;
@@ -324,6 +328,13 @@ export default function FinanceBoard({ currentUser, initialTransactions, initial
     setSubmitting(false);
     setReviewTarget(null);
     setReviewNote("");
+  };
+
+  const handleArchive = async (ids: string[], archived = true) => {
+    const { error } = await archiveReimbursementAction(ids, archived);
+    if (error) { showToast(error, false); return; }
+    setReimbursements(prev => prev.map(r => ids.includes(r.id) ? { ...r, is_archived: archived } : r));
+    showToast(archived ? "Diarsipkan" : "Dipindah ke aktif");
   };
 
   const handlePayProof = async () => {
@@ -679,10 +690,10 @@ export default function FinanceBoard({ currentUser, initialTransactions, initial
                 {/* Status filter pills */}
                 <div style={{ display: "flex", gap: 6 }}>
                   {([
-                    { key: "all",      label: "Semua",    count: reimbursements.length },
-                    { key: "pending",  label: "Menunggu", count: reimbursements.filter(r => r.status === "pending").length },
-                    { key: "approved", label: "Disetujui",count: reimbursements.filter(r => r.status === "approved").length },
-                    { key: "rejected", label: "Ditolak",  count: reimbursements.filter(r => r.status === "rejected").length },
+                    { key: "all",      label: "Semua",    count: (showArchived ? reimbursements.filter(r => r.is_archived) : activeReimb).length },
+                    { key: "pending",  label: "Menunggu", count: (showArchived ? reimbursements.filter(r => r.is_archived) : activeReimb).filter(r => r.status === "pending").length },
+                    { key: "approved", label: "Disetujui",count: (showArchived ? reimbursements.filter(r => r.is_archived) : activeReimb).filter(r => r.status === "approved").length },
+                    { key: "rejected", label: "Ditolak",  count: (showArchived ? reimbursements.filter(r => r.is_archived) : activeReimb).filter(r => r.status === "rejected").length },
                   ] as const).map(f => (
                     <motion.button key={f.key} whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
                       onClick={() => setReimbStatusFilter(f.key)}
@@ -702,14 +713,36 @@ export default function FinanceBoard({ currentUser, initialTransactions, initial
                   ))}
                 </div>
 
-                {/* Search */}
-                <div style={{ marginLeft: "auto", position: "relative" }}>
-                  <Search size={13} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "#9ca3af" }} />
-                  <input
-                    value={reimbSearch} onChange={e => setReimbSearch(e.target.value)}
-                    placeholder="Cari reimbursement..."
-                    style={{ padding: "7px 12px 7px 30px", borderRadius: 9, border: "1px solid #e5e7eb", fontSize: 12, color: "#111827", background: "#fff", outline: "none", width: 200 }}
-                  />
+                {/* Arsip toggle + Search */}
+                <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+                  <motion.button
+                    whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
+                    onClick={() => { setShowArchived(v => !v); setReimbStatusFilter("all"); }}
+                    style={{
+                      display: "inline-flex", alignItems: "center", gap: 5,
+                      padding: "6px 12px", borderRadius: 20, cursor: "pointer",
+                      fontSize: 12, fontWeight: 600, transition: "all 0.15s",
+                      border: showArchived ? "1.5px solid #d97706" : "1.5px solid #e5e7eb",
+                      background: showArchived ? "#fffbeb" : "#fff",
+                      color: showArchived ? "#d97706" : "#9ca3af",
+                    }}
+                  >
+                    <Archive size={12} />
+                    Arsip
+                    {archivedCount > 0 && (
+                      <span style={{ fontSize: 10, fontWeight: 700, background: showArchived ? "#d97706" : "#f3f4f6", color: showArchived ? "#fff" : "#9ca3af", borderRadius: 20, padding: "1px 6px" }}>
+                        {archivedCount}
+                      </span>
+                    )}
+                  </motion.button>
+                  <div style={{ position: "relative" }}>
+                    <Search size={13} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "#9ca3af" }} />
+                    <input
+                      value={reimbSearch} onChange={e => setReimbSearch(e.target.value)}
+                      placeholder="Cari reimbursement..."
+                      style={{ padding: "7px 12px 7px 30px", borderRadius: 9, border: "1px solid #e5e7eb", fontSize: 12, color: "#111827", background: "#fff", outline: "none", width: 200 }}
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -719,9 +752,9 @@ export default function FinanceBoard({ currentUser, initialTransactions, initial
                   <div style={{ background: "#fff", border: "2px dashed #e5e7eb", borderRadius: 16, padding: "60px 40px", textAlign: "center" }}>
                     <Receipt size={40} style={{ color: "#e5e7eb", margin: "0 auto 14px" }} />
                     <p style={{ fontSize: 15, fontWeight: 600, color: "#374151" }}>
-                      {reimbSearch || reimbStatusFilter !== "all" ? "Tidak ada yang cocok" : "Belum ada pengajuan reimbursement"}
+                      {showArchived ? "Belum ada arsip" : reimbSearch || reimbStatusFilter !== "all" ? "Tidak ada yang cocok" : "Belum ada pengajuan reimbursement"}
                     </p>
-                    {!reimbSearch && reimbStatusFilter === "all" && !weekClosed && (
+                    {!reimbSearch && reimbStatusFilter === "all" && !weekClosed && !showArchived && (
                       <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
                         onClick={() => { setReimbRows([newReimbRow()]); setShowReimbModal(true); }}
                         style={{ marginTop: 18, background: "linear-gradient(135deg, #6366f1, #4f46e5)", color: "#fff", border: "none", borderRadius: 10, padding: "10px 22px", fontSize: 13, fontWeight: 600, cursor: "pointer", boxShadow: "0 4px 12px rgba(99,102,241,0.3)" }}>
@@ -926,6 +959,20 @@ export default function FinanceBoard({ currentUser, initialTransactions, initial
                                       <Trash2 size={11} /> Batalkan
                                     </motion.button>
                                   )}
+                                  {(isOwn || canApprove) && singleItem!.status !== "pending" && !showArchived && (
+                                    <motion.button whileHover={{ background: "#fffbeb" }} whileTap={{ scale: 0.97 }}
+                                      onClick={() => handleArchive([singleItem!.id])}
+                                      style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "5px 10px", border: "1px solid #fde68a", borderRadius: 7, background: "#fff", cursor: "pointer", fontSize: 11, fontWeight: 600, color: "#d97706", whiteSpace: "nowrap", transition: "background 0.12s" }}>
+                                      <Archive size={11} /> Arsipkan
+                                    </motion.button>
+                                  )}
+                                  {showArchived && (isOwn || canApprove) && (
+                                    <motion.button whileHover={{ background: "#f0fdf4" }} whileTap={{ scale: 0.97 }}
+                                      onClick={() => handleArchive([singleItem!.id], false)}
+                                      style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "5px 10px", border: "1px solid #a7f3d0", borderRadius: 7, background: "#fff", cursor: "pointer", fontSize: 11, fontWeight: 600, color: "#059669", whiteSpace: "nowrap", transition: "background 0.12s" }}>
+                                      <Archive size={11} /> Buka Arsip
+                                    </motion.button>
+                                  )}
                                 </div>
                               </div>
                             </div>
@@ -1056,6 +1103,19 @@ export default function FinanceBoard({ currentUser, initialTransactions, initial
                                               title="Ganti Bukti Bayar"
                                               style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 10px", borderRadius: 6, border: "1px solid #fbbf24", background: "#fffbeb", cursor: "pointer", fontSize: 10, fontWeight: 700, color: "#d97706" }}>
                                               <RotateCcw size={10} /> Ganti Bukti
+                                            </button>
+                                          )}
+                                          {/* Arsipkan grup — semua selesai (tidak ada yang pending) */}
+                                          {(isOwn || canApprove) && pendingCnt === 0 && !showArchived && (
+                                            <button onClick={() => handleArchive(group.items.map(r => r.id))}
+                                              style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 10px", borderRadius: 6, border: "1px solid #fde68a", background: "#fffbeb", cursor: "pointer", fontSize: 10, fontWeight: 700, color: "#d97706" }}>
+                                              <Archive size={10} /> Arsipkan
+                                            </button>
+                                          )}
+                                          {showArchived && (isOwn || canApprove) && (
+                                            <button onClick={() => handleArchive(group.items.map(r => r.id), false)}
+                                              style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 10px", borderRadius: 6, border: "1px solid #a7f3d0", background: "#f0fdf4", cursor: "pointer", fontSize: 10, fontWeight: 700, color: "#059669" }}>
+                                              <Archive size={10} /> Buka Arsip
                                             </button>
                                           )}
                                         </div>

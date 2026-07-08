@@ -135,6 +135,7 @@ export interface Reimbursement {
   reviewed_by?: string | null;
   reviewed_at?: string | null;
   review_note?: string | null;
+  is_archived?: boolean;
   created_at: string;
   updated_at: string;
   requester?: { full_name: string; role: string } | null;
