@@ -31,63 +31,150 @@ function isStandalone(): boolean {
 
 export default function PushNotificationManager() {
   const [showIosBanner, setShowIosBanner] = useState(false);
+  const [showIosEnableBtn, setShowIosEnableBtn] = useState(false);
+  const [enabling, setEnabling] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    // Show iOS install guide if: iOS Safari + not installed to homescreen + not dismissed
-    if (isIosSafari() && !isStandalone()) {
+    const ios = isIosSafari();
+    const standalone = isStandalone();
+
+    // iOS Safari + not installed → show install guide
+    if (ios && !standalone) {
       const dismissed = sessionStorage.getItem(DISMISSED_KEY);
       if (!dismissed) setShowIosBanner(true);
-      return; // Push setup requires standalone on iOS
+      return;
     }
 
-    // Android / Desktop / iOS standalone — run normal push setup
-    if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
-
-    async function setup() {
-      try {
-        const reg = await navigator.serviceWorker.register("/sw.js");
-        await navigator.serviceWorker.ready;
-
-        const permission = await Notification.requestPermission();
-        if (permission !== "granted") return;
-
-        let sub = await reg.pushManager.getSubscription();
-
-        // If VAPID key changed (e.g. after key rotation), unsubscribe so we
-        // resubscribe with the new key — old subscription would be rejected.
-        const storedKey = localStorage.getItem(VAPID_KEY_STORAGE);
-        if (sub && storedKey !== VAPID_PUBLIC_KEY) {
-          await sub.unsubscribe();
-          sub = null;
-        }
-
-        if (!sub) {
-          sub = await reg.pushManager.subscribe({
-            userVisibleOnly: true,
-            applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
-          });
-          localStorage.setItem(VAPID_KEY_STORAGE, VAPID_PUBLIC_KEY);
-        }
-
-        const json = sub.toJSON();
-        await fetch("/api/push/subscribe", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ endpoint: json.endpoint, keys: json.keys }),
-        });
-      } catch (err) {
-        console.warn("[Push] Setup failed:", err);
+    // iOS Safari standalone — need user gesture for permission, show button
+    if (ios && standalone) {
+      if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
+      // If already granted, run setup silently; otherwise show enable button
+      if (Notification.permission === "granted") {
+        setupPush();
+      } else if (Notification.permission === "default") {
+        setShowIosEnableBtn(true);
       }
+      return;
     }
 
-    setup();
+    // Android / Desktop — auto-run push setup
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
+    setupPush();
   }, []);
+
+  async function setupPush() {
+    try {
+      const reg = await navigator.serviceWorker.register("/sw.js");
+      await navigator.serviceWorker.ready;
+
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") return;
+
+      let sub = await reg.pushManager.getSubscription();
+
+      // If VAPID key changed (e.g. after key rotation), unsubscribe so we
+      // resubscribe with the new key — old subscription would be rejected.
+      const storedKey = localStorage.getItem(VAPID_KEY_STORAGE);
+      if (sub && storedKey !== VAPID_PUBLIC_KEY) {
+        await sub.unsubscribe();
+        sub = null;
+      }
+
+      if (!sub) {
+        sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+        });
+        localStorage.setItem(VAPID_KEY_STORAGE, VAPID_PUBLIC_KEY);
+      }
+
+      const json = sub.toJSON();
+      await fetch("/api/push/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ endpoint: json.endpoint, keys: json.keys }),
+      });
+    } catch (err) {
+      console.warn("[Push] Setup failed:", err);
+    }
+  }
+
+  async function handleIosEnable() {
+    setEnabling(true);
+    await setupPush();
+    setShowIosEnableBtn(false);
+    setEnabling(false);
+  }
 
   function dismiss() {
     sessionStorage.setItem(DISMISSED_KEY, "1");
     setShowIosBanner(false);
+  }
+
+  // iOS standalone: show "Aktifkan Notifikasi" button
+  if (showIosEnableBtn) {
+    return (
+      <div
+        style={{
+          position: "fixed",
+          bottom: 0,
+          left: 0,
+          right: 0,
+          zIndex: 9998,
+          background: "#1e293b",
+          borderTop: "1px solid #334155",
+          padding: "14px 16px 20px",
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          boxShadow: "0 -4px 24px rgba(0,0,0,0.35)",
+        }}
+      >
+        <div style={{ flex: 1 }}>
+          <p style={{ fontSize: 13, fontWeight: 700, color: "#f1f5f9", margin: 0 }}>
+            Notifikasi Belum Aktif
+          </p>
+          <p style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>
+            Tap tombol untuk terima notifikasi push.
+          </p>
+        </div>
+        <button
+          onClick={handleIosEnable}
+          disabled={enabling}
+          style={{
+            flexShrink: 0,
+            background: "#1d4ed8",
+            border: "none",
+            borderRadius: 8,
+            padding: "8px 14px",
+            fontSize: 13,
+            fontWeight: 600,
+            color: "#fff",
+            cursor: enabling ? "default" : "pointer",
+            opacity: enabling ? 0.7 : 1,
+          }}
+        >
+          {enabling ? "Mengaktifkan…" : "Aktifkan"}
+        </button>
+        <button
+          onClick={() => setShowIosEnableBtn(false)}
+          style={{
+            flexShrink: 0,
+            background: "transparent",
+            border: "1px solid #475569",
+            borderRadius: 8,
+            padding: "7px 10px",
+            fontSize: 12,
+            color: "#94a3b8",
+            cursor: "pointer",
+          }}
+        >
+          Nanti
+        </button>
+      </div>
+    );
   }
 
   if (!showIosBanner) return null;
