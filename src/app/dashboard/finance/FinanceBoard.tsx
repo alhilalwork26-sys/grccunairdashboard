@@ -3,7 +3,7 @@
 import { useState, useRef, Fragment, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { createClient } from "@/lib/supabase/client";
-import { uploadPayProofAction, uploadGroupPayProofAction, reviewReimbursementAction, archiveReimbursementAction } from "./actions";
+import { uploadPayProofAction, uploadGroupPayProofAction, reviewReimbursementAction, archiveReimbursementAction, notifyFinanceNewReimbAction } from "./actions";
 import type { UserProfile, FinanceTransaction, Reimbursement } from "@/types";
 import {
   Wallet, Plus, X, Check,
@@ -296,6 +296,8 @@ export default function FinanceBoard({ currentUser, initialTransactions, initial
     if (inserted.length > 0) {
       setReimbursements(prev => [...inserted.reverse(), ...prev]);
       showToast(`${inserted.length} reimbursement berhasil diajukan`);
+      const total = inserted.reduce((s, r) => s + r.amount, 0);
+      notifyFinanceNewReimbAction(currentUser.full_name, inserted.length, total);
     }
     setSubmitting(false);
     setUploadingReceipt(false);

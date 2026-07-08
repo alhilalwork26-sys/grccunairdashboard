@@ -3,7 +3,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { SUPABASE_URL } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
-import { sendPushToUser } from "@/lib/webpush";
+import { sendPushToUser, sendPushToUsers } from "@/lib/webpush";
 
 function createAdminClient() {
   return createServerClient(
@@ -39,6 +39,12 @@ export async function uploadPayProofAction(
   if (!CAN_PAY_ROLES.includes(auth.role)) return { error: "Akses ditolak." };
 
   const admin = createAdminClient();
+  const { data: reimb } = await admin
+    .from("reimbursements")
+    .select("requested_by, title")
+    .eq("id", reimbursementId)
+    .single();
+
   const { error } = await admin
     .from("reimbursements")
     .update({
@@ -49,6 +55,16 @@ export async function uploadPayProofAction(
     .eq("id", reimbursementId);
 
   if (error) return { error: error.message };
+
+  if (reimb?.requested_by && reimb.requested_by !== auth.userId) {
+    await sendPushToUser(reimb.requested_by, {
+      title: "Reimbursement Sudah Dibayar! 🎉",
+      body: `Pembayaran untuk reimb "${reimb.title}" sudah dilakukan`,
+      url: "/dashboard/finance",
+      tag: `reimb-paid-${reimbursementId}`,
+    });
+  }
+
   return { error: null };
 }
 
@@ -62,6 +78,13 @@ export async function uploadGroupPayProofAction(
   if (!reimbursementIds.length) return { error: null };
 
   const admin = createAdminClient();
+  const { data: firstReimb } = await admin
+    .from("reimbursements")
+    .select("requested_by")
+    .in("id", reimbursementIds)
+    .limit(1)
+    .single();
+
   const { error } = await admin
     .from("reimbursements")
     .update({
@@ -72,6 +95,48 @@ export async function uploadGroupPayProofAction(
     .in("id", reimbursementIds);
 
   if (error) return { error: error.message };
+
+  if (firstReimb?.requested_by && firstReimb.requested_by !== auth.userId) {
+    await sendPushToUser(firstReimb.requested_by, {
+      title: "Reimbursement Sudah Dibayar! 🎉",
+      body: `Pembayaran untuk ${reimbursementIds.length} reimbursement kamu sudah dilakukan`,
+      url: "/dashboard/finance",
+      tag: `reimb-paid-group-${reimbursementIds[0]}`,
+    });
+  }
+
+  return { error: null };
+}
+
+export async function notifyFinanceNewReimbAction(
+  requesterName: string,
+  count: number,
+  total: number,
+): Promise<{ error: string | null }> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Unauthorized" };
+
+  const admin = createAdminClient();
+  const { data: financeUsers } = await admin
+    .from("profiles")
+    .select("id")
+    .in("role", ["kep_finance", "manager"]);
+
+  const ids = (financeUsers ?? [])
+    .map((u: { id: string }) => u.id)
+    .filter((id: string) => id !== user.id);
+
+  if (!ids.length) return { error: null };
+
+  const totalFmt = "Rp " + total.toLocaleString("id-ID");
+  await sendPushToUsers(ids, {
+    title: "Pengajuan Reimbursement Baru",
+    body: `${requesterName} mengajukan ${count} reimb (${totalFmt}) — menunggu review`,
+    url: "/dashboard/finance",
+    tag: `reimb-new-${user.id}-${Date.now()}`,
+  });
+
   return { error: null };
 }
 
