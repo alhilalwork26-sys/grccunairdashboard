@@ -45,7 +45,8 @@ export async function sendPushToUser(userId: string, payload: PushPayload) {
         { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
         message
       ).catch(async (err) => {
-        if (err.statusCode === 410 || err.statusCode === 404) {
+        // 410/404 = subscription expired; 401/403 = VAPID key mismatch — all stale
+        if ([401, 403, 404, 410].includes(err.statusCode)) {
           await admin.from("push_subscriptions").delete().eq("endpoint", sub.endpoint);
         }
       })

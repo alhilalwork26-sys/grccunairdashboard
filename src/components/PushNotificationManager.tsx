@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 
 const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!;
 const DISMISSED_KEY = "ios_install_banner_dismissed";
+const VAPID_KEY_STORAGE = "grcc_vapid_pub_key";
 
 function urlBase64ToUint8Array(base64String: string) {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
@@ -53,11 +54,21 @@ export default function PushNotificationManager() {
         if (permission !== "granted") return;
 
         let sub = await reg.pushManager.getSubscription();
+
+        // If VAPID key changed (e.g. after key rotation), unsubscribe so we
+        // resubscribe with the new key — old subscription would be rejected.
+        const storedKey = localStorage.getItem(VAPID_KEY_STORAGE);
+        if (sub && storedKey !== VAPID_PUBLIC_KEY) {
+          await sub.unsubscribe();
+          sub = null;
+        }
+
         if (!sub) {
           sub = await reg.pushManager.subscribe({
             userVisibleOnly: true,
             applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
           });
+          localStorage.setItem(VAPID_KEY_STORAGE, VAPID_PUBLIC_KEY);
         }
 
         const json = sub.toJSON();
