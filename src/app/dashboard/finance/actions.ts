@@ -124,14 +124,16 @@ export async function reviewReimbursementAction(
   return { error: null };
 }
 
+const CAN_ARCHIVE_ROLES = ["kep_finance", "manager"];
+
 export async function archiveReimbursementAction(
   ids: string[],
   archived: boolean,
 ): Promise<{ error: string | null }> {
   if (!ids.length) return { error: null };
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { error: "Sesi habis, silakan login ulang." };
+  const auth = await requireFinanceAuth();
+  if ("error" in auth) return auth;
+  if (!CAN_ARCHIVE_ROLES.includes(auth.role)) return { error: "Akses ditolak." };
 
   const admin = createAdminClient();
   const { error } = await admin
