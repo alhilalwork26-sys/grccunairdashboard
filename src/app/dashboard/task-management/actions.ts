@@ -61,7 +61,7 @@ export async function createTaskAction(payload: {
 
   if (payload.assigned_to && payload.assigned_to !== auth.userId) {
     const { data: actor } = await admin.from("profiles").select("full_name").eq("id", auth.userId).single();
-    sendPushToUser(payload.assigned_to, {
+    await sendPushToUser(payload.assigned_to, {
       title: "Task baru di-assign",
       body: `${actor?.full_name ?? "Manager"} memberimu task: "${payload.title}"`,
       url: "/dashboard/task-management",
@@ -179,7 +179,7 @@ export async function submitForReviewAction(
   if (task.created_by && task.created_by !== auth.userId) {
     const { data: actor } = await admin.from("profiles").select("full_name").eq("id", auth.userId).single();
     const { data: taskData } = await admin.from("tasks").select("title").eq("id", taskId).single();
-    sendPushToUser(task.created_by, {
+    await sendPushToUser(task.created_by, {
       title: "Task siap direview",
       body: `${actor?.full_name ?? "Anggota"} mengajukan task "${taskData?.title ?? ""}" untuk direview`,
       url: "/dashboard/task-management",
@@ -235,7 +235,7 @@ export async function approveTaskAction(taskId: string): Promise<{ error: string
     action: "approved", from_status: "review", to_status: "done",
   });
   if (task?.assigned_to && task.assigned_to !== auth.userId) {
-    sendPushToUser(task.assigned_to, {
+    await sendPushToUser(task.assigned_to, {
       title: "Task disetujui!",
       body: `Task "${task.title}" kamu sudah di-approve`,
       url: "/dashboard/task-management",
@@ -263,7 +263,7 @@ export async function rejectTaskAction(
     note,
   });
   if (task?.assigned_to && task.assigned_to !== auth.userId) {
-    sendPushToUser(task.assigned_to, {
+    await sendPushToUser(task.assigned_to, {
       title: "Task perlu diperbaiki",
       body: `Task "${task.title}" dikembalikan${note ? `: ${note}` : ""}`,
       url: "/dashboard/task-management",

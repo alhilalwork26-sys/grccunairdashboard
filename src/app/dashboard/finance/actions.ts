@@ -111,7 +111,7 @@ export async function reviewReimbursementAction(
 
   if (reimb?.user_id && reimb.user_id !== auth.userId && status !== "pending") {
     const isApproved = status === "approved";
-    sendPushToUser(reimb.user_id, {
+    await sendPushToUser(reimb.user_id, {
       title: isApproved ? "Reimb disetujui!" : "Reimb ditolak",
       body: isApproved
         ? `Pengajuan reimb "${reimb.title}" kamu disetujui`

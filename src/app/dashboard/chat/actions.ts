@@ -44,8 +44,7 @@ export async function sendChatMessageAction(
     const recipientIds = (members ?? []).map((m: { user_id: string }) => m.user_id);
 
     if (recipientIds.length > 0) {
-      // Fire-and-forget push — don't await to keep response fast
-      sendPushToUsers(recipientIds, {
+      await sendPushToUsers(recipientIds, {
         title: `Pesan dari ${senderName}`,
         body: content.length > 80 ? content.slice(0, 80) + "…" : content,
         url: "/dashboard/chat",
