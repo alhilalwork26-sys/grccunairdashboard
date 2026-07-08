@@ -772,7 +772,7 @@ export default function TaskBoard({ initialTasks, profiles, currentUser, canSeeA
                     Bukti pengerjaan {reviewModal.task.requires_proof ? <span style={{ color: "#ef4444" }}>*</span> : <span style={{ color: "#9ca3af", fontWeight: 400 }}>(opsional)</span>}
                   </label>
                   {/* Upload file */}
-                  <input ref={proofFileRef} type="file" accept="image/jpeg,image/png,image/webp,application/pdf" style={{ display: "none" }} onChange={handleProofFileSelect} />
+                  <input ref={proofFileRef} type="file" accept="image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.pdf" style={{ display: "none" }} onChange={handleProofFileSelect} />
                   <motion.button type="button" whileHover={{ opacity: 0.85 }} whileTap={{ scale: 0.97 }}
                     disabled={uploadingProof}
                     onClick={() => proofFileRef.current?.click()}
@@ -781,7 +781,7 @@ export default function TaskBoard({ initialTasks, profiles, currentUser, canSeeA
                       ? <><div style={{ width: 12, height: 12, border: "2px solid #d1d5db", borderTopColor: "#7c3aed", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} /> Mengupload...</>
                       : proofFileName
                         ? <><CheckCircle size={13} /> {proofFileName}</>
-                        : <><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> Upload file (jpg/png/pdf)</>
+                        : <><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> Upload file (jpg/png/pdf/word/ppt/excel)</>
                     }
                   </motion.button>
                   {/* OR paste URL */}
