@@ -17,7 +17,7 @@ export async function GET(req: Request) {
 
   const admin = adminClient();
 
-  // Today's date in WIB (UTC+7) — cron fires at 10:30 UTC = 17:30 WIB
+  // Today's date in WIB (UTC+7) — cron fires at 10:00 UTC = 17:00 WIB
   const todayWIB = new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
   const { data: allUsers } = await admin
@@ -43,7 +43,7 @@ export async function GET(req: Request) {
 
   await sendPushToUsers(pendingIds, {
     title: "⏰ Jangan lupa Update Sore!",
-    body: "Isi Update Sore sebelum jam 18:00 WIB. Tinggal 30 menit lagi!",
+    body: "Isi Update Sore sebelum jam 18:00 WIB. Masih ada 1 jam lagi!",
     url: "/dashboard/progress",
     tag: "remind-evening",
   });
