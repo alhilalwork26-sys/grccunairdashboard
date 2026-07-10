@@ -6,26 +6,20 @@ import type { UserProfile } from "@/types";
 // If both layout.tsx and page.tsx call getUser(), Supabase is only hit once.
 export const getUser = cache(async (): Promise<{ user: UserProfile | null; userId: string | null }> => {
   const supabase = await createClient();
-  let session;
-  try {
-    const { data, error } = await supabase.auth.getSession();
-    if (error) return { user: null, userId: null };
-    session = data.session;
-  } catch {
-    return { user: null, userId: null };
-  }
-  if (!session) return { user: null, userId: null };
 
   try {
+    const { data: { user: authUser }, error } = await supabase.auth.getUser();
+    if (error || !authUser) return { user: null, userId: null };
+
     const { data: profile } = await supabase
       .from("profiles")
       .select("*")
-      .eq("id", session.user.id)
+      .eq("id", authUser.id)
       .single();
 
     if (!profile) return { user: null, userId: null };
 
-    return { user: profile as UserProfile, userId: session.user.id };
+    return { user: profile as UserProfile, userId: authUser.id };
   } catch {
     return { user: null, userId: null };
   }
