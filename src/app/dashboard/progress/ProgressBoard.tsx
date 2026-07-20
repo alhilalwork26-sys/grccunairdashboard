@@ -197,6 +197,8 @@ export default function ProgressBoard({ currentUser, initialEntries, profiles, t
 
   const saveEvening = async () => {
     if (!eveningForm.activities.trim()) return;
+    const hasProof = proofFile !== null || eveningForm.proof_url.trim() !== "";
+    if (!hasProof) return;
     setSubmitting(true);
 
     let finalProofUrl = eveningForm.proof_url.trim() || null;
@@ -709,8 +711,7 @@ export default function ProgressBoard({ currentUser, initialEntries, profiles, t
               <div>
                 <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
                   <Paperclip size={13} color="#6366f1" />
-                  <label style={{ fontSize: 12, fontWeight: 600, color: "#374151" }}>Bukti Kerja</label>
-                  <span style={{ fontSize: 11, color: "#9ca3af" }}>(opsional)</span>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: "#374151" }}>Bukti Kerja <span style={{ color: "#ef4444" }}>*</span></label>
                 </div>
                 {/* Mode toggle */}
                 <div style={{ display: "flex", background: "#f3f4f6", borderRadius: 8, padding: 3, gap: 2, marginBottom: 10 }}>
@@ -777,13 +778,13 @@ export default function ProgressBoard({ currentUser, initialEntries, profiles, t
               </div>
 
               <motion.button whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.98 }}
-                onClick={saveEvening} disabled={submitting || proofUploading || !eveningForm.activities.trim()}
+                onClick={saveEvening} disabled={submitting || proofUploading || !eveningForm.activities.trim() || (!proofFile && !eveningForm.proof_url.trim())}
                 style={{
                   width: "100%", padding: "12px",
-                  background: submitting || proofUploading || !eveningForm.activities.trim() ? "#d1d5db" : "linear-gradient(135deg, #6366f1, #4f46e5)",
+                  background: submitting || proofUploading || !eveningForm.activities.trim() || (!proofFile && !eveningForm.proof_url.trim()) ? "#d1d5db" : "linear-gradient(135deg, #6366f1, #4f46e5)",
                   color: "#fff", border: "none", borderRadius: 12, fontSize: 14, fontWeight: 700,
-                  cursor: submitting || proofUploading || !eveningForm.activities.trim() ? "not-allowed" : "pointer",
-                  boxShadow: eveningForm.activities.trim() ? "0 4px 14px rgba(99,102,241,0.4)" : "none",
+                  cursor: submitting || proofUploading || !eveningForm.activities.trim() || (!proofFile && !eveningForm.proof_url.trim()) ? "not-allowed" : "pointer",
+                  boxShadow: eveningForm.activities.trim() && (proofFile || eveningForm.proof_url.trim()) ? "0 4px 14px rgba(99,102,241,0.4)" : "none",
                   transition: "all 0.2s ease",
                 }}>
                 {proofUploading ? "Mengupload bukti..." : submitting ? "Menyimpan..." : "Simpan Update Sore"}
