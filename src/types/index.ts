@@ -65,6 +65,7 @@ export interface DailyProgress {
   obstacles?: string | null;
   plan_tomorrow?: string | null;
   mood?: number | null;
+  proof_url?: string | null;
   created_at: string;
   updated_at: string;
   profiles?: { full_name: string; role: string } | null;

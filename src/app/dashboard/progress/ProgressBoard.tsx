@@ -7,7 +7,7 @@ import type { UserProfile, DailyProgress } from "@/types";
 import {
   ChevronLeft, ChevronRight, X, Check, AlertCircle, Lightbulb,
   CalendarDays, Users, TrendingUp, Edit2, BarChart2,
-  Lock, ChevronDown,
+  Lock, ChevronDown, Paperclip, Link as LinkIcon, Upload, FileText, ExternalLink,
 } from "lucide-react";
 
 const MOOD_CFG = [
@@ -79,7 +79,7 @@ const PHASE_CFG = {
 };
 
 const EMPTY_MORNING = { morning_plan: "" };
-const EMPTY_EVENING = { activities: "", achievements: "", obstacles: "", plan_tomorrow: "", mood: 4 };
+const EMPTY_EVENING = { activities: "", achievements: "", obstacles: "", plan_tomorrow: "", mood: 4, proof_url: "" };
 
 interface WeekSummary {
   userId: string; name: string; role: string;
@@ -119,6 +119,9 @@ export default function ProgressBoard({ currentUser, initialEntries, profiles, t
   const [morningForm, setMorningForm] = useState(EMPTY_MORNING);
   const [eveningForm, setEveningForm] = useState(EMPTY_EVENING);
   const [submitting, setSubmitting]   = useState(false);
+  const [proofFile, setProofFile]     = useState<File | null>(null);
+  const [proofMode, setProofMode]     = useState<"file" | "url">("file");
+  const [proofUploading, setProofUploading] = useState(false);
 
   const showToast = (msg: string, ok = true) => {
     setToast({ msg, ok });
@@ -185,19 +188,44 @@ export default function ProgressBoard({ currentUser, initialEntries, profiles, t
       obstacles: myEntry?.obstacles ?? "",
       plan_tomorrow: myEntry?.plan_tomorrow ?? "",
       mood: myEntry?.mood ?? 4,
+      proof_url: myEntry?.proof_url ?? "",
     });
+    setProofFile(null);
+    setProofMode(myEntry?.proof_url ? "url" : "file");
     setEveningOpen(true);
   };
 
   const saveEvening = async () => {
     if (!eveningForm.activities.trim()) return;
     setSubmitting(true);
+
+    let finalProofUrl = eveningForm.proof_url.trim() || null;
+
+    // Upload file if selected
+    if (proofFile) {
+      setProofUploading(true);
+      const ext = proofFile.name.split(".").pop();
+      const path = `${currentUser.id}/${date}/${Date.now()}.${ext}`;
+      const { error: uploadError } = await supabase.storage
+        .from("progress-proofs").upload(path, proofFile, { upsert: true });
+      if (uploadError) {
+        showToast("Gagal upload bukti kerja", false);
+        setProofUploading(false);
+        setSubmitting(false);
+        return;
+      }
+      const { data: urlData } = supabase.storage.from("progress-proofs").getPublicUrl(path);
+      finalProofUrl = urlData.publicUrl;
+      setProofUploading(false);
+    }
+
     const payload = {
       activities: eveningForm.activities.trim(),
       achievements: eveningForm.achievements.trim() || null,
       obstacles: eveningForm.obstacles.trim() || null,
       plan_tomorrow: eveningForm.plan_tomorrow.trim() || null,
       mood: eveningForm.mood,
+      proof_url: finalProofUrl,
     };
     if (myEntry) {
       const { data, error } = await supabase.from("daily_progress")
@@ -403,6 +431,12 @@ export default function ProgressBoard({ currentUser, initialEntries, profiles, t
                                           <AlertCircle size={11} style={{ flexShrink: 0, marginTop: 1 }} />{e.obstacles}
                                         </p>
                                       )}
+                                      {e.proof_url && (
+                                        <a href={e.proof_url} target="_blank" rel="noreferrer"
+                                          style={{ display: "inline-flex", alignItems: "center", gap: 4, marginTop: 6, fontSize: 11, fontWeight: 600, color: "#4f46e5", textDecoration: "none", background: "#eef2ff", padding: "4px 8px", borderRadius: 6, border: "1px solid #c7d2fe" }}>
+                                          <Paperclip size={10} />Bukti Kerja<ExternalLink size={10} />
+                                        </a>
+                                      )}
                                     </div>
                                   );
                                 })}
@@ -559,6 +593,14 @@ export default function ProgressBoard({ currentUser, initialEntries, profiles, t
                                             <p style={{ fontSize: 12, color: "#374151" }}>{entry.plan_tomorrow}</p>
                                           </div>
                                         )}
+                                        {entry.proof_url && (
+                                          <div style={{ marginTop: 8 }}>
+                                            <a href={entry.proof_url} target="_blank" rel="noreferrer"
+                                              style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 600, color: "#4f46e5", textDecoration: "none", background: "#eef2ff", padding: "5px 10px", borderRadius: 8, border: "1px solid #c7d2fe" }}>
+                                              <Paperclip size={12} />Lihat Bukti Kerja<ExternalLink size={11} />
+                                            </a>
+                                          </div>
+                                        )}
                                       </>
                                     ) : (
                                       <p style={{ fontSize: 12, color: "#d1d5db", fontStyle: "italic" }}>Belum diisi</p>
@@ -662,17 +704,89 @@ export default function ProgressBoard({ currentUser, initialEntries, profiles, t
                 onChange={v => setEveningForm(f => ({ ...f, obstacles: v }))} />
               <EveningField label="Rencana Besok" placeholder="Apa yang akan dikerjakan besok?" value={eveningForm.plan_tomorrow} rows={2}
                 onChange={v => setEveningForm(f => ({ ...f, plan_tomorrow: v }))} />
+
+              {/* Bukti Kerja */}
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+                  <Paperclip size={13} color="#6366f1" />
+                  <label style={{ fontSize: 12, fontWeight: 600, color: "#374151" }}>Bukti Kerja</label>
+                  <span style={{ fontSize: 11, color: "#9ca3af" }}>(opsional)</span>
+                </div>
+                {/* Mode toggle */}
+                <div style={{ display: "flex", background: "#f3f4f6", borderRadius: 8, padding: 3, gap: 2, marginBottom: 10 }}>
+                  {([["file", "Upload File", <Upload key="u" size={11} />], ["url", "Link URL", <LinkIcon key="l" size={11} />]] as const).map(([mode, label, icon]) => (
+                    <button key={mode} onClick={() => { setProofMode(mode); if (mode === "file") setEveningForm(f => ({ ...f, proof_url: "" })); else setProofFile(null); }}
+                      style={{
+                        flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
+                        padding: "6px 0", border: "none", borderRadius: 6, cursor: "pointer",
+                        background: proofMode === mode ? "#fff" : "transparent",
+                        color: proofMode === mode ? "#4f46e5" : "#6b7280",
+                        fontWeight: proofMode === mode ? 700 : 500, fontSize: 12,
+                        boxShadow: proofMode === mode ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
+                        transition: "all 0.15s",
+                      }}>
+                      {icon}{label}
+                    </button>
+                  ))}
+                </div>
+
+                {proofMode === "file" ? (
+                  <div>
+                    <label style={{
+                      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                      gap: 6, padding: "16px", border: "1.5px dashed #c7d2fe", borderRadius: 10,
+                      cursor: "pointer", background: proofFile ? "#eef2ff" : "#fafafa", transition: "all 0.15s",
+                    }}>
+                      <input type="file" style={{ display: "none" }}
+                        accept="image/*,.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
+                        onChange={e => setProofFile(e.target.files?.[0] ?? null)} />
+                      {proofFile ? (
+                        <>
+                          <FileText size={20} color="#6366f1" />
+                          <span style={{ fontSize: 12, fontWeight: 600, color: "#4f46e5", textAlign: "center", wordBreak: "break-all" }}>{proofFile.name}</span>
+                          <span style={{ fontSize: 11, color: "#9ca3af" }}>{(proofFile.size / 1024).toFixed(0)} KB · Klik untuk ganti</span>
+                        </>
+                      ) : (
+                        <>
+                          <Upload size={20} color="#9ca3af" />
+                          <span style={{ fontSize: 12, color: "#6b7280", fontWeight: 500 }}>Klik untuk upload foto, PDF, Word, PPT, Excel</span>
+                          <span style={{ fontSize: 11, color: "#9ca3af" }}>Maks. 20 MB</span>
+                        </>
+                      )}
+                    </label>
+                    {/* Show existing proof if no new file selected */}
+                    {!proofFile && eveningForm.proof_url && (
+                      <a href={eveningForm.proof_url} target="_blank" rel="noreferrer"
+                        style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8, fontSize: 12, color: "#4f46e5", textDecoration: "none", fontWeight: 500 }}>
+                        <ExternalLink size={12} />Bukti sebelumnya tersimpan — klik untuk lihat
+                      </a>
+                    )}
+                  </div>
+                ) : (
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, border: "1.5px solid #c7d2fe", borderRadius: 10, padding: "10px 12px", background: "#fafafa" }}>
+                      <LinkIcon size={14} color="#6366f1" style={{ flexShrink: 0 }} />
+                      <input type="url" placeholder="https://drive.google.com/... atau link lainnya"
+                        value={eveningForm.proof_url}
+                        onChange={e => setEveningForm(f => ({ ...f, proof_url: e.target.value }))}
+                        style={{ flex: 1, border: "none", outline: "none", fontSize: 13, color: "#111827", background: "transparent", fontFamily: "inherit" }} />
+                    </div>
+                    <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 6 }}>Google Drive, Notion, GitHub, atau link apapun sebagai bukti</p>
+                  </div>
+                )}
+              </div>
+
               <motion.button whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.98 }}
-                onClick={saveEvening} disabled={submitting || !eveningForm.activities.trim()}
+                onClick={saveEvening} disabled={submitting || proofUploading || !eveningForm.activities.trim()}
                 style={{
                   width: "100%", padding: "12px",
-                  background: submitting || !eveningForm.activities.trim() ? "#d1d5db" : "linear-gradient(135deg, #6366f1, #4f46e5)",
+                  background: submitting || proofUploading || !eveningForm.activities.trim() ? "#d1d5db" : "linear-gradient(135deg, #6366f1, #4f46e5)",
                   color: "#fff", border: "none", borderRadius: 12, fontSize: 14, fontWeight: 700,
-                  cursor: submitting || !eveningForm.activities.trim() ? "not-allowed" : "pointer",
+                  cursor: submitting || proofUploading || !eveningForm.activities.trim() ? "not-allowed" : "pointer",
                   boxShadow: eveningForm.activities.trim() ? "0 4px 14px rgba(99,102,241,0.4)" : "none",
                   transition: "all 0.2s ease",
                 }}>
-                {submitting ? "Menyimpan..." : "Simpan Update Sore"}
+                {proofUploading ? "Mengupload bukti..." : submitting ? "Menyimpan..." : "Simpan Update Sore"}
               </motion.button>
             </div>
           </Modal>
@@ -746,6 +860,13 @@ function PhaseCard({ phase, status, entry, isToday, isSuperAdmin, onAction }: {
                     {MOOD_CFG[(entry.mood ?? 3) - 1]?.label}
                   </span>
                 </div>
+              )}
+              {entry.proof_url && (
+                <a href={entry.proof_url} target="_blank" rel="noreferrer"
+                  style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 4, padding: "6px 12px", background: "#eef2ff", border: "1px solid #c7d2fe", borderRadius: 8, fontSize: 12, fontWeight: 600, color: "#4f46e5", textDecoration: "none" }}>
+                  <Paperclip size={12} />Lihat Bukti Kerja
+                  <ExternalLink size={11} />
+                </a>
               )}
             </>
           )}
