@@ -24,9 +24,13 @@ export async function POST() {
   const hourWIB = nowWIB.getUTCHours() + nowWIB.getUTCMinutes() / 60;
 
   // Determine which phase to remind based on current WIB time
-  // Morning phase: before 11:00 WIB → remind morning_plan
-  // Evening phase: 12:00–18:00 WIB → remind activities
-  const isEveningPhase = hourWIB >= 12;
+  // Morning: before 11:00 WIB | Evening: 12:00–18:00 WIB
+  // Outside active windows → nothing to remind
+  const isMorningPhase = hourWIB < 11;
+  const isEveningPhase = hourWIB >= 12 && hourWIB < 18;
+  if (!isMorningPhase && !isEveningPhase) {
+    return NextResponse.json({ sent: 0, phase: "off_hours" });
+  }
   const column = isEveningPhase ? "activities" : "morning_plan";
   const phase = isEveningPhase ? "evening" : "morning";
 

@@ -164,21 +164,25 @@ export default function ProgressBoard({ currentUser, initialEntries, profiles, t
   const saveMorning = async () => {
     if (!morningForm.morning_plan.trim()) return;
     setSubmitting(true);
-    if (myEntry) {
-      const { data, error } = await supabase.from("daily_progress")
-        .update({ morning_plan: morningForm.morning_plan.trim() })
-        .eq("id", myEntry.id).select("*, profiles(full_name, role)").single();
-      if (error) showToast("Gagal menyimpan", false);
-      else { setEntries(p => p.map(e => e.id === myEntry.id ? data : e)); showToast("Rencana pagi disimpan ✓"); }
-    } else {
-      const { data, error } = await supabase.from("daily_progress")
-        .insert({ user_id: currentUser.id, date, morning_plan: morningForm.morning_plan.trim() })
-        .select("*, profiles(full_name, role)").single();
-      if (error) showToast("Gagal menyimpan", false);
-      else { setEntries(p => [data, ...p]); showToast("Rencana pagi disimpan ✓"); }
+    try {
+      if (myEntry) {
+        const { data, error } = await supabase.from("daily_progress")
+          .update({ morning_plan: morningForm.morning_plan.trim() })
+          .eq("id", myEntry.id).select("*, profiles(full_name, role)").single();
+        if (error) showToast("Gagal menyimpan", false);
+        else { setEntries(p => p.map(e => e.id === myEntry.id ? data : e)); showToast("Rencana pagi disimpan ✓"); setMorningOpen(false); }
+      } else {
+        const { data, error } = await supabase.from("daily_progress")
+          .insert({ user_id: currentUser.id, date, morning_plan: morningForm.morning_plan.trim() })
+          .select("*, profiles(full_name, role)").single();
+        if (error) showToast("Gagal menyimpan", false);
+        else { setEntries(p => [data, ...p]); showToast("Rencana pagi disimpan ✓"); setMorningOpen(false); }
+      }
+    } catch {
+      showToast("Gagal menyimpan", false);
+    } finally {
+      setSubmitting(false);
     }
-    setSubmitting(false);
-    setMorningOpen(false);
   };
 
   // ── Evening ──
@@ -202,48 +206,49 @@ export default function ProgressBoard({ currentUser, initialEntries, profiles, t
     if (!hasProof) return;
     setSubmitting(true);
 
-    let finalProofUrl = eveningForm.proof_url.trim() || null;
+    try {
+      let finalProofUrl = eveningForm.proof_url.trim() || null;
 
-    // Upload file if selected
-    if (proofFile) {
-      setProofUploading(true);
-      const ext = proofFile.name.split(".").pop();
-      const path = `${currentUser.id}/${date}/${Date.now()}.${ext}`;
-      const { error: uploadError } = await supabase.storage
-        .from("progress-proofs").upload(path, proofFile, { upsert: true });
-      if (uploadError) {
-        showToast("Gagal upload bukti kerja", false);
-        setProofUploading(false);
-        setSubmitting(false);
-        return;
+      if (proofFile) {
+        setProofUploading(true);
+        const ext = proofFile.name.split(".").pop();
+        const path = `${currentUser.id}/${date}/${Date.now()}.${ext}`;
+        const { error: uploadError } = await supabase.storage
+          .from("progress-proofs").upload(path, proofFile, { upsert: true });
+        if (uploadError) {
+          showToast("Gagal upload bukti kerja", false);
+          return;
+        }
+        const { data: urlData } = supabase.storage.from("progress-proofs").getPublicUrl(path);
+        finalProofUrl = urlData.publicUrl;
       }
-      const { data: urlData } = supabase.storage.from("progress-proofs").getPublicUrl(path);
-      finalProofUrl = urlData.publicUrl;
+
+      const payload = {
+        activities: eveningForm.activities.trim(),
+        achievements: eveningForm.achievements.trim() || null,
+        obstacles: eveningForm.obstacles.trim() || null,
+        plan_tomorrow: eveningForm.plan_tomorrow.trim() || null,
+        mood: eveningForm.mood,
+        proof_url: finalProofUrl,
+      };
+      if (myEntry) {
+        const { data, error } = await supabase.from("daily_progress")
+          .update(payload).eq("id", myEntry.id).select("*, profiles(full_name, role)").single();
+        if (error) showToast("Gagal menyimpan", false);
+        else { setEntries(p => p.map(e => e.id === myEntry.id ? data : e)); showToast("Update sore disimpan ✓"); setEveningOpen(false); }
+      } else {
+        const { data, error } = await supabase.from("daily_progress")
+          .insert({ user_id: currentUser.id, date, ...payload })
+          .select("*, profiles(full_name, role)").single();
+        if (error) showToast("Gagal menyimpan", false);
+        else { setEntries(p => [data, ...p]); showToast("Update sore disimpan ✓"); setEveningOpen(false); }
+      }
+    } catch {
+      showToast("Gagal menyimpan", false);
+    } finally {
+      setSubmitting(false);
       setProofUploading(false);
     }
-
-    const payload = {
-      activities: eveningForm.activities.trim(),
-      achievements: eveningForm.achievements.trim() || null,
-      obstacles: eveningForm.obstacles.trim() || null,
-      plan_tomorrow: eveningForm.plan_tomorrow.trim() || null,
-      mood: eveningForm.mood,
-      proof_url: finalProofUrl,
-    };
-    if (myEntry) {
-      const { data, error } = await supabase.from("daily_progress")
-        .update(payload).eq("id", myEntry.id).select("*, profiles(full_name, role)").single();
-      if (error) showToast("Gagal menyimpan", false);
-      else { setEntries(p => p.map(e => e.id === myEntry.id ? data : e)); showToast("Update sore disimpan ✓"); }
-    } else {
-      const { data, error } = await supabase.from("daily_progress")
-        .insert({ user_id: currentUser.id, date, ...payload })
-        .select("*, profiles(full_name, role)").single();
-      if (error) showToast("Gagal menyimpan", false);
-      else { setEntries(p => [data, ...p]); showToast("Update sore disimpan ✓"); }
-    }
-    setSubmitting(false);
-    setEveningOpen(false);
   };
 
   // ── Rekap ──
@@ -287,7 +292,9 @@ export default function ProgressBoard({ currentUser, initialEntries, profiles, t
       const res = await fetch("/api/notifications/blast-progress", { method: "POST" });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Gagal");
-      if (json.sent === 0) {
+      if (json.phase === "off_hours") {
+        showToast("Di luar jam pengisian (11:00 & 12:00–18:00 WIB)", false);
+      } else if (json.sent === 0) {
         showToast("Semua anggota sudah mengisi! 🎉", true);
       } else {
         const label = json.phase === "evening" ? "Update Sore" : "Rencana Pagi";

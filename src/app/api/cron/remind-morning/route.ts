@@ -11,7 +11,15 @@ function adminClient() {
 
 export async function GET(req: Request) {
   const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret && req.headers.get("authorization") !== `Bearer ${cronSecret}`) {
+  const authHeader = req.headers.get("authorization");
+  // Vercel sends x-vercel-cron-signature; fall back to CRON_SECRET bearer check.
+  // If CRON_SECRET is not set, only allow requests originating from Vercel cron.
+  const isVercelCron = req.headers.get("x-vercel-cron-job-uid") !== null;
+  if (cronSecret) {
+    if (authHeader !== `Bearer ${cronSecret}`) {
+      return new NextResponse("Unauthorized", { status: 401 });
+    }
+  } else if (!isVercelCron) {
     return new NextResponse("Unauthorized", { status: 401 });
   }
 
