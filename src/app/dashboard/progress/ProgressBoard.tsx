@@ -7,7 +7,7 @@ import type { UserProfile, DailyProgress } from "@/types";
 import {
   ChevronLeft, ChevronRight, X, Check, AlertCircle, Lightbulb,
   CalendarDays, Users, TrendingUp, Edit2, BarChart2,
-  Lock, ChevronDown, Paperclip, Link as LinkIcon, Upload, FileText, ExternalLink,
+  Lock, ChevronDown, Paperclip, Link as LinkIcon, Upload, FileText, ExternalLink, Bell,
 } from "lucide-react";
 
 const MOOD_CFG = [
@@ -122,6 +122,7 @@ export default function ProgressBoard({ currentUser, initialEntries, profiles, t
   const [proofFile, setProofFile]     = useState<File | null>(null);
   const [proofMode, setProofMode]     = useState<"file" | "url">("file");
   const [proofUploading, setProofUploading] = useState(false);
+  const [blasting, setBlasting] = useState(false);
 
   const showToast = (msg: string, ok = true) => {
     setToast({ msg, ok });
@@ -280,6 +281,25 @@ export default function ProgressBoard({ currentUser, initialEntries, profiles, t
 
   const { start: weekStart, end: weekEnd } = getWeekRange(today);
 
+  const blastNotif = async () => {
+    setBlasting(true);
+    try {
+      const res = await fetch("/api/notifications/blast-progress", { method: "POST" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Gagal");
+      if (json.sent === 0) {
+        showToast("Semua anggota sudah mengisi! 🎉", true);
+      } else {
+        const label = json.phase === "evening" ? "Update Sore" : "Rencana Pagi";
+        showToast(`Notifikasi ${label} dikirim ke ${json.sent} anggota 🔔`, true);
+      }
+    } catch {
+      showToast("Gagal mengirim notifikasi", false);
+    } finally {
+      setBlasting(false);
+    }
+  };
+
   return (
     <div className="board-root" style={{ display: "flex", flexDirection: "column", height: "100vh", background: "#f9fafb" }}>
 
@@ -294,6 +314,27 @@ export default function ProgressBoard({ currentUser, initialEntries, profiles, t
           <p style={{ fontSize: 12, color: "#9ca3af", marginTop: 1 }}>Rencana pagi & update sore harianmu</p>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginLeft: "auto" }}>
+          {canViewAll && isToday && (
+            <motion.button
+              whileHover={{ scale: blasting ? 1 : 1.02 }}
+              whileTap={{ scale: blasting ? 1 : 0.97 }}
+              onClick={blastNotif}
+              disabled={blasting}
+              style={{
+                display: "flex", alignItems: "center", gap: 7,
+                background: blasting ? "#e0e7ff" : "linear-gradient(135deg, #6366f1, #4f46e5)",
+                color: blasting ? "#6366f1" : "#fff",
+                border: "none", borderRadius: 10, padding: "8px 14px",
+                cursor: blasting ? "not-allowed" : "pointer",
+                fontSize: 12, fontWeight: 700, transition: "all 0.2s",
+                boxShadow: blasting ? "none" : "0 2px 8px rgba(99,102,241,0.35)",
+              }}>
+              {blasting
+                ? <><motion.div animate={{ rotate: 360 }} transition={{ duration: 0.9, repeat: Infinity, ease: "linear" }}
+                    style={{ width: 13, height: 13, border: "2px solid #c7d2fe", borderTopColor: "#6366f1", borderRadius: "50%" }} />Mengirim...</>
+                : <><Bell size={13} />Blast Notif</>}
+            </motion.button>
+          )}
           {canViewAll && (
             <div style={{ display: "flex", background: "#f3f4f6", borderRadius: 10, padding: 3, gap: 2 }}>
               {(["daily", "rekap"] as const).map(t => (
