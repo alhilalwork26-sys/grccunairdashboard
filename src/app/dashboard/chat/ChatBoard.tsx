@@ -7,6 +7,8 @@ import Topbar from "@/components/layout/Topbar";
 import type { UserProfile } from "@/types";
 import { createClient } from "@/lib/supabase/client";
 import { sendChatMessageAction } from "./actions";
+import StatusDot from "@/components/ui/StatusDot";
+import { usePresence } from "@/context/PresenceContext";
 
 const GLOBAL_ROOM_ID = "00000000-0000-0000-0000-000000000001";
 
@@ -82,6 +84,7 @@ function Badge({count}:{count:number}) {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function ChatBoard({currentUser,allUsers,dmRooms:initDms}:Props) {
   const supabase = useMemo(()=>createClient(),[]);
+  const { statusOf } = usePresence();
 
   const [roomId,setRoomId]     = useState(GLOBAL_ROOM_ID);
   const [msgs,setMsgs]         = useState<ChatMessage[]>([]);
@@ -340,7 +343,7 @@ export default function ChatBoard({currentUser,allUsers,dmRooms:initDms}:Props) 
                     background:active?"linear-gradient(135deg,rgba(99,102,241,.1),rgba(139,92,246,.08))":"transparent",transition:"background 0.15s"}}>
                   <div style={{position:"relative",flexShrink:0}}>
                     <Av name={u.full_name} uid={u.id} size={28} url={u.avatar_url} />
-                    <div style={{position:"absolute",bottom:0,right:0,width:7,height:7,borderRadius:"50%",background:"#10b981",border:"1.5px solid #fff"}} />
+                    <div style={{position:"absolute",bottom:0,right:0}}><StatusDot status={statusOf(u.id)} size={9} borderColor="#fff" /></div>
                   </div>
                   <span style={{fontSize:13,fontWeight:active||unread>0?600:400,color:active?"#4f46e5":unread>0?"#111827":"#374151",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
                     {u.full_name}
@@ -356,7 +359,7 @@ export default function ChatBoard({currentUser,allUsers,dmRooms:initDms}:Props) 
             <div style={{display:"flex",alignItems:"center",gap:9}}>
               <div style={{position:"relative",flexShrink:0}}>
                 <Av name={currentUser.full_name} uid={currentUser.id} size={30} url={currentUser.avatar_url} />
-                <div style={{position:"absolute",bottom:0,right:0,width:8,height:8,borderRadius:"50%",background:"#10b981",border:"2px solid #fff"}} />
+                <div style={{position:"absolute",bottom:0,right:0}}><StatusDot status={statusOf(currentUser.id)} size={10} borderColor="#fff" /></div>
               </div>
               <div style={{overflow:"hidden"}}>
                 <p style={{fontSize:12,fontWeight:600,color:"#111827",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{currentUser.full_name}</p>
@@ -419,7 +422,7 @@ export default function ChatBoard({currentUser,allUsers,dmRooms:initDms}:Props) 
                       style={{width:"100%",display:"flex",alignItems:"center",gap:10,padding:"9px 10px",borderRadius:12,border:"none",cursor:"pointer",textAlign:"left",marginBottom:3,background:"transparent",transition:"background 0.1s"}}>
                       <div style={{position:"relative",flexShrink:0}}>
                         <Av name={u.full_name} uid={u.id} size={34} url={u.avatar_url} />
-                        <div style={{position:"absolute",bottom:0,right:0,width:8,height:8,borderRadius:"50%",background:"#10b981",border:"1.5px solid #fff"}} />
+                        <div style={{position:"absolute",bottom:0,right:0}}><StatusDot status={statusOf(u.id)} size={10} borderColor="#fff" /></div>
                       </div>
                       <div style={{flex:1,overflow:"hidden"}}>
                         <p style={{fontSize:13,fontWeight:600,color:"#111827",margin:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.full_name}</p>

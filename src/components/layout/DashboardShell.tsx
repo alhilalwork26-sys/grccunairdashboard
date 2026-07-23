@@ -9,6 +9,7 @@ import { useTheme } from "@/context/ThemeContext";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import PushNotificationManager from "@/components/PushNotificationManager";
+import { PresenceProvider } from "@/context/PresenceContext";
 
 const IDLE_MS   = 30 * 60 * 1000; // 30 minutes
 const WARN_MS   = 28 * 60 * 1000; // warn at 28 min (2 min before logout)
@@ -101,6 +102,7 @@ export default function DashboardShell({
   }, [pathname]);
 
   return (
+    <PresenceProvider user={user}>
     <div style={{ display: "flex", minHeight: "100vh", background: isDark ? "#0f172a" : "#f9fafb" }}>
 
       {/* ── Idle warning toast ─────────────────────────────────────── */}
@@ -238,5 +240,6 @@ export default function DashboardShell({
         </motion.div>
       </div>
     </div>
+    </PresenceProvider>
   );
 }
