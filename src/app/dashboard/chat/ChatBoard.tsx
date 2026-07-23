@@ -127,6 +127,8 @@ export default function ChatBoard({currentUser,allUsers,dmRooms:initDms}:Props) 
 
   // ── Switch room (clears unread + saves last-read timestamp) ───────────────
   function switchRoom(rid: string) {
+    // Save lastRead for the room we're leaving so it stays read on reload
+    saveLastRead(currentUser.id, activeRoomRef.current);
     setRoomId(rid);
     activeRoomRef.current = rid;
     setUnreads(prev => ({ ...prev, [rid]: 0 }));
@@ -160,6 +162,8 @@ export default function ChatBoard({currentUser,allUsers,dmRooms:initDms}:Props) 
           if(!ok) return;
           const nm=p.new as{id:string;created_at:string};
           setLastMsgAt(prev=>({...prev,[roomId]:nm.created_at}));
+          // Keep lastRead up-to-date while this room is open so reload doesn't re-show these messages
+          saveLastRead(currentUser.id, roomId);
           const{data}=await supabase.from("chat_messages").select("*,sender:profiles(id,full_name,role,avatar_url)").eq("id",nm.id).single();
           if(data&&ok) setMsgs(prev=>prev.some(m=>m.id===(data as ChatMessage).id)?prev:[...prev,data as ChatMessage]);
         })
