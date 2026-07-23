@@ -16,6 +16,7 @@ export async function createAnnouncementAction(payload: {
   content: string;
   type: "info" | "warning" | "success" | "event";
   pinned: boolean;
+  image_urls?: string[];
 }): Promise<{ data: Record<string, unknown> | null; error: string | null }> {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
