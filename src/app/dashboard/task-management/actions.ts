@@ -4,6 +4,7 @@ import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { SUPABASE_URL } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
 import type { Task } from "@/types";
+import { sendPushToUser } from "@/lib/webpush";
 
 function getServiceRoleKey() {
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
@@ -95,6 +96,17 @@ export async function createTaskAction(payload: {
     note: null,
     proof_url: null,
   });
+
+  if (payload.assigned_to && payload.assigned_to !== auth.userId) {
+    const { data: actor } = await admin.from("profiles").select("full_name").eq("id", auth.userId).single();
+    await sendPushToUser(payload.assigned_to, {
+      title: "Task baru di-assign",
+      body: `${actor?.full_name ?? "Manager"} memberimu task: "${payload.title}"`,
+      url: "/dashboard/task-management",
+      tag: `task-assign-${data.id}`,
+    });
+  }
+
   return { data, error: null };
 }
 
@@ -232,6 +244,18 @@ export async function submitForReviewAction(
     note: cleanNote,
     proof_url: cleanProofUrl,
   });
+
+  if (task.created_by && task.created_by !== auth.userId) {
+    const { data: actor } = await admin.from("profiles").select("full_name").eq("id", auth.userId).single();
+    const { data: taskData } = await admin.from("tasks").select("title").eq("id", taskId).single();
+    await sendPushToUser(task.created_by, {
+      title: "Task siap direview",
+      body: `${actor?.full_name ?? "Anggota"} mengajukan task "${taskData?.title ?? ""}" untuk direview`,
+      url: "/dashboard/task-management",
+      tag: `task-review-${taskId}`,
+    });
+  }
+
   return { error: null };
 }
 
@@ -257,7 +281,6 @@ async function requireApprover(): Promise<{ userId: string } | { error: string }
     const supabase = await createClient();
     const { data: { user }, error: userError } = await supabase.auth.getUser();
     if (userError || !user) return { error: "Sesi habis, silakan login ulang." };
-
     const admin = createAdminClient();
     if (!admin) return { error: "Service role key belum dikonfigurasi." };
 
@@ -281,6 +304,7 @@ export async function approveTaskAction(taskId: string): Promise<{ error: string
   if (!admin) return { error: "Service role key belum dikonfigurasi." };
 
   const now = new Date().toISOString();
+  const { data: task } = await admin.from("tasks").select("assigned_to, title").eq("id", taskId).single();
   const { error } = await admin.from("tasks")
     .update({ status: "done", approved_by: auth.userId, approved_at: now })
     .eq("id", taskId);
@@ -295,6 +319,14 @@ export async function approveTaskAction(taskId: string): Promise<{ error: string
     note: null,
     proof_url: null,
   });
+  if (task?.assigned_to && task.assigned_to !== auth.userId) {
+    await sendPushToUser(task.assigned_to, {
+      title: "Task disetujui!",
+      body: `Task "${task.title}" kamu sudah di-approve`,
+      url: "/dashboard/task-management",
+      tag: `task-approved-${taskId}`,
+    });
+  }
   return { error: null };
 }
 
@@ -308,6 +340,7 @@ export async function rejectTaskAction(
   const admin = createAdminClient();
   if (!admin) return { error: "Service role key belum dikonfigurasi." };
 
+  const { data: task } = await admin.from("tasks").select("assigned_to, title").eq("id", taskId).single();
   const { error } = await admin.from("tasks")
     .update({ status: "in_progress", rejected_note: note })
     .eq("id", taskId);
@@ -322,5 +355,13 @@ export async function rejectTaskAction(
     note,
     proof_url: null,
   });
+  if (task?.assigned_to && task.assigned_to !== auth.userId) {
+    await sendPushToUser(task.assigned_to, {
+      title: "Task perlu diperbaiki",
+      body: `Task "${task.title}" dikembalikan${note ? `: ${note}` : ""}`,
+      url: "/dashboard/task-management",
+      tag: `task-rejected-${taskId}`,
+    });
+  }
   return { error: null };
 }

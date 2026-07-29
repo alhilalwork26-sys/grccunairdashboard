@@ -44,7 +44,7 @@ interface Props {
 
 export default function CalendarBoard({ currentUser, initialEvents, calendarUrl }: Props) {
   const supabase = createClient();
-  const canManage = ["super_admin", "manager", "program_admin", "kep_finance", "kep_trainer"].includes(currentUser.role);
+  const canManage = ["super_admin", "manager", "program_admin", "kep_finance", "kep_trainer", "tim_riset"].includes(currentUser.role);
 
   const today = fmt(new Date());
   const todayYear  = new Date().getFullYear();

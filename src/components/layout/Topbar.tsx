@@ -4,12 +4,14 @@ import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Search, Camera, Loader2, Check, X, Moon, Sun } from "lucide-react";
 import type { UserProfile } from "@/types";
-import { ROLE_LABELS } from "@/types";
+import { ROLE_LABELS, PRESENCE_CFG } from "@/types";
 import { createClient } from "@/lib/supabase/client";
 import Avatar from "@/components/ui/Avatar";
+import StatusDot from "@/components/ui/StatusDot";
 import NotificationDropdown from "./NotificationDropdown";
 import SearchModal from "./SearchModal";
 import { useTheme } from "@/context/ThemeContext";
+import { usePresence } from "@/context/PresenceContext";
 
 interface TopbarProps {
   user: UserProfile | null;
@@ -17,15 +19,16 @@ interface TopbarProps {
 }
 
 export default function Topbar({ user, title }: TopbarProps) {
-  const [searchOpen, setSearchOpen]     = useState(false);
-  const [avatarMenu, setAvatarMenu]     = useState(false);
-  const [avatarUrl, setAvatarUrl]       = useState(user?.avatar_url ?? null);
-  const [uploading, setUploading]       = useState(false);
-  const [uploadMsg, setUploadMsg]       = useState<{ ok: boolean; text: string } | null>(null);
+  const [searchOpen, setSearchOpen]   = useState(false);
+  const [avatarMenu, setAvatarMenu]   = useState(false);
+  const [avatarUrl, setAvatarUrl]     = useState(user?.avatar_url ?? null);
+  const [uploading, setUploading]     = useState(false);
+  const [uploadMsg, setUploadMsg]     = useState<{ ok: boolean; text: string } | null>(null);
   const fileRef  = useRef<HTMLInputElement>(null);
   const menuRef  = useRef<HTMLDivElement>(null);
   const supabase = createClient();
   const { isDark, toggle } = useTheme();
+  const { myStatus, setMyStatus } = usePresence();
 
   useEffect(() => {
     function handler(e: MouseEvent) {
@@ -76,24 +79,20 @@ export default function Topbar({ user, title }: TopbarProps) {
       return;
     }
 
-    const { data: { publicUrl } } = supabase.storage
-      .from("avatars")
-      .getPublicUrl(path);
-
+    const { data: { publicUrl } } = supabase.storage.from("avatars").getPublicUrl(path);
     const url = `${publicUrl}?t=${Date.now()}`;
 
     await supabase.from("profiles").update({ avatar_url: url }).eq("id", user.id);
-
     setAvatarUrl(url);
     setUploading(false);
     setAvatarMenu(false);
     setUploadMsg({ ok: true, text: "Foto berhasil diperbarui" });
     setTimeout(() => setUploadMsg(null), 3000);
-
     if (fileRef.current) fileRef.current.value = "";
   }
 
-  const displayName = user?.full_name || user?.email?.split("@")[0] || "User";
+  const displayName  = user?.full_name || user?.email?.split("@")[0] || "User";
+  const currentCfg   = PRESENCE_CFG.find(c => c.key === myStatus) ?? PRESENCE_CFG[0];
 
   // theme tokens
   const topbarBg     = isDark ? "#1e293b" : "#ffffff";
@@ -103,6 +102,10 @@ export default function Topbar({ user, title }: TopbarProps) {
   const searchBg     = isDark ? "#0f172a" : "#f9fafb";
   const searchBorder = isDark ? "#334155" : "#e5e7eb";
   const kbdBg        = isDark ? "#1e293b" : "#f3f4f6";
+  const popoverBg    = isDark ? "#1e293b" : "#fff";
+  const popoverBorder = isDark ? "#334155" : "#e5e7eb";
+  const dividerColor = isDark ? "#334155" : "#f3f4f6";
+  const hoverBg      = isDark ? "#0f172a" : "#f9fafb";
 
   return (
     <>
@@ -174,14 +177,14 @@ export default function Topbar({ user, title }: TopbarProps) {
         {/* Notification bell */}
         <NotificationDropdown userRole={user?.role} />
 
-        {/* User avatar + upload popover */}
+        {/* User avatar + profile popover */}
         <div ref={menuRef} style={{ position: "relative", display: "flex", alignItems: "center", gap: 10 }}>
           <div className="topbar-user-name">
             <p style={{ fontSize: 13, fontWeight: 600, color: textPrimary, lineHeight: 1.2 }}>
               {displayName}
             </p>
-            <p style={{ fontSize: 11, color: "#10b981", fontWeight: 500 }}>
-              {user?.role ? ROLE_LABELS[user.role] : ""}
+            <p style={{ fontSize: 11, color: currentCfg.color, fontWeight: 500 }}>
+              {currentCfg.label}
             </p>
           </div>
 
@@ -194,7 +197,7 @@ export default function Topbar({ user, title }: TopbarProps) {
               background: "none", border: "none", padding: 0,
               borderRadius: "50%",
             }}
-            title="Ganti foto profil"
+            title="Profil & Status"
           >
             {user ? (
               <Avatar id={user.id} name={displayName} avatarUrl={avatarUrl} size={34} ringColor="#e5e7eb" />
@@ -206,6 +209,8 @@ export default function Topbar({ user, title }: TopbarProps) {
                 fontSize: 13, fontWeight: 700, color: "white",
               }}>?</div>
             )}
+
+            {/* Camera overlay on hover */}
             <div style={{
               position: "absolute", inset: 0, borderRadius: "50%",
               background: "rgba(0,0,0,0.35)",
@@ -216,9 +221,14 @@ export default function Topbar({ user, title }: TopbarProps) {
             }}>
               <Camera size={12} color="white" />
             </div>
+
+            {/* Status dot on avatar */}
+            <div style={{ position: "absolute", bottom: 0, right: 0 }}>
+              <StatusDot status={myStatus} size={11} borderColor={topbarBg} />
+            </div>
           </motion.button>
 
-          {/* Upload popover */}
+          {/* Profile popover */}
           <AnimatePresence>
             {avatarMenu && (
               <motion.div
@@ -228,34 +238,88 @@ export default function Topbar({ user, title }: TopbarProps) {
                 transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
                 style={{
                   position: "absolute", top: "calc(100% + 10px)", right: 0,
-                  background: isDark ? "#1e293b" : "#fff",
-                  border: `1px solid ${isDark ? "#334155" : "#e5e7eb"}`,
-                  borderRadius: 14, boxShadow: "0 12px 36px rgba(0,0,0,0.18)",
-                  width: 220, padding: 14, zIndex: 100,
+                  background: popoverBg,
+                  border: `1px solid ${popoverBorder}`,
+                  borderRadius: 16, boxShadow: "0 16px 48px rgba(0,0,0,0.16)",
+                  width: 248, padding: 14, zIndex: 100,
                 }}
               >
-                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
-                  {user && (
-                    <Avatar id={user.id} name={displayName} avatarUrl={avatarUrl} size={44} ringColor="#e5e7eb" />
-                  )}
+                {/* User header */}
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+                  <div style={{ position: "relative", flexShrink: 0 }}>
+                    {user && (
+                      <Avatar id={user.id} name={displayName} avatarUrl={avatarUrl} size={42} ringColor={popoverBorder} />
+                    )}
+                    <div style={{ position: "absolute", bottom: 0, right: 0 }}>
+                      <StatusDot status={myStatus} size={13} borderColor={popoverBg} />
+                    </div>
+                  </div>
                   <div>
-                    <p style={{ fontSize: 13, fontWeight: 600, color: textPrimary }}>{displayName}</p>
-                    <p style={{ fontSize: 11, color: textMuted }}>Foto Profil</p>
+                    <p style={{ fontSize: 13, fontWeight: 700, color: textPrimary, lineHeight: 1.2 }}>{displayName}</p>
+                    <p style={{ fontSize: 11, color: textMuted, marginTop: 2 }}>
+                      {user?.role ? ROLE_LABELS[user.role] : ""}
+                    </p>
+                    <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 3 }}>
+                      <StatusDot status={myStatus} size={7} borderColor={popoverBg} />
+                      <span style={{ fontSize: 11, fontWeight: 500, color: currentCfg.color }}>{currentCfg.label}</span>
+                    </div>
                   </div>
                 </div>
 
-                <div style={{ height: 1, background: isDark ? "#334155" : "#f3f4f6", marginBottom: 12 }} />
+                {/* Status picker */}
+                <div style={{ marginBottom: 10 }}>
+                  <p style={{ fontSize: 10, fontWeight: 700, color: textMuted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4, paddingLeft: 4 }}>
+                    Status
+                  </p>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                    {PRESENCE_CFG.map((cfg) => {
+                      const isActive = myStatus === cfg.key;
+                      return (
+                        <motion.button
+                          key={cfg.key}
+                          whileTap={{ scale: 0.98 }}
+                          onClick={async () => {
+                            await setMyStatus(cfg.key as Parameters<typeof setMyStatus>[0]);
+                          }}
+                          style={{
+                            width: "100%", display: "flex", alignItems: "center", gap: 10,
+                            padding: "7px 10px", borderRadius: 9, border: "none",
+                            cursor: "pointer", textAlign: "left",
+                            background: isActive
+                              ? (isDark ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.04)")
+                              : "transparent",
+                            transition: "background 0.1s",
+                          }}
+                          onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.background = hoverBg; }}
+                          onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
+                        >
+                          <StatusDot status={cfg.key as Parameters<typeof setMyStatus>[0]} size={10} borderColor={isActive ? (isDark ? "#1e293b" : "#f3f4f6") : popoverBg} />
+                          <div style={{ flex: 1 }}>
+                            <p style={{ fontSize: 12, fontWeight: isActive ? 700 : 500, color: textPrimary, lineHeight: 1.2 }}>
+                              {cfg.label}
+                            </p>
+                            <p style={{ fontSize: 10, color: textMuted, lineHeight: 1.2 }}>{cfg.sub}</p>
+                          </div>
+                          {isActive && <Check size={13} color={cfg.color} strokeWidth={2.5} />}
+                        </motion.button>
+                      );
+                    })}
+                  </div>
+                </div>
 
+                <div style={{ height: 1, background: dividerColor, marginBottom: 10 }} />
+
+                {/* Photo actions */}
                 <motion.button
-                  whileHover={{ background: isDark ? "#0f172a" : "#f9fafb" }}
+                  whileHover={{ background: hoverBg }}
                   whileTap={{ scale: 0.98 }}
                   onClick={() => fileRef.current?.click()}
                   disabled={uploading}
                   style={{
                     width: "100%", display: "flex", alignItems: "center", gap: 8,
                     padding: "9px 12px", borderRadius: 10,
-                    border: `1.5px solid ${isDark ? "#334155" : "#e5e7eb"}`,
-                    background: isDark ? "#1e293b" : "#fff",
+                    border: `1.5px solid ${popoverBorder}`,
+                    background: popoverBg,
                     cursor: uploading ? "not-allowed" : "pointer",
                     fontSize: 13, fontWeight: 600, color: textPrimary,
                     transition: "background 0.12s",

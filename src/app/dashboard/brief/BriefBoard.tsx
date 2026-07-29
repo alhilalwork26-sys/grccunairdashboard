@@ -62,7 +62,7 @@ export default function BriefBoard({ initialBriefs, kreatifProfiles, currentUser
     [briefs]
   );
 
-  const canCreate  = ["super_admin", "manager", "kep_marketing", "staff_marketing"].includes(currentUser.role);
+  const canCreate  = ["super_admin", "manager", "kep_marketing", "staff_marketing", "staff_kreatif"].includes(currentUser.role);
   const canApprove = ["super_admin", "manager"].includes(currentUser.role);
   const isKreatif  = currentUser.role === "staff_kreatif";
 

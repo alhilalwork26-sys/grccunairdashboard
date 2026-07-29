@@ -807,18 +807,27 @@ export default function RABBoard({ currentUser, initialRAB }: Props) {
                 <p style={{ fontSize: 10, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Total Penerimaan Awal</p>
                 <div className="clean-input" style={{ background: "#f3f4f6", color: "#374151", fontWeight: 700 }}>{fmtRupiah(calc.totalPenerimaanAwal)}</div>
               </div>
-              <CleanInput label="Harga Jual" type="number" value={form.harga_jual}
+              <CleanInput label="Harga Jual" type="number"
+                value={form.harga_jual !== "" ? form.harga_jual : String(Math.round(calc.hargaJual))}
                 onChange={v => setForm(f => ({ ...f, harga_jual: v }))}
-                placeholder={`Auto: ${fmtRupiah(calc.totalPenerimaanAwal)}`}
-                hint="Kosong = total penerimaan awal" />
+                hint="Hapus untuk kembali ke nilai otomatis (= total penerimaan awal)" />
               <div>
                 <p style={{ fontSize: 10, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>DPP</p>
-                <CleanInput value={form.dpp} onChange={v => setForm(f => ({ ...f, dpp: v }))} placeholder={`Auto: ${fmtRupiah(calc.dpp)}`} hint="Kosong = auto. Isi 0/manual jika perlu." />
+                <CleanInput type="number"
+                  value={form.dpp !== "" ? form.dpp : String(Math.round(calc.dpp))}
+                  onChange={v => setForm(f => ({ ...f, dpp: v }))}
+                  hint="Hapus untuk kembali ke nilai otomatis" />
               </div>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-              <CleanInput label="PPN" value={form.ppn} onChange={v => setForm(f => ({ ...f, ppn: v }))} placeholder={`Auto: ${fmtRupiah(calc.ppn)}`} hint="Kosong = DPP × 12%. Isi 0 untuk bebas PPN." />
-              <CleanInput label="Institutional Fee" value={form.institutional_fee} onChange={v => setForm(f => ({ ...f, institutional_fee: v }))} placeholder={`Auto: ${fmtRupiah(calc.instFee)}`} hint={jenisRAB === "in_house" ? "Kosong = 10% × DPP (In House). Bisa manual/0." : "Kosong = 10% × Total Penerimaan Awal (Umum). Bisa manual/0."} />
+              <CleanInput label="PPN" type="number"
+                value={form.ppn !== "" ? form.ppn : String(Math.round(calc.ppn))}
+                onChange={v => setForm(f => ({ ...f, ppn: v }))}
+                hint="Hapus untuk kembali ke otomatis (DPP × 12%). Isi 0 untuk bebas PPN." />
+              <CleanInput label="Institutional Fee" type="number"
+                value={form.institutional_fee !== "" ? form.institutional_fee : String(Math.round(calc.instFee))}
+                onChange={v => setForm(f => ({ ...f, institutional_fee: v }))}
+                hint={jenisRAB === "in_house" ? "Hapus untuk otomatis (10% × DPP). Isi 0 untuk nol." : "Hapus untuk otomatis (10% × Total Penerimaan Awal). Isi 0 untuk nol."} />
             </div>
           </div>
         </FormSection>

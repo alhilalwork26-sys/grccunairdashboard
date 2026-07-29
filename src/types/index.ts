@@ -1,3 +1,14 @@
+export type PresenceStatus = "available" | "busy" | "dnd" | "away" | "be_right_back" | "offline";
+
+export const PRESENCE_CFG = [
+  { key: "available"    , label: "Tersedia"        , sub: "Available"      , color: "#22c55e", dot: "filled"  },
+  { key: "busy"         , label: "Sibuk"           , sub: "Busy"           , color: "#ef4444", dot: "filled"  },
+  { key: "dnd"          , label: "Jangan Ganggu"   , sub: "Do Not Disturb" , color: "#ef4444", dot: "dnd"     },
+  { key: "be_right_back", label: "Segera Kembali"  , sub: "Be Right Back"  , color: "#f59e0b", dot: "filled"  },
+  { key: "away"         , label: "Tidak di Tempat" , sub: "Appear Away"    , color: "#f59e0b", dot: "outline" },
+  { key: "offline"      , label: "Terlihat Offline", sub: "Appear Offline" , color: "#9ca3af", dot: "outline" },
+] as const;
+
 export type Role =
   | "super_admin"
   | "manager"
@@ -20,6 +31,7 @@ export interface UserProfile {
   created_at: string;
   is_active?: boolean;
   allowed_modules?: string[] | null;
+  presence_status?: PresenceStatus | null;
 }
 
 export interface Task {
@@ -65,6 +77,7 @@ export interface DailyProgress {
   obstacles?: string | null;
   plan_tomorrow?: string | null;
   mood?: number | null;
+  proof_url?: string | null;
   created_at: string;
   updated_at: string;
   profiles?: { full_name: string; role: string } | null;
@@ -135,6 +148,7 @@ export interface Reimbursement {
   reviewed_by?: string | null;
   reviewed_at?: string | null;
   review_note?: string | null;
+  is_archived?: boolean;
   created_at: string;
   updated_at: string;
   requester?: { full_name: string; role: string } | null;

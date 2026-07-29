@@ -1,12 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { createClient } from "@/lib/supabase/client";
 import type { UserProfile } from "@/types";
+import { createAnnouncementAction } from "./actions";
 import {
   Plus, X, Check, Pin, PinOff, Megaphone,
-  Edit2, Trash2, Bell, Info, AlertTriangle, PartyPopper,
+  Edit2, Trash2, Bell, Info, AlertTriangle, PartyPopper, ImagePlus, ChevronLeft, ChevronRight,
+  MessageCircle, Send,
 } from "lucide-react";
 
 interface Announcement {
@@ -18,6 +20,7 @@ interface Announcement {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  image_urls?: string[] | null;
   profiles?: { full_name: string; role: string } | null;
 }
 
@@ -44,6 +47,19 @@ function fmtDate(s: string) {
 
 const EMPTY_FORM = { title: "", content: "", type: "info" as Announcement["type"], pinned: false };
 
+const REACTION_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "😡"];
+const REACTION_LABEL: Record<string, string> = {
+  "👍": "Suka", "❤️": "Love", "😂": "Haha", "😮": "Wow", "😢": "Sedih", "😡": "Marah",
+};
+
+interface AnnComment {
+  id: string;
+  user_id: string;
+  content: string;
+  created_at: string;
+  profiles: { full_name: string; role: string; avatar_url?: string | null } | null;
+}
+
 interface Props {
   currentUser: UserProfile;
   initialAnnouncements: Announcement[];
@@ -59,9 +75,13 @@ export default function AnnouncementBoard({ currentUser, initialAnnouncements }:
   const [editing, setEditing] = useState<Announcement | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
+  const [pendingImages, setPendingImages] = useState<File[]>([]);
+  const [existingImageUrls, setExistingImageUrls] = useState<string[]>([]);
+  const [imageUploading, setImageUploading] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [lightbox, setLightbox] = useState<{ urls: string[]; idx: number } | null>(null);
 
   const showToast = (msg: string, ok = true) => {
     setToast({ msg, ok });
@@ -71,48 +91,78 @@ export default function AnnouncementBoard({ currentUser, initialAnnouncements }:
   const openCreate = () => {
     setEditing(null);
     setForm(EMPTY_FORM);
+    setPendingImages([]);
+    setExistingImageUrls([]);
     setShowModal(true);
   };
 
   const openEdit = (a: Announcement) => {
     setEditing(a);
     setForm({ title: a.title, content: a.content, type: a.type, pinned: a.pinned });
+    setPendingImages([]);
+    setExistingImageUrls(a.image_urls ?? []);
     setShowModal(true);
+  };
+
+  const uploadImages = async (files: File[]): Promise<string[]> => {
+    const urls: string[] = [];
+    for (const file of files) {
+      const ext = file.name.split(".").pop() ?? "jpg";
+      const path = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+      const { error } = await supabase.storage.from("announcement-images").upload(path, file);
+      if (!error) {
+        const { data } = supabase.storage.from("announcement-images").getPublicUrl(path);
+        urls.push(data.publicUrl);
+      }
+    }
+    return urls;
   };
 
   const handleSubmit = async () => {
     if (!form.title.trim() || !form.content.trim()) return;
     setSubmitting(true);
-    const payload = {
-      title: form.title.trim(),
-      content: form.content.trim(),
-      type: form.type,
-      pinned: form.pinned,
-      created_by: currentUser.id,
-    };
+    try {
+      let imageUrls = [...existingImageUrls];
+      if (pendingImages.length > 0) {
+        setImageUploading(true);
+        const newUrls = await uploadImages(pendingImages);
+        setImageUploading(false);
+        imageUrls = [...imageUrls, ...newUrls];
+      }
 
-    if (editing) {
-      const { data, error } = await supabase
-        .from("announcements").update(payload).eq("id", editing.id)
-        .select("*, profiles(full_name, role)").single();
-      if (error) showToast("Gagal memperbarui", false);
-      else {
-        setItems(prev => prev.map(a => a.id === editing.id ? data : a)
-          .sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0)));
-        showToast("Pengumuman diperbarui");
+      const payload = {
+        title: form.title.trim(),
+        content: form.content.trim(),
+        type: form.type,
+        pinned: form.pinned,
+        image_urls: imageUrls,
+        created_by: currentUser.id,
+      };
+
+      if (editing) {
+        const { data, error } = await supabase
+          .from("announcements").update(payload).eq("id", editing.id)
+          .select("*, profiles(full_name, role)").single();
+        if (error) showToast("Gagal memperbarui", false);
+        else {
+          setItems(prev => prev.map(a => a.id === editing.id ? data : a)
+            .sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0)));
+          showToast("Pengumuman diperbarui");
+          setShowModal(false);
+        }
+      } else {
+        const { data, error } = await createAnnouncementAction(payload);
+        if (error) showToast("Gagal menyimpan", false);
+        else {
+          setItems(prev => [data as unknown as Announcement, ...prev].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0)));
+          showToast("Pengumuman ditambahkan");
+          setShowModal(false);
+        }
       }
-    } else {
-      const { data, error } = await supabase
-        .from("announcements").insert(payload)
-        .select("*, profiles(full_name, role)").single();
-      if (error) showToast("Gagal menyimpan", false);
-      else {
-        setItems(prev => [data, ...prev].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0)));
-        showToast("Pengumuman ditambahkan");
-      }
+    } finally {
+      setSubmitting(false);
+      setImageUploading(false);
     }
-    setSubmitting(false);
-    setShowModal(false);
   };
 
   const handleDelete = async (id: string) => {
@@ -270,6 +320,8 @@ export default function AnnouncementBoard({ currentUser, initialAnnouncements }:
                         onEdit={() => openEdit(a)}
                         onDelete={() => setDeleteId(a.id)}
                         onPin={() => togglePin(a)}
+                        onImageClick={(idx) => setLightbox({ urls: a.image_urls ?? [], idx })}
+                        currentUser={currentUser}
                       />
                     ))}
                   </AnimatePresence>
@@ -299,6 +351,8 @@ export default function AnnouncementBoard({ currentUser, initialAnnouncements }:
                         onEdit={() => openEdit(a)}
                         onDelete={() => setDeleteId(a.id)}
                         onPin={() => togglePin(a)}
+                        onImageClick={(idx) => setLightbox({ urls: a.image_urls ?? [], idx })}
+                        currentUser={currentUser}
                       />
                     ))}
                   </AnimatePresence>
@@ -420,6 +474,80 @@ export default function AnnouncementBoard({ currentUser, initialAnnouncements }:
                   />
                 </div>
 
+                {/* Image upload */}
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 8 }}>
+                    Foto / Poster <span style={{ fontSize: 11, fontWeight: 400, color: "#9ca3af" }}>(opsional, maks. 5 foto)</span>
+                  </label>
+
+                  {/* Existing + pending thumbnails */}
+                  {(existingImageUrls.length > 0 || pendingImages.length > 0) && (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
+                      {existingImageUrls.map((url, i) => (
+                        <div key={`ex-${i}`} style={{ position: "relative", width: 72, height: 72 }}>
+                          <img src={url} alt="" style={{ width: 72, height: 72, objectFit: "cover", borderRadius: 8, border: "1.5px solid #e5e7eb" }} />
+                          <button
+                            onClick={() => setExistingImageUrls(p => p.filter((_, j) => j !== i))}
+                            style={{
+                              position: "absolute", top: -6, right: -6,
+                              width: 18, height: 18, borderRadius: "50%",
+                              background: "#ef4444", border: "none", cursor: "pointer",
+                              display: "flex", alignItems: "center", justifyContent: "center", padding: 0,
+                            }}
+                          >
+                            <X size={10} color="#fff" />
+                          </button>
+                        </div>
+                      ))}
+                      {pendingImages.map((file, i) => (
+                        <div key={`pend-${i}`} style={{ position: "relative", width: 72, height: 72 }}>
+                          <img src={URL.createObjectURL(file)} alt="" style={{ width: 72, height: 72, objectFit: "cover", borderRadius: 8, border: "1.5px solid #e5e7eb" }} />
+                          <button
+                            onClick={() => setPendingImages(p => p.filter((_, j) => j !== i))}
+                            style={{
+                              position: "absolute", top: -6, right: -6,
+                              width: 18, height: 18, borderRadius: "50%",
+                              background: "#ef4444", border: "none", cursor: "pointer",
+                              display: "flex", alignItems: "center", justifyContent: "center", padding: 0,
+                            }}
+                          >
+                            <X size={10} color="#fff" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Add photo button */}
+                  {(existingImageUrls.length + pendingImages.length) < 5 && (
+                    <label style={{
+                      display: "inline-flex", alignItems: "center", gap: 7,
+                      padding: "9px 14px", border: "1.5px dashed #d1d5db",
+                      borderRadius: 10, cursor: "pointer", fontSize: 12, fontWeight: 600,
+                      color: "#6b7280", background: "#f9fafb",
+                      transition: "all 0.15s",
+                    }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLLabelElement).style.borderColor = "#f59e0b"; (e.currentTarget as HTMLLabelElement).style.color = "#f59e0b"; }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLLabelElement).style.borderColor = "#d1d5db"; (e.currentTarget as HTMLLabelElement).style.color = "#6b7280"; }}
+                    >
+                      <ImagePlus size={15} />
+                      Tambah Foto
+                      <input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        style={{ display: "none" }}
+                        onChange={e => {
+                          const files = Array.from(e.target.files ?? []);
+                          const remaining = 5 - existingImageUrls.length - pendingImages.length;
+                          setPendingImages(p => [...p, ...files.slice(0, remaining)]);
+                          e.target.value = "";
+                        }}
+                      />
+                    </label>
+                  )}
+                </div>
+
                 {/* Pin toggle */}
                 <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
                   <div
@@ -461,7 +589,7 @@ export default function AnnouncementBoard({ currentUser, initialAnnouncements }:
                     transition: "all 0.2s",
                   }}
                 >
-                  {submitting ? "Menyimpan..." : editing ? "Perbarui" : "Publikasikan"}
+                  {imageUploading ? "Mengupload foto..." : submitting ? "Menyimpan..." : editing ? "Perbarui" : "Publikasikan"}
                 </motion.button>
               </div>
             </motion.div>
@@ -517,6 +645,95 @@ export default function AnnouncementBoard({ currentUser, initialAnnouncements }:
         )}
       </AnimatePresence>
 
+      {/* Lightbox */}
+      <AnimatePresence>
+        {lightbox && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            onClick={() => setLightbox(null)}
+            style={{
+              position: "fixed", inset: 0, zIndex: 80,
+              background: "rgba(0,0,0,0.88)", backdropFilter: "blur(8px)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}
+          >
+            <button
+              onClick={e => { e.stopPropagation(); setLightbox(null); }}
+              style={{
+                position: "absolute", top: 20, right: 20,
+                width: 36, height: 36, borderRadius: "50%", border: "none",
+                background: "rgba(255,255,255,0.15)", cursor: "pointer",
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}
+            >
+              <X size={18} color="#fff" />
+            </button>
+
+            {lightbox.urls.length > 1 && (
+              <button
+                onClick={e => { e.stopPropagation(); setLightbox(lb => lb && ({ ...lb, idx: (lb.idx - 1 + lb.urls.length) % lb.urls.length })); }}
+                style={{
+                  position: "absolute", left: 20, top: "50%", transform: "translateY(-50%)",
+                  width: 40, height: 40, borderRadius: "50%", border: "none",
+                  background: "rgba(255,255,255,0.15)", cursor: "pointer",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}
+              >
+                <ChevronLeft size={20} color="#fff" />
+              </button>
+            )}
+
+            <motion.img
+              key={lightbox.idx}
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.2 }}
+              src={lightbox.urls[lightbox.idx]}
+              alt=""
+              onClick={e => e.stopPropagation()}
+              style={{
+                maxWidth: "90vw", maxHeight: "85vh",
+                borderRadius: 12, objectFit: "contain",
+                boxShadow: "0 30px 80px rgba(0,0,0,0.6)",
+              }}
+            />
+
+            {lightbox.urls.length > 1 && (
+              <button
+                onClick={e => { e.stopPropagation(); setLightbox(lb => lb && ({ ...lb, idx: (lb.idx + 1) % lb.urls.length })); }}
+                style={{
+                  position: "absolute", right: 20, top: "50%", transform: "translateY(-50%)",
+                  width: 40, height: 40, borderRadius: "50%", border: "none",
+                  background: "rgba(255,255,255,0.15)", cursor: "pointer",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}
+              >
+                <ChevronRight size={20} color="#fff" />
+              </button>
+            )}
+
+            {lightbox.urls.length > 1 && (
+              <div style={{
+                position: "absolute", bottom: 20, left: "50%", transform: "translateX(-50%)",
+                display: "flex", gap: 6,
+              }}>
+                {lightbox.urls.map((_, i) => (
+                  <div
+                    key={i}
+                    onClick={e => { e.stopPropagation(); setLightbox(lb => lb && ({ ...lb, idx: i })); }}
+                    style={{
+                      width: i === lightbox.idx ? 20 : 6, height: 6, borderRadius: 3,
+                      background: i === lightbox.idx ? "#fff" : "rgba(255,255,255,0.4)",
+                      transition: "all 0.2s", cursor: "pointer",
+                    }}
+                  />
+                ))}
+              </div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Toast */}
       <AnimatePresence>
         {toast && (
@@ -542,16 +759,114 @@ export default function AnnouncementBoard({ currentUser, initialAnnouncements }:
   );
 }
 
-function AnnCard({ item, index, expanded, onExpand, canManage, onEdit, onDelete, onPin }: {
+function AnnCard({ item, index, expanded, onExpand, canManage, onEdit, onDelete, onPin, onImageClick, currentUser }: {
   item: Announcement; index: number; expanded: boolean; onExpand: () => void;
   canManage: boolean; onEdit: () => void; onDelete: () => void; onPin: () => void;
+  onImageClick: (idx: number) => void;
+  currentUser: UserProfile;
 }) {
+  const supabase = createClient();
   const cfg = TYPE_CFG[item.type];
   const name = (item.profiles as any)?.full_name || "—";
   const role = (item.profiles as any)?.role || "";
   const preview = item.content.length > 120 && !expanded
     ? item.content.slice(0, 120) + "..."
     : item.content;
+
+  // ── Reactions ──────────────────────────────────────────────
+  const [reactions, setReactions] = useState<{ user_id: string; emoji: string }[]>([]);
+  const [showPicker, setShowPicker] = useState(false);
+  const showTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── Comments ───────────────────────────────────────────────
+  const [commentCount, setCommentCount] = useState(0);
+  const [comments, setComments] = useState<AnnComment[]>([]);
+  const [showComments, setShowComments] = useState(false);
+  const [commentsLoaded, setCommentsLoaded] = useState(false);
+  const [commentText, setCommentText] = useState("");
+  const [submittingComment, setSubmittingComment] = useState(false);
+
+  useEffect(() => {
+    Promise.all([
+      supabase.from("announcement_reactions").select("user_id, emoji").eq("announcement_id", item.id),
+      supabase.from("announcement_comments").select("id", { count: "exact", head: true }).eq("announcement_id", item.id),
+    ]).then(([{ data: rx }, { count }]) => {
+      if (rx) setReactions(rx as { user_id: string; emoji: string }[]);
+      if (count !== null) setCommentCount(count);
+    });
+  }, [item.id]); // eslint-disable-line
+
+  const myReaction = reactions.find(r => r.user_id === currentUser.id)?.emoji ?? null;
+
+  const reactionGroups = Object.entries(
+    reactions.reduce((acc, r) => ({ ...acc, [r.emoji]: (acc[r.emoji] ?? 0) + 1 }), {} as Record<string, number>)
+  ).sort((a, b) => b[1] - a[1]);
+
+  const react = async (emoji: string) => {
+    setShowPicker(false);
+    if (myReaction === emoji) {
+      setReactions(prev => prev.filter(r => r.user_id !== currentUser.id));
+      await supabase.from("announcement_reactions")
+        .delete().eq("announcement_id", item.id).eq("user_id", currentUser.id);
+    } else {
+      setReactions(prev => [
+        ...prev.filter(r => r.user_id !== currentUser.id),
+        { user_id: currentUser.id, emoji },
+      ]);
+      await supabase.from("announcement_reactions")
+        .upsert({ announcement_id: item.id, user_id: currentUser.id, emoji });
+    }
+  };
+
+  const loadComments = async () => {
+    if (commentsLoaded) return;
+    const { data } = await supabase
+      .from("announcement_comments")
+      .select("*, profiles(full_name, role, avatar_url)")
+      .eq("announcement_id", item.id)
+      .order("created_at", { ascending: true });
+    if (data) { setComments(data as AnnComment[]); setCommentCount(data.length); }
+    setCommentsLoaded(true);
+  };
+
+  const toggleComments = async () => {
+    if (!showComments) await loadComments();
+    setShowComments(v => !v);
+  };
+
+  const submitComment = async () => {
+    if (!commentText.trim() || submittingComment) return;
+    setSubmittingComment(true);
+    const { data, error } = await supabase
+      .from("announcement_comments")
+      .insert({ announcement_id: item.id, user_id: currentUser.id, content: commentText.trim() })
+      .select("*, profiles(full_name, role, avatar_url)")
+      .single();
+    if (!error && data) {
+      setComments(prev => [...prev, data as AnnComment]);
+      setCommentCount(c => c + 1);
+      setCommentText("");
+    }
+    setSubmittingComment(false);
+  };
+
+  const deleteComment = async (commentId: string) => {
+    await supabase.from("announcement_comments").delete().eq("id", commentId);
+    setComments(prev => prev.filter(c => c.id !== commentId));
+    setCommentCount(c => c - 1);
+  };
+
+  const onReactionEnter = () => {
+    if (hideTimer.current) clearTimeout(hideTimer.current);
+    showTimer.current = setTimeout(() => setShowPicker(true), 350);
+  };
+  const onReactionLeave = () => {
+    if (showTimer.current) clearTimeout(showTimer.current);
+    hideTimer.current = setTimeout(() => setShowPicker(false), 200);
+  };
+  const onPickerEnter = () => { if (hideTimer.current) clearTimeout(hideTimer.current); };
+  const onPickerLeave = () => { hideTimer.current = setTimeout(() => setShowPicker(false), 150); };
 
   return (
     <motion.div
@@ -566,13 +881,14 @@ function AnnCard({ item, index, expanded, onExpand, canManage, onEdit, onDelete,
         borderRadius: 14, overflow: "hidden",
       }}
     >
-      {/* Left accent bar */}
+      {/* Left accent bar + main content */}
       <div style={{ display: "flex" }}>
         <div style={{ width: 4, background: cfg.color, flexShrink: 0 }} />
         <div style={{ flex: 1, padding: "16px 18px" }}>
+
           {/* Header */}
           <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, flexWrap: "wrap" }}>
               {item.pinned && <Pin size={13} color={cfg.color} style={{ flexShrink: 0, marginTop: 2 }} />}
               <div style={{
                 display: "inline-flex", alignItems: "center", gap: 4,
@@ -584,29 +900,19 @@ function AnnCard({ item, index, expanded, onExpand, canManage, onEdit, onDelete,
               </div>
               <h3 style={{ fontSize: 14, fontWeight: 700, color: "#111827", lineHeight: 1.3 }}>{item.title}</h3>
             </div>
-
             {canManage && (
               <div style={{ display: "flex", gap: 2, flexShrink: 0 }}>
-                <motion.button
-                  whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.95 }}
-                  onClick={onPin}
+                <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.95 }} onClick={onPin}
                   style={{ padding: 6, border: "none", background: "transparent", cursor: "pointer", borderRadius: 6 }}
-                  title={item.pinned ? "Lepas pin" : "Pin"}
-                >
+                  title={item.pinned ? "Lepas pin" : "Pin"}>
                   {item.pinned ? <PinOff size={13} color="#9ca3af" /> : <Pin size={13} color="#9ca3af" />}
                 </motion.button>
-                <motion.button
-                  whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.95 }}
-                  onClick={onEdit}
-                  style={{ padding: 6, border: "none", background: "transparent", cursor: "pointer", borderRadius: 6 }}
-                >
+                <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.95 }} onClick={onEdit}
+                  style={{ padding: 6, border: "none", background: "transparent", cursor: "pointer", borderRadius: 6 }}>
                   <Edit2 size={13} color="#6b7280" />
                 </motion.button>
-                <motion.button
-                  whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.95 }}
-                  onClick={onDelete}
-                  style={{ padding: 6, border: "none", background: "transparent", cursor: "pointer", borderRadius: 6 }}
-                >
+                <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.95 }} onClick={onDelete}
+                  style={{ padding: 6, border: "none", background: "transparent", cursor: "pointer", borderRadius: 6 }}>
                   <Trash2 size={13} color="#ef4444" />
                 </motion.button>
               </div>
@@ -614,25 +920,40 @@ function AnnCard({ item, index, expanded, onExpand, canManage, onEdit, onDelete,
           </div>
 
           {/* Content */}
-          <p style={{
-            fontSize: 13, color: "#4b5563", lineHeight: 1.65,
-            marginTop: 10, whiteSpace: "pre-wrap",
-          }}>
+          <p style={{ fontSize: 13, color: "#4b5563", lineHeight: 1.65, marginTop: 10, whiteSpace: "pre-wrap" }}>
             {preview}
           </p>
           {item.content.length > 120 && (
-            <button
-              onClick={onExpand}
-              style={{
-                marginTop: 6, border: "none", background: "transparent",
-                fontSize: 12, fontWeight: 600, color: cfg.color, cursor: "pointer", padding: 0,
-              }}
-            >
+            <button onClick={onExpand} style={{
+              marginTop: 6, border: "none", background: "transparent",
+              fontSize: 12, fontWeight: 600, color: cfg.color, cursor: "pointer", padding: 0,
+            }}>
               {expanded ? "Tampilkan lebih sedikit" : "Baca selengkapnya"}
             </button>
           )}
 
-          {/* Footer */}
+          {/* Image gallery */}
+          {item.image_urls && item.image_urls.length > 0 && (
+            <div style={{
+              marginTop: 12, display: "grid", gap: 6,
+              gridTemplateColumns: item.image_urls.length === 1 ? "1fr" : item.image_urls.length === 2 ? "1fr 1fr" : "1fr 1fr 1fr",
+            }}>
+              {item.image_urls.map((url, i) => (
+                <div key={i} onClick={() => onImageClick(i)} style={{
+                  cursor: "pointer", borderRadius: 8, overflow: "hidden",
+                  aspectRatio: item.image_urls!.length === 1 ? "16/7" : "1",
+                  background: "#f3f4f6",
+                }}>
+                  <img src={url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", transition: "transform 0.2s" }}
+                    onMouseEnter={e => (e.currentTarget.style.transform = "scale(1.04)")}
+                    onMouseLeave={e => (e.currentTarget.style.transform = "scale(1)")}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Author footer */}
           <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 12 }}>
             <div style={{
               width: 20, height: 20, borderRadius: "50%",
@@ -648,6 +969,218 @@ function AnnCard({ item, index, expanded, onExpand, canManage, onEdit, onDelete,
           </div>
         </div>
       </div>
+
+      {/* ── Social bar ─────────────────────────────────────────── */}
+      <div style={{ borderTop: "1px solid #f3f4f6", padding: "0 18px" }}>
+
+        {/* Reaction summary */}
+        {reactionGroups.length > 0 && (
+          <div style={{ display: "flex", alignItems: "center", gap: 6, paddingTop: 8, paddingBottom: 2 }}>
+            <div style={{
+              display: "flex", alignItems: "center", background: "#f9fafb",
+              border: "1px solid #e5e7eb", borderRadius: 20, padding: "2px 8px", gap: 3,
+            }}>
+              {reactionGroups.slice(0, 3).map(([emoji, count]) => (
+                <span key={emoji} style={{ fontSize: 13 }} title={`${count} ${REACTION_LABEL[emoji] ?? emoji}`}>{emoji}</span>
+              ))}
+              <span style={{ fontSize: 11, fontWeight: 600, color: "#6b7280", marginLeft: 2 }}>{reactions.length}</span>
+            </div>
+            {myReaction && (
+              <span style={{ fontSize: 11, color: "#9ca3af" }}>
+                Kamu bereaksi {myReaction}
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Action buttons row */}
+        <div style={{ display: "flex", gap: 2, padding: "6px 0" }}>
+
+          {/* Reaction button with hover picker */}
+          <div style={{ position: "relative" }}>
+            <AnimatePresence>
+              {showPicker && (
+                <motion.div
+                  initial={{ opacity: 0, y: 8, scale: 0.88 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 6, scale: 0.9 }}
+                  transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
+                  onMouseEnter={onPickerEnter}
+                  onMouseLeave={onPickerLeave}
+                  style={{
+                    position: "absolute", bottom: "calc(100% + 6px)", left: 0,
+                    background: "#fff", border: "1px solid #e5e7eb", borderRadius: 40,
+                    padding: "5px 8px", display: "flex", gap: 1,
+                    boxShadow: "0 8px 28px rgba(0,0,0,0.13)", zIndex: 30,
+                  }}
+                >
+                  {REACTION_EMOJIS.map(emoji => (
+                    <motion.button
+                      key={emoji}
+                      whileHover={{ scale: 1.4, y: -5 }}
+                      whileTap={{ scale: 0.9 }}
+                      onClick={() => react(emoji)}
+                      title={REACTION_LABEL[emoji]}
+                      style={{
+                        fontSize: 22, border: "none", background: "transparent",
+                        cursor: "pointer", padding: "2px 4px", borderRadius: 6,
+                        outline: myReaction === emoji ? `2px solid ${cfg.color}` : "none",
+                        transition: "outline 0.1s",
+                      }}
+                    >
+                      {emoji}
+                    </motion.button>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <motion.button
+              whileHover={{ background: "#f3f4f6" }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => react("👍")}
+              onMouseEnter={onReactionEnter}
+              onMouseLeave={onReactionLeave}
+              style={{
+                display: "flex", alignItems: "center", gap: 5,
+                padding: "7px 14px", border: "none",
+                background: "transparent", cursor: "pointer",
+                borderRadius: 20, fontSize: 13, fontWeight: 600,
+                color: myReaction ? cfg.color : "#6b7280",
+                transition: "all 0.15s",
+              }}
+            >
+              <span style={{ fontSize: 16, lineHeight: 1 }}>{myReaction ?? "👍"}</span>
+              {myReaction ? (REACTION_LABEL[myReaction] ?? "Suka") : "Suka"}
+            </motion.button>
+          </div>
+
+          {/* Comment button */}
+          <motion.button
+            whileHover={{ background: "#f3f4f6" }}
+            whileTap={{ scale: 0.95 }}
+            onClick={toggleComments}
+            style={{
+              display: "flex", alignItems: "center", gap: 5,
+              padding: "7px 14px", border: "none",
+              background: "transparent", cursor: "pointer",
+              borderRadius: 20, fontSize: 13, fontWeight: 600,
+              color: showComments ? cfg.color : "#6b7280",
+              transition: "all 0.15s",
+            }}
+          >
+            <MessageCircle size={15} />
+            Komentar{commentCount > 0 ? ` · ${commentCount}` : ""}
+          </motion.button>
+        </div>
+      </div>
+
+      {/* ── Comments section ───────────────────────────────────── */}
+      <AnimatePresence>
+        {showComments && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+            style={{ overflow: "hidden", borderTop: "1px solid #f3f4f6" }}
+          >
+            <div style={{ padding: "14px 18px 16px" }}>
+
+              {/* Comment list */}
+              {comments.length === 0 && (
+                <p style={{ fontSize: 12, color: "#9ca3af", textAlign: "center", marginBottom: 14 }}>
+                  Belum ada komentar. Jadilah yang pertama!
+                </p>
+              )}
+              {comments.length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 14 }}>
+                  {comments.map(c => {
+                    const cName = (c.profiles as any)?.full_name ?? "—";
+                    const cRole = (c.profiles as any)?.role ?? "";
+                    const canDel = c.user_id === currentUser.id || canManage;
+                    return (
+                      <div key={c.id} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                        <div style={{
+                          width: 30, height: 30, borderRadius: "50%", flexShrink: 0,
+                          background: `linear-gradient(135deg, ${cfg.color}, ${cfg.color}88)`,
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          fontSize: 11, fontWeight: 700, color: "#fff",
+                        }}>
+                          {cName.charAt(0).toUpperCase()}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ background: "#f3f4f6", borderRadius: "0 12px 12px 12px", padding: "8px 12px" }}>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 3 }}>
+                              <span style={{ fontSize: 12, fontWeight: 700, color: "#111827" }}>{cName}</span>
+                              {canDel && (
+                                <button onClick={() => deleteComment(c.id)}
+                                  style={{ border: "none", background: "transparent", cursor: "pointer", padding: 0, opacity: 0.5, display: "flex", alignItems: "center" }}>
+                                  <X size={11} color="#6b7280" />
+                                </button>
+                              )}
+                            </div>
+                            <p style={{ fontSize: 13, color: "#374151", lineHeight: 1.55, margin: 0 }}>{c.content}</p>
+                          </div>
+                          <span style={{ fontSize: 10, color: "#9ca3af", marginLeft: 6, marginTop: 3, display: "block" }}>
+                            {ROLE_LABELS[cRole] ?? cRole} · {fmtDate(c.created_at)}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Comment input */}
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <div style={{
+                  width: 30, height: 30, borderRadius: "50%", flexShrink: 0,
+                  background: `linear-gradient(135deg, ${cfg.color}, ${cfg.color}88)`,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 11, fontWeight: 700, color: "#fff",
+                }}>
+                  {(currentUser.full_name?.charAt(0) ?? "?").toUpperCase()}
+                </div>
+                <div style={{
+                  flex: 1, display: "flex", alignItems: "center", gap: 6,
+                  background: "#f3f4f6", borderRadius: 22,
+                  padding: "6px 6px 6px 14px",
+                  border: "1.5px solid transparent",
+                  transition: "border-color 0.15s",
+                }}
+                  onFocus={() => {}}
+                >
+                  <input
+                    value={commentText}
+                    onChange={e => setCommentText(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submitComment(); } }}
+                    placeholder="Tulis komentar..."
+                    style={{
+                      flex: 1, border: "none", background: "transparent",
+                      fontSize: 13, color: "#111827", outline: "none", fontFamily: "inherit",
+                    }}
+                  />
+                  <motion.button
+                    whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}
+                    onClick={submitComment}
+                    disabled={!commentText.trim() || submittingComment}
+                    style={{
+                      width: 30, height: 30, borderRadius: "50%", border: "none",
+                      background: commentText.trim() ? cfg.color : "#d1d5db",
+                      cursor: commentText.trim() ? "pointer" : "default",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      flexShrink: 0, transition: "background 0.15s",
+                    }}
+                  >
+                    <Send size={12} color="#fff" />
+                  </motion.button>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }

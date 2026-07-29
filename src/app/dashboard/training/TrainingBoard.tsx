@@ -4,6 +4,7 @@ import { useState, useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { createClient } from "@/lib/supabase/client";
 import type { UserProfile } from "@/types";
+import { createTrainingSessionAction, updateTrainingStatusAction, blastTrainingAction } from "./actions";
 import {
   GraduationCap, Plus, X, Check, Edit2, Trash2,
   MapPin, Users, Clock, BookOpen, ChevronDown, ChevronUp,
@@ -176,13 +177,13 @@ export default function TrainingBoard({ currentUser, initialSessions, profiles }
         syncCalendar(editing.id, payload, false);
       }
     } else {
-      const { data, error } = await supabase.from("training_sessions").insert(payload)
-        .select("*, trainer:profiles!training_sessions_trainer_id_fkey(full_name), participants:training_participants(count)").single();
-      if (error) { showToast(error.message, false); }
+      const { data, error } = await createTrainingSessionAction(payload);
+      if (error) { showToast(error, false); }
       else {
-        setSessions(prev => [...prev, data].sort((a, b) => a.date.localeCompare(b.date)));
+        const created = data as unknown as TrainingSession;
+        setSessions(prev => [...prev, created].sort((a, b) => a.date.localeCompare(b.date)));
         showToast("Sesi ditambahkan + kalender disinkron");
-        syncCalendar(data.id, payload, true);
+        syncCalendar(created.id, payload, true);
       }
     }
     setSubmitting(false);
@@ -198,7 +199,7 @@ export default function TrainingBoard({ currentUser, initialSessions, profiles }
   };
 
   const handleQuickStatus = async (s: TrainingSession, next: TrainingSession["status"]) => {
-    const { error } = await supabase.from("training_sessions").update({ status: next }).eq("id", s.id);
+    const { error } = await updateTrainingStatusAction(s.id, next, s.title);
     if (error) { showToast("Gagal update status", false); return; }
     setSessions(prev => prev.map(x => x.id === s.id ? { ...x, status: next } : x));
     showToast(`Status → ${STATUS_CFG[next].label}`);
@@ -212,12 +213,10 @@ export default function TrainingBoard({ currentUser, initialSessions, profiles }
     const trainerLabel = (s.trainer as any)?.full_name ? ` Trainer: ${(s.trainer as any).full_name}.` : "";
     const content = `Jadwal training "${s.title}" akan diadakan pada ${dateLabel}${timeLabel}${locLabel}.${trainerLabel}${s.description ? `\n\n${s.description}` : ""}`;
 
-    const { error } = await supabase.from("announcements").insert({
+    const { error } = await blastTrainingAction({
       title: `📢 Training: ${s.title}`,
       content,
-      type: "info",
-      pinned: false,
-      created_by: currentUser.id,
+      createdBy: currentUser.id,
     });
 
     if (error) showToast("Gagal mengirim notifikasi", false);
