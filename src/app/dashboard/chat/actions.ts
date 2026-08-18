@@ -22,6 +22,16 @@ export async function sendChatMessageAction(
 
     const admin = adminClient();
 
+    // Verify the caller is actually a member of this room before writing —
+    // the insert below uses the service-role client, which bypasses RLS.
+    const { data: membership } = await admin
+      .from("chat_room_members")
+      .select("user_id")
+      .eq("room_id", roomId)
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (!membership) return { data: null, error: "Akses ditolak." };
+
     // Insert message
     const { data: msg, error: insertErr } = await admin
       .from("chat_messages")
