@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!;
 const DISMISSED_KEY = "ios_install_banner_dismissed";
@@ -34,37 +34,7 @@ export default function PushNotificationManager() {
   const [showIosEnableBtn, setShowIosEnableBtn] = useState(false);
   const [enabling, setEnabling] = useState(false);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const ios = isIosSafari();
-    const standalone = isStandalone();
-
-    // iOS Safari + not installed → show install guide
-    if (ios && !standalone) {
-      const dismissed = sessionStorage.getItem(DISMISSED_KEY);
-      if (!dismissed) setShowIosBanner(true);
-      return;
-    }
-
-    // iOS Safari standalone — need user gesture for permission, show button
-    if (ios && standalone) {
-      if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
-      // If already granted, run setup silently; otherwise show enable button
-      if (Notification.permission === "granted") {
-        setupPush();
-      } else if (Notification.permission === "default") {
-        setShowIosEnableBtn(true);
-      }
-      return;
-    }
-
-    // Android / Desktop — auto-run push setup
-    if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
-    setupPush();
-  }, []);
-
-  async function setupPush() {
+  const setupPush = useCallback(async () => {
     try {
       const reg = await navigator.serviceWorker.register("/sw.js");
       await navigator.serviceWorker.ready;
@@ -99,7 +69,41 @@ export default function PushNotificationManager() {
     } catch (err) {
       console.warn("[Push] Setup failed:", err);
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const ios = isIosSafari();
+    const standalone = isStandalone();
+
+    // iOS Safari + not installed → show install guide
+    if (ios && !standalone) {
+      const dismissed = sessionStorage.getItem(DISMISSED_KEY);
+      if (!dismissed) {
+        const showTimer = window.setTimeout(() => setShowIosBanner(true), 0);
+        return () => window.clearTimeout(showTimer);
+      }
+      return;
+    }
+
+    // iOS Safari standalone — need user gesture for permission, show button
+    if (ios && standalone) {
+      if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
+      // If already granted, run setup silently; otherwise show enable button
+      if (Notification.permission === "granted") {
+        setupPush();
+      } else if (Notification.permission === "default") {
+        const showTimer = window.setTimeout(() => setShowIosEnableBtn(true), 0);
+        return () => window.clearTimeout(showTimer);
+      }
+      return;
+    }
+
+    // Android / Desktop — auto-run push setup
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
+    setupPush();
+  }, [setupPush]);
 
   async function handleIosEnable() {
     setEnabling(true);

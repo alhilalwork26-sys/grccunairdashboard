@@ -64,8 +64,9 @@ export default function DashboardShell({
   useEffect(() => {
     const events = ["mousemove", "mousedown", "keydown", "scroll", "touchstart", "click"];
     events.forEach(e => window.addEventListener(e, resetIdleTimer, { passive: true }));
-    resetIdleTimer(); // start timer immediately
+    const startTimer = window.setTimeout(resetIdleTimer, 0);
     return () => {
+      window.clearTimeout(startTimer);
       events.forEach(e => window.removeEventListener(e, resetIdleTimer));
       if (warnRef.current) clearTimeout(warnRef.current);
       if (idleRef.current) clearTimeout(idleRef.current);

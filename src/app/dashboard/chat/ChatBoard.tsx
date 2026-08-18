@@ -178,7 +178,7 @@ export default function ChatBoard({currentUser,allUsers,dmRooms:initDms}:Props) 
         })
       .subscribe();
     return ()=>{ ok=false; window.clearTimeout(resetTimer); supabase.removeChannel(ch); };
-  },[roomId,supabase]);  
+  },[roomId,supabase,currentUser.id]);  
 
   // ── Auto-scroll ────────────────────────────────────────────────────────────
   useEffect(()=>{ endRef.current?.scrollIntoView({behavior:"smooth"}); },[msgs]);

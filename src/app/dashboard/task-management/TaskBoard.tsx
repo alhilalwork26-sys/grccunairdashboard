@@ -308,6 +308,17 @@ export default function TaskBoard({ initialTasks, profiles, currentUser, canSeeA
   const canManage  = ["super_admin", "manager", "program_admin", "kep_finance", "kep_trainer"].includes(currentUser.role);
   const canApprove = APPROVE_ROLES.includes(currentUser.role);
 
+  function canChangeTaskStatus(task: Task, nextStatus: Task["status"]) {
+    const isTaskOwner = task.assigned_to === currentUser.id || task.created_by === currentUser.id;
+    if (nextStatus === "done") return canApprove;
+    return canManage || isTaskOwner;
+  }
+
+  function getStatusOptions(task: Task) {
+    return (Object.entries(STATUS_CFG) as [Task["status"], typeof STATUS_CFG[keyof typeof STATUS_CFG]][])
+      .filter(([key]) => canChangeTaskStatus(task, key));
+  }
+
   const assignableProfiles = currentUser.role === "kep_finance"
     ? profiles.filter(p => ["staff_finance", "staff_dokumen"].includes(p.role ?? ""))
     : profiles;
@@ -599,7 +610,7 @@ export default function TaskBoard({ initialTasks, profiles, currentUser, canSeeA
               {popup.type === "status" ? (
                 <>
                   <p style={{ fontSize: 10, fontWeight: 700, color: "#9ca3af", padding: "5px 8px 4px", letterSpacing: "0.07em", textTransform: "uppercase" }}>Ubah Status</p>
-                  {(Object.entries(STATUS_CFG) as [Task["status"], typeof STATUS_CFG[keyof typeof STATUS_CFG]][]).map(([key, cfg]) => {
+                  {getStatusOptions(popupTask).map(([key, cfg]) => {
                     const Icon = cfg.Icon;
                     const isCurrent = popupTask.status === key;
                     return (
@@ -686,10 +697,12 @@ export default function TaskBoard({ initialTasks, profiles, currentUser, canSeeA
                   <div>
                     <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}><CheckCircle size={11} style={{ display: "inline", marginRight: 4 }} />Status</label>
                     <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value as Task["status"] }))} className="clean-input" style={{ width: "100%", boxSizing: "border-box" }}>
-                      <option value="pending">Pending</option>
-                      <option value="in_progress">Dikerjakan</option>
-                      <option value="review">Review</option>
-                      <option value="done">Selesai</option>
+                      {(editing
+                        ? getStatusOptions(editing)
+                        : (Object.entries(STATUS_CFG) as [Task["status"], typeof STATUS_CFG[keyof typeof STATUS_CFG]][])
+                      ).map(([key, cfg]) => (
+                        <option key={key} value={key}>{cfg.label}</option>
+                      ))}
                     </select>
                   </div>
                 </div>

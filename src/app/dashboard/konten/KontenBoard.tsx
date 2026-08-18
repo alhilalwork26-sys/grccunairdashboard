@@ -50,6 +50,9 @@ const EMPTY_FORM = {
   status: "draft" as ContentPost["status"],
 };
 
+const CONTENT_CREATOR_ROLES = ["super_admin", "manager", "kep_marketing", "staff_marketing", "staff_kreatif"];
+const CONTENT_APPROVER_ROLES = ["super_admin", "manager"];
+
 interface Props {
   initialPosts: ContentPost[];
   campaigns: Pick<Campaign, "id" | "nama">[];
@@ -104,8 +107,20 @@ export default function KontenBoard({ initialPosts, campaigns, currentUser, cale
     setToast({ msg, type }); setTimeout(() => setToast(null), 3000);
   }
 
-  const canCreate  = ["super_admin","manager","kep_marketing","staff_marketing","staff_kreatif"].includes(currentUser.role);
-  const canApprove = ["super_admin","manager"].includes(currentUser.role);
+  const canCreate  = CONTENT_CREATOR_ROLES.includes(currentUser.role);
+  const canApprove = CONTENT_APPROVER_ROLES.includes(currentUser.role);
+
+  function isOwnPost(post: ContentPost) {
+    return post.created_by === currentUser.id;
+  }
+
+  function canSubmitReview(post: ContentPost) {
+    return canCreate && isOwnPost(post);
+  }
+
+  function canEditPost(post: ContentPost) {
+    return canCreate && (isOwnPost(post) || canApprove);
+  }
 
   /* ── filtered ── */
   const filtered = useMemo(() => posts.filter(p => {
@@ -239,8 +254,7 @@ export default function KontenBoard({ initialPosts, campaigns, currentUser, cale
   function PostCard({ post }: { post: ContentPost }) {
     const sc  = STATUS_CFG[post.status];
     const plt = PLATFORM_CFG[post.platform] ?? PLATFORM_CFG.Other;
-    const isOwn = post.created_by === currentUser.id;
-    const canEdit = canCreate && (isOwn || ["super_admin","manager"].includes(currentUser.role));
+    const canEdit = canEditPost(post);
 
     return (
       <motion.div layout initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
@@ -324,7 +338,7 @@ export default function KontenBoard({ initialPosts, campaigns, currentUser, cale
           {/* ── Action buttons ── */}
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             {/* Marketing: kirim ke review */}
-            {canCreate && post.status === "draft" && (
+            {canSubmitReview(post) && post.status === "draft" && (
               <motion.button whileTap={{ scale: 0.95 }} onClick={() => sendToReview(post.id)}
                 style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "7px 10px", borderRadius: 8, background: "#f5f3ff", border: "1px solid #ddd6fe", color: "#7c3aed", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
                 <Send size={11} /> Kirim Review
@@ -332,7 +346,7 @@ export default function KontenBoard({ initialPosts, campaigns, currentUser, cale
             )}
 
             {/* Marketing: kirim ulang setelah ditolak */}
-            {canCreate && post.status === "rejected" && (
+            {canSubmitReview(post) && post.status === "rejected" && (
               <motion.button whileTap={{ scale: 0.95 }} onClick={() => sendToReview(post.id)}
                 style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "7px 10px", borderRadius: 8, background: "#fff7ed", border: "1px solid #fed7aa", color: "#ea580c", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
                 <Send size={11} /> Kirim Ulang
@@ -561,12 +575,12 @@ export default function KontenBoard({ initialPosts, campaigns, currentUser, cale
                                 </div>
                               )}
                               <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                                {canCreate && post.status === "draft" && (
+                                {canSubmitReview(post) && post.status === "draft" && (
                                   <button onClick={() => sendToReview(post.id)} style={{ display: "flex", alignItems: "center", gap: 3, padding: "4px 7px", borderRadius: 6, background: "#f5f3ff", border: "1px solid #ddd6fe", color: "#7c3aed", fontSize: 9, fontWeight: 700, cursor: "pointer" }}>
                                     <Send size={9} /> Review
                                   </button>
                                 )}
-                                {canCreate && post.status === "rejected" && (
+                                {canSubmitReview(post) && post.status === "rejected" && (
                                   <button onClick={() => sendToReview(post.id)} style={{ display: "flex", alignItems: "center", gap: 3, padding: "4px 7px", borderRadius: 6, background: "#fff7ed", border: "1px solid #fed7aa", color: "#ea580c", fontSize: 9, fontWeight: 700, cursor: "pointer" }}>
                                     <Send size={9} /> Ulang
                                   </button>
@@ -580,7 +594,7 @@ export default function KontenBoard({ initialPosts, campaigns, currentUser, cale
                                 {canApprove && post.status === "approved" && (
                                   <button onClick={() => markPosted(post.id)} style={{ display: "flex", alignItems: "center", gap: 3, padding: "4px 7px", borderRadius: 6, background: "#e0f2fe", border: "1px solid #7dd3fc", color: "#0369a1", fontSize: 9, fontWeight: 700, cursor: "pointer" }}><Eye size={9} /> Tayang</button>
                                 )}
-                                {canCreate && (
+                                {canEditPost(post) && (
                                   <button onClick={() => openEdit(post)} style={{ padding: "4px 6px", borderRadius: 6, background: "#f8fafc", border: "1px solid #e2e8f0", color: "#64748b", fontSize: 9, cursor: "pointer" }}><Edit2 size={9} /></button>
                                 )}
                               </div>
@@ -745,7 +759,7 @@ export default function KontenBoard({ initialPosts, campaigns, currentUser, cale
                                   <p style={{ fontSize: 11, fontWeight: 700, color: "#0f172a", marginBottom: 5 }}>{p.judul}</p>
                                   <div style={{ display: "flex", gap: 5 }}>
                                     {p.visual_url && <a href={p.visual_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 9, color: "#7c3aed", display: "flex", alignItems: "center", gap: 2, textDecoration: "none" }}><ExternalLink size={8} /> Aset</a>}
-                                    {canCreate && <button onClick={() => { openEdit(p); setCalPopup(null); }} style={{ fontSize: 9, color: "#64748b", background: "none", border: "none", cursor: "pointer", padding: 0, display: "flex", alignItems: "center", gap: 2 }}><Edit2 size={8} /> Edit</button>}
+                                    {canEditPost(p) && <button onClick={() => { openEdit(p); setCalPopup(null); }} style={{ fontSize: 9, color: "#64748b", background: "none", border: "none", cursor: "pointer", padding: 0, display: "flex", alignItems: "center", gap: 2 }}><Edit2 size={8} /> Edit</button>}
                                     {canApprove && p.status === "review" && (
                                       <>
                                         <button onClick={() => { approvePost(p.id); setCalPopup(null); }} style={{ fontSize: 9, color: "#059669", background: "none", border: "none", cursor: "pointer", padding: 0 }}><ThumbsUp size={8} /> Setujui</button>

@@ -109,14 +109,15 @@ export default function NotificationDropdown({ userRole }: { userRole?: string }
       fetchBadge();
       if (openRef.current) fetchNotifs();
     };
-    const channel = supabaseRef.current
+    const supabase = supabaseRef.current;
+    const channel = supabase
       .channel("notif-realtime")
       .on("postgres_changes", { event: "*", schema: "public", table: "tasks" }, handleChange)
       .on("postgres_changes", { event: "*", schema: "public", table: "reimbursements" }, handleChange)
       .on("postgres_changes", { event: "*", schema: "public", table: "announcements" }, handleChange)
       .on("postgres_changes", { event: "*", schema: "public", table: "training_sessions" }, handleChange)
       .subscribe();
-    return () => { supabaseRef.current.removeChannel(channel); };
+    return () => { supabase.removeChannel(channel); };
   }, [fetchBadge, fetchNotifs]);
 
   // Close on outside click

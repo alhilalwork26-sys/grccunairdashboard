@@ -36,7 +36,7 @@ function fmtTime(t?: string | null) {
 
 export default function CalendarPanel() {
   const router  = useRouter();
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
 
   const today = new Date();
   const [viewDate, setViewDate]   = useState(new Date(today.getFullYear(), today.getMonth(), 1));
@@ -51,7 +51,7 @@ export default function CalendarPanel() {
   useEffect(() => {
     supabase.from("events").select("*").order("start_date").order("start_time")
       .then(({ data }) => { if (data) setEvents(data); });
-  }, []);
+  }, [supabase]);
 
   // Subscribe to realtime changes
   useEffect(() => {
@@ -62,7 +62,7 @@ export default function CalendarPanel() {
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, []);
+  }, [supabase]);
 
   // Group events by date
   const eventsByDate = useMemo(() => {
