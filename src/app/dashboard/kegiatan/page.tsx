@@ -23,7 +23,7 @@ export default async function KegiatanPage() {
   const [{ data: items }, { data: profiles }] = await Promise.all([
     supabase
       .from("kegiatan")
-      .select("*, pic:profiles!kegiatan_pic_id_fkey(full_name), creator:profiles!kegiatan_created_by_fkey(full_name), lampiran:kegiatan_lampiran(count)")
+      .select("*, pic:profiles!kegiatan_pic_id_fkey(full_name), creator:profiles!kegiatan_created_by_fkey(full_name), lampiran:kegiatan_lampiran(count), checklist:kegiatan_checklist(status)")
       .order("deadline", { ascending: true }),
     supabase.from("profiles").select("id, full_name, role").order("full_name"),
   ]);

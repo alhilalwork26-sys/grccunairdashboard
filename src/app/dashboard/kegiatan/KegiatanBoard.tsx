@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { createClient } from "@/lib/supabase/client";
 import type { UserProfile } from "@/types";
 import {
-  createKegiatanAction, updateKegiatanAction, updateKegiatanStatusAction,
+  createKegiatanAction, updateKegiatanAction,
   deleteKegiatanAction, blastKegiatanAction,
 } from "./actions";
 import {
@@ -38,6 +38,7 @@ interface Kegiatan {
   pic?: { full_name: string } | null;
   creator?: { full_name: string } | null;
   lampiran?: { count: number }[];
+  checklist?: { status: "belum" | "sudah" }[];
   virtual_background_url?: string | null;
   absensi_url?: string | null;
   materi_url?: string | null;
@@ -189,6 +190,27 @@ function ProgressDonut({ done, total }: { done: number; total: number }) {
   );
 }
 
+function MiniDonut({ done, total }: { done: number; total: number }) {
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+  const size = 26, stroke = 4, r = (size - stroke) / 2, c = 2 * Math.PI * r;
+  const offset = c - (pct / 100) * c;
+  const color = total === 0 ? "#e5e7eb" : pct === 100 ? "#10b981" : "#6366f1";
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 6 }} title={total === 0 ? "Belum ada checklist" : `${done} dari ${total} checklist selesai`}>
+      <svg width={size} height={size} style={{ transform: "rotate(-90deg)", flexShrink: 0 }}>
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#f3f4f6" strokeWidth={stroke} />
+        {total > 0 && (
+          <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={stroke}
+            strokeLinecap="round" strokeDasharray={c} strokeDashoffset={offset} />
+        )}
+      </svg>
+      <span style={{ fontSize: 11, fontWeight: 700, color: total === 0 ? "#d1d5db" : "#374151" }}>
+        {total === 0 ? "—" : `${pct}%`}
+      </span>
+    </div>
+  );
+}
+
 export default function KegiatanBoard({ currentUser, initialItems, profiles }: Props) {
   const supabase = createClient();
   const canEdit = ["super_admin", "manager", "kep_trainer", "staff_dokumen"].includes(currentUser.role);
@@ -258,6 +280,12 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
     loadChecklist(k.id);
   };
 
+  const syncItemChecklist = useCallback((kegiatanId: string, next: ChecklistItem[]) => {
+    setItems(prev => prev.map(k => k.id === kegiatanId
+      ? { ...k, checklist: next.map(c => ({ status: c.status })) }
+      : k));
+  }, []);
+
   const handleAddChecklistItem = async () => {
     if (!newItemName.trim() || !editing) return;
     setAddingItem(true);
@@ -270,21 +298,32 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
       .select("id, item_name, pic, status, created_at")
       .single();
     if (error) showToast(error.message, false);
-    else { setChecklist(prev => [...prev, data]); setNewItemName(""); setNewItemPic(""); }
+    else {
+      const next = [...checklist, data];
+      setChecklist(next);
+      syncItemChecklist(editing.id, next);
+      setNewItemName(""); setNewItemPic("");
+    }
     setAddingItem(false);
   };
 
   const handleToggleChecklistStatus = async (item: ChecklistItem, next: ChecklistItem["status"]) => {
-    setChecklist(prev => prev.map(c => c.id === item.id ? { ...c, status: next } : c));
+    const nextList = checklist.map(c => c.id === item.id ? { ...c, status: next } : c);
+    setChecklist(nextList);
+    if (editing) syncItemChecklist(editing.id, nextList);
     const { error } = await supabase.from("kegiatan_checklist").update({ status: next }).eq("id", item.id);
     if (error) {
-      setChecklist(prev => prev.map(c => c.id === item.id ? { ...c, status: item.status } : c));
+      const reverted = checklist.map(c => c.id === item.id ? { ...c, status: item.status } : c);
+      setChecklist(reverted);
+      if (editing) syncItemChecklist(editing.id, reverted);
       showToast("Gagal update status checklist", false);
     }
   };
 
   const handleDeleteChecklistItem = async (id: string) => {
-    setChecklist(prev => prev.filter(c => c.id !== id));
+    const next = checklist.filter(c => c.id !== id);
+    setChecklist(next);
+    if (editing) syncItemChecklist(editing.id, next);
     const { error } = await supabase.from("kegiatan_checklist").delete().eq("id", id);
     if (error) showToast(error.message, false);
   };
@@ -327,17 +366,6 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
     if (error) showToast(error, false);
     else { setItems(prev => prev.filter(k => k.id !== id)); showToast("Kegiatan dihapus"); }
     setDeleteId(null);
-  };
-
-  const handleQuickStatus = async (k: Kegiatan, next: Kegiatan["status"]) => {
-    setItems(prev => prev.map(x => x.id === k.id ? { ...x, status: next } : x));
-    const { error } = await updateKegiatanStatusAction(k.id, next);
-    if (error) {
-      setItems(prev => prev.map(x => x.id === k.id ? { ...x, status: k.status } : x));
-      showToast("Gagal update status", false);
-    } else {
-      showToast(`Status → ${STATUS_CFG[next].label}`);
-    }
   };
 
   const handleBlast = async (k: Kegiatan) => {
@@ -560,9 +588,10 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
                         : <span style={{ color: "#d1d5db" }}>—</span>}
                     </span>
 
-                    <div onClick={e => e.stopPropagation()}>
-                      <StatusBadge status={k.status} editable={canEdit} onChange={s => handleQuickStatus(k, s)} />
-                    </div>
+                    <MiniDonut
+                      done={(k.checklist ?? []).filter(c => c.status === "sudah").length}
+                      total={(k.checklist ?? []).length}
+                    />
 
                     <span style={{ fontSize: 12, color: tone.color, fontWeight: tone.label ? 700 : 500, display: "flex", alignItems: "center", gap: 5 }}>
                       <CalendarDays size={11} style={{ flexShrink: 0 }} />

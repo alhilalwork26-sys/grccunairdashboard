@@ -13,7 +13,7 @@ function adminClient() {
 
 const CAN_EDIT = ["super_admin", "manager", "kep_trainer", "staff_dokumen"];
 const SELECT_WITH_RELATIONS =
-  "*, pic:profiles!kegiatan_pic_id_fkey(full_name), creator:profiles!kegiatan_created_by_fkey(full_name), lampiran:kegiatan_lampiran(count)";
+  "*, pic:profiles!kegiatan_pic_id_fkey(full_name), creator:profiles!kegiatan_created_by_fkey(full_name), lampiran:kegiatan_lampiran(count), checklist:kegiatan_checklist(status)";
 
 interface KegiatanLinks {
   virtual_background_url: string | null;
@@ -93,18 +93,6 @@ export async function updateKegiatanAction(
 
   if (error) return { data: null, error: error.message };
   return { data: data as Record<string, unknown>, error: null };
-}
-
-export async function updateKegiatanStatusAction(
-  id: string,
-  status: "belum" | "sudah",
-): Promise<{ error: string | null }> {
-  const auth = await requireKegiatanAuth();
-  if ("error" in auth) return auth;
-
-  const admin = adminClient();
-  const { error } = await admin.from("kegiatan").update({ status }).eq("id", id);
-  return { error: error?.message ?? null };
 }
 
 export async function deleteKegiatanAction(id: string): Promise<{ error: string | null }> {
