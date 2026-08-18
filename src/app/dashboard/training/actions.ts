@@ -46,8 +46,8 @@ export async function createTrainingSessionAction(payload: {
   const admin = adminClient();
   const { data, error } = await admin
     .from("training_sessions")
-    .insert(payload)
-    .select("*, trainer:profiles!training_sessions_trainer_id_fkey(full_name), participants:training_participants(count)")
+    .insert({ ...payload, created_by: auth.userId })
+    .select("*, trainer:profiles!training_sessions_trainer_id_fkey(full_name), creator:profiles!training_sessions_created_by_fkey(full_name), participants:training_participants(count)")
     .single();
 
   if (error) return { data: null, error: error.message };

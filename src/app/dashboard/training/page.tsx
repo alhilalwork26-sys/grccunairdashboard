@@ -23,7 +23,7 @@ export default async function TrainingPage() {
   const [{ data: sessions }, { data: profiles }] = await Promise.all([
     supabase
       .from("training_sessions")
-      .select("*, trainer:profiles!training_sessions_trainer_id_fkey(full_name), participants:training_participants(count)")
+      .select("*, trainer:profiles!training_sessions_trainer_id_fkey(full_name), creator:profiles!training_sessions_created_by_fkey(full_name), participants:training_participants(count)")
       .order("date", { ascending: true }),
     supabase.from("profiles").select("id, full_name, role").order("full_name"),
   ]);

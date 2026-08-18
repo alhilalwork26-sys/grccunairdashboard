@@ -8,7 +8,7 @@ import { createTrainingSessionAction, updateTrainingStatusAction, blastTrainingA
 import {
   GraduationCap, Plus, X, Check, Edit2, Trash2,
   MapPin, Users, Clock, BookOpen, ChevronDown, ChevronUp,
-  Search, AlertTriangle, ExternalLink, Zap, Megaphone,
+  Search, AlertTriangle, ExternalLink, Zap, Megaphone, UserCircle2,
 } from "lucide-react";
 
 interface TrainingSession {
@@ -24,7 +24,9 @@ interface TrainingSession {
   trainer_id?: string | null;
   materials?: string | null;
   created_at: string;
+  created_by?: string | null;
   trainer?: { full_name: string } | null;
+  creator?: { full_name: string } | null;
   participants?: { count: number }[];
 }
 
@@ -169,7 +171,7 @@ export default function TrainingBoard({ currentUser, initialSessions, profiles }
     };
     if (editing) {
       const { data, error } = await supabase.from("training_sessions").update(payload).eq("id", editing.id)
-        .select("*, trainer:profiles!training_sessions_trainer_id_fkey(full_name), participants:training_participants(count)").single();
+        .select("*, trainer:profiles!training_sessions_trainer_id_fkey(full_name), creator:profiles!training_sessions_created_by_fkey(full_name), participants:training_participants(count)").single();
       if (error) { showToast(error.message, false); }
       else {
         setSessions(prev => prev.map(s => s.id === editing.id ? data : s));
@@ -527,6 +529,12 @@ export default function TrainingBoard({ currentUser, initialSessions, profiles }
                                 <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                                   <GraduationCap size={11} color="#9ca3af" />
                                   <span style={{ fontSize: 11, color: "#6b7280" }}>{(s.trainer as any).full_name}</span>
+                                </div>
+                              )}
+                              {s.creator?.full_name && (
+                                <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                  <UserCircle2 size={11} color="#9ca3af" />
+                                  <span style={{ fontSize: 11, color: "#9ca3af" }}>Dibuat oleh {s.creator.full_name}</span>
                                 </div>
                               )}
                             </div>
