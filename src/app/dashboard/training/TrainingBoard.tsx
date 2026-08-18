@@ -87,7 +87,7 @@ interface Props {
 
 export default function TrainingBoard({ currentUser, initialSessions, profiles }: Props) {
   const supabase = createClient();
-  const canEdit   = ["super_admin", "manager", "kep_trainer"].includes(currentUser.role);
+  const canEdit   = ["super_admin", "manager", "kep_trainer", "staff_dokumen"].includes(currentUser.role);
 
   const [sessions, setSessions]       = useState<TrainingSession[]>(initialSessions);
   const [tab, setTab]                 = useState<"upcoming" | "done" | "all">("upcoming");

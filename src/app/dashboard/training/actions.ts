@@ -11,7 +11,7 @@ function adminClient() {
   });
 }
 
-const CAN_EDIT = ["super_admin", "manager", "kep_trainer"];
+const CAN_EDIT = ["super_admin", "manager", "kep_trainer", "staff_dokumen"];
 
 async function requireTrainingAuth(): Promise<{ userId: string; role: string } | { error: string }> {
   try {
