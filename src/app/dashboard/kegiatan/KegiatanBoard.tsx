@@ -436,12 +436,13 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
             )}
           </motion.div>
         ) : (
-          <div style={{ background: "#fff", border: "1px solid #f3f4f6", borderRadius: 14, overflow: "hidden" }}>
+          <div style={{ background: "#fff", border: "1px solid #f3f4f6", borderRadius: 14 }}>
             {/* Table header */}
             <div style={{
               display: "grid",
               gridTemplateColumns: canEdit ? "2.2fr 1.2fr 0.9fr 1fr 2fr 0.8fr auto" : "2.2fr 1.2fr 0.9fr 1fr 2fr 0.8fr",
               gap: 12, padding: "10px 18px", background: "#f9fafb", borderBottom: "1px solid #f3f4f6",
+              borderTopLeftRadius: 14, borderTopRightRadius: 14,
             }}>
               {["Nama Kegiatan", "PIC", "Status", "Deadline", "Keterangan", "Lampiran"].map(h => (
                 <span key={h} style={{ fontSize: 11, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.04em" }}>{h}</span>
