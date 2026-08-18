@@ -38,7 +38,7 @@ const MODULES = [
   { id: "docs",            label: "Dokumen" },
   { id: "finance",         label: "Finance" },
   { id: "rab",             label: "RAB" },
-  { id: "training",        label: "Training" },
+  { id: "kegiatan",        label: "Kegiatan" },
   { id: "approvals",       label: "Approval Center" },
   { id: "report",          label: "Laporan" },
   { id: "notifications",   label: "Notifikasi" },

@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Bell, BellRing, Clock, Megaphone, GraduationCap,
+  Bell, BellRing, Clock, Megaphone, Layers,
   ClipboardCheck, X, ArrowRight,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -12,7 +12,7 @@ import { useTheme } from "@/context/ThemeContext";
 
 interface VirtualNotif {
   id: string;
-  type: "overdue" | "announce" | "training" | "approval";
+  type: "overdue" | "announce" | "kegiatan" | "approval";
   title: string;
   body: string;
   href: string;
@@ -22,7 +22,7 @@ interface VirtualNotif {
 const TYPE_CFG = {
   overdue:  { color: "#ef4444", bg: "#fef2f2", Icon: Clock        },
   announce: { color: "#f59e0b", bg: "#fffbeb", Icon: Megaphone    },
-  training: { color: "#3b82f6", bg: "#eff6ff", Icon: GraduationCap },
+  kegiatan: { color: "#3b82f6", bg: "#eff6ff", Icon: Layers },
   approval: { color: "#8b5cf6", bg: "#f5f3ff", Icon: ClipboardCheck },
 };
 
@@ -60,15 +60,15 @@ export default function NotificationDropdown({ userRole }: { userRole?: string }
     const [
       { data: overdue },
       { data: announces },
-      { data: trainings },
+      { data: kegiatanRows },
       { data: reimbs },
     ] = await Promise.all([
       supabaseRef.current.from("tasks").select("id, title, due_date")
         .lt("due_date", today).not("status", "eq", "done").limit(5),
       supabaseRef.current.from("announcements").select("id, title, created_at")
         .order("created_at", { ascending: false }).limit(3),
-      supabaseRef.current.from("training_sessions").select("id, title, date")
-        .eq("status", "upcoming").gte("date", today).lte("date", in7).limit(3),
+      supabaseRef.current.from("kegiatan").select("id, title, deadline")
+        .eq("status", "belum").gte("deadline", today).lte("deadline", in7).limit(3),
       canSeeReimbs
         ? supabaseRef.current.from("reimbursements").select("id, title, amount").eq("status", "pending").limit(3)
         : Promise.resolve({ data: [] }),
@@ -86,10 +86,10 @@ export default function NotificationDropdown({ userRole }: { userRole?: string }
       body: `${r.title} — Rp ${(r.amount ?? 0).toLocaleString("id-ID")}`,
       href: "/dashboard/approvals", time: new Date().toISOString(),
     }));
-    (trainings ?? []).forEach(t => result.push({
-      id: `training-${t.id}`, type: "training",
-      title: "Training Akan Datang", body: `${t.title} · ${t.date}`,
-      href: "/dashboard/training", time: t.date,
+    (kegiatanRows ?? []).forEach(k => result.push({
+      id: `kegiatan-${k.id}`, type: "kegiatan",
+      title: "Kegiatan Akan Datang", body: `${k.title} · ${k.deadline}`,
+      href: "/dashboard/kegiatan", time: k.deadline,
     }));
     (announces ?? []).forEach(a => result.push({
       id: `ann-${a.id}`, type: "announce",
@@ -115,7 +115,7 @@ export default function NotificationDropdown({ userRole }: { userRole?: string }
       .on("postgres_changes", { event: "*", schema: "public", table: "tasks" }, handleChange)
       .on("postgres_changes", { event: "*", schema: "public", table: "reimbursements" }, handleChange)
       .on("postgres_changes", { event: "*", schema: "public", table: "announcements" }, handleChange)
-      .on("postgres_changes", { event: "*", schema: "public", table: "training_sessions" }, handleChange)
+      .on("postgres_changes", { event: "*", schema: "public", table: "kegiatan" }, handleChange)
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [fetchBadge, fetchNotifs]);

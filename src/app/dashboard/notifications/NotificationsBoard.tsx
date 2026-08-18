@@ -2,7 +2,7 @@
 
 import { motion } from "framer-motion";
 import {
-  Clock, ClipboardCheck, Megaphone, GraduationCap,
+  Clock, ClipboardCheck, Megaphone, Layers,
   AlertCircle, BellRing, ImageIcon, Pencil,
 } from "lucide-react";
 import Topbar from "@/components/layout/Topbar";
@@ -33,7 +33,7 @@ interface Props {
   overdueTasks:      any[];
   pendingReimbs:     any[];
   announcements:     any[];
-  upcomingTrainings: any[];
+  upcomingKegiatan: any[];
   reviewTasks:       any[];
   pendingKonten:     any[];
   openBriefs:        any[];
@@ -82,7 +82,7 @@ function Section({ title, icon, color, count, href, linkLabel, children, empty, 
   );
 }
 
-export default function NotificationsBoard({ user, overdueTasks, pendingReimbs, announcements, upcomingTrainings, reviewTasks, pendingKonten, openBriefs }: Props) {
+export default function NotificationsBoard({ user, overdueTasks, pendingReimbs, announcements, upcomingKegiatan, reviewTasks, pendingKonten, openBriefs }: Props) {
   const router = useRouter();
 
   useEffect(() => {
@@ -91,7 +91,7 @@ export default function NotificationsBoard({ user, overdueTasks, pendingReimbs, 
       .on("postgres_changes", { event: "*", schema: "public", table: "tasks" },           () => router.refresh())
       .on("postgres_changes", { event: "*", schema: "public", table: "announcements" },   () => router.refresh())
       .on("postgres_changes", { event: "*", schema: "public", table: "reimbursements" },  () => router.refresh())
-      .on("postgres_changes", { event: "*", schema: "public", table: "training_sessions"},() => router.refresh())
+      .on("postgres_changes", { event: "*", schema: "public", table: "kegiatan"},() => router.refresh())
       .on("postgres_changes", { event: "*", schema: "public", table: "content_posts" },   () => router.refresh())
       .on("postgres_changes", { event: "*", schema: "public", table: "creative_briefs" }, () => router.refresh())
       .subscribe();
@@ -196,22 +196,21 @@ export default function NotificationsBoard({ user, overdueTasks, pendingReimbs, 
             })}
           </Section>
 
-          {/* Upcoming Training */}
+          {/* Upcoming Kegiatan */}
           <Section
-            title="Training Minggu Ini" icon={<GraduationCap size={15} color="#3b82f6" strokeWidth={2} />}
-            color="#3b82f6" count={upcomingTrainings.length}
-            href="/dashboard/training" linkLabel="Lihat jadwal" empty="Tidak ada training dalam 7 hari ke depan" delay={0.2}
+            title="Kegiatan Mendatang" icon={<Layers size={15} color="#3b82f6" strokeWidth={2} />}
+            color="#3b82f6" count={upcomingKegiatan.length}
+            href="/dashboard/kegiatan" linkLabel="Lihat daftar" empty="Tidak ada kegiatan dalam 7 hari ke depan" delay={0.2}
           >
-            {upcomingTrainings.map((t, i) => (
-              <motion.div key={t.id}
+            {upcomingKegiatan.map((k, i) => (
+              <motion.div key={k.id}
                 initial={{ opacity: 0, x: -4 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.25 + i * 0.04 }}
-                style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 18px", borderBottom: i < upcomingTrainings.length - 1 ? "1px solid #f9fafb" : "none" }}
+                style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 18px", borderBottom: i < upcomingKegiatan.length - 1 ? "1px solid #f9fafb" : "none" }}
               >
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{ fontSize: 12, fontWeight: 500, color: "#111827", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.title}</p>
-                  <p style={{ fontSize: 10, color: "#9ca3af", marginTop: 1 }}>{t.location ?? "—"}</p>
+                  <p style={{ fontSize: 12, fontWeight: 500, color: "#111827", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{k.title}</p>
                 </div>
-                <span style={{ fontSize: 10, fontWeight: 600, color: "#3b82f6", flexShrink: 0 }}>{fmtDate(t.date)}</span>
+                <span style={{ fontSize: 10, fontWeight: 600, color: "#3b82f6", flexShrink: 0 }}>{fmtDate(k.deadline)}</span>
               </motion.div>
             ))}
           </Section>

@@ -25,7 +25,7 @@ export default async function NotificationsPage() {
     { data: overdueTasks },
     { data: pendingReimbs },
     { data: announcements },
-    { data: upcomingTrainings },
+    { data: upcomingKegiatan },
     { data: reviewTasks },
     { data: pendingKonten },
     { data: openBriefs },
@@ -48,12 +48,12 @@ export default async function NotificationsPage() {
       .order("pinned", { ascending: false })
       .order("created_at", { ascending: false })
       .limit(5),
-    supabase.from("training_sessions")
-      .select("id, title, date, start_time, location, status")
-      .eq("status", "upcoming")
-      .gte("date", today)
-      .lte("date", in7)
-      .order("date", { ascending: true })
+    supabase.from("kegiatan")
+      .select("id, title, deadline, status")
+      .eq("status", "belum")
+      .gte("deadline", today)
+      .lte("deadline", in7)
+      .order("deadline", { ascending: true })
       .limit(5),
     supabase.from("tasks")
       .select("id, title, priority, due_date, assigned_to, assignee:profiles!tasks_assigned_to_fkey(full_name)")
@@ -88,7 +88,7 @@ export default async function NotificationsPage() {
       overdueTasks={overdueTasks ?? []}
       pendingReimbs={pendingReimbs ?? []}
       announcements={announcements ?? []}
-      upcomingTrainings={upcomingTrainings ?? []}
+      upcomingKegiatan={upcomingKegiatan ?? []}
       reviewTasks={reviewTasks ?? []}
       pendingKonten={pendingKonten ?? []}
       openBriefs={openBriefs ?? []}

@@ -12,8 +12,10 @@ function adminClient() {
 }
 
 const CAN_EDIT = ["super_admin", "manager", "kep_trainer", "staff_dokumen"];
+const SELECT_WITH_RELATIONS =
+  "*, pic:profiles!kegiatan_pic_id_fkey(full_name), creator:profiles!kegiatan_created_by_fkey(full_name), lampiran:kegiatan_lampiran(count)";
 
-async function requireTrainingAuth(): Promise<{ userId: string; role: string } | { error: string }> {
+async function requireKegiatanAuth(): Promise<{ userId: string; role: string } | { error: string }> {
   try {
     const supabase = await createClient();
     const { data: { user }, error } = await supabase.auth.getUser();
@@ -28,76 +30,87 @@ async function requireTrainingAuth(): Promise<{ userId: string; role: string } |
   }
 }
 
-export async function createTrainingSessionAction(payload: {
+export async function createKegiatanAction(payload: {
   title: string;
   description: string | null;
-  date: string;
-  start_time: string | null;
-  end_time: string | null;
-  location: string | null;
-  max_participants: number | null;
-  status: "upcoming" | "ongoing" | "done" | "cancelled";
-  trainer_id: string;
-  materials: string | null;
+  deadline: string;
+  status: "belum" | "sudah";
+  pic_id: string | null;
 }): Promise<{ data: Record<string, unknown> | null; error: string | null }> {
-  const auth = await requireTrainingAuth();
+  const auth = await requireKegiatanAuth();
   if ("error" in auth) return { data: null, error: auth.error };
 
   const admin = adminClient();
   const { data, error } = await admin
-    .from("training_sessions")
+    .from("kegiatan")
     .insert({ ...payload, created_by: auth.userId })
-    .select("*, trainer:profiles!training_sessions_trainer_id_fkey(full_name), creator:profiles!training_sessions_created_by_fkey(full_name), participants:training_participants(count)")
+    .select(SELECT_WITH_RELATIONS)
     .single();
 
   if (error) return { data: null, error: error.message };
 
   await sendPushToAll({
-    title: `🎓 Training baru: ${payload.title}`,
-    body: `${new Date(payload.date + "T00:00:00").toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long" })}${payload.location ? ` di ${payload.location}` : ""}`,
-    url: "/dashboard/training",
-    tag: `training-new-${data.id}`,
+    title: `🗂️ Kegiatan baru: ${payload.title}`,
+    body: `Deadline ${new Date(payload.deadline + "T00:00:00").toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long" })}`,
+    url: "/dashboard/kegiatan",
+    tag: `kegiatan-new-${data.id}`,
   });
 
   return { data: data as Record<string, unknown>, error: null };
 }
 
-export async function updateTrainingStatusAction(
-  sessionId: string,
-  status: "upcoming" | "ongoing" | "done" | "cancelled",
-  title: string,
+export async function updateKegiatanAction(
+  id: string,
+  payload: {
+    title: string;
+    description: string | null;
+    deadline: string;
+    status: "belum" | "sudah";
+    pic_id: string | null;
+  },
+): Promise<{ data: Record<string, unknown> | null; error: string | null }> {
+  const auth = await requireKegiatanAuth();
+  if ("error" in auth) return { data: null, error: auth.error };
+
+  const admin = adminClient();
+  const { data, error } = await admin
+    .from("kegiatan")
+    .update(payload)
+    .eq("id", id)
+    .select(SELECT_WITH_RELATIONS)
+    .single();
+
+  if (error) return { data: null, error: error.message };
+  return { data: data as Record<string, unknown>, error: null };
+}
+
+export async function updateKegiatanStatusAction(
+  id: string,
+  status: "belum" | "sudah",
 ): Promise<{ error: string | null }> {
-  const auth = await requireTrainingAuth();
+  const auth = await requireKegiatanAuth();
   if ("error" in auth) return auth;
 
   const admin = adminClient();
-  const { error } = await admin
-    .from("training_sessions")
-    .update({ status })
-    .eq("id", sessionId);
-
-  if (error) return { error: error.message };
-
-  if (status === "ongoing" || status === "cancelled") {
-    await sendPushToAll({
-      title: status === "ongoing" ? `▶️ Training dimulai: ${title}` : `❌ Training dibatalkan: ${title}`,
-      body: status === "ongoing"
-        ? `Sesi "${title}" sedang berlangsung sekarang`
-        : `Sesi "${title}" telah dibatalkan`,
-      url: "/dashboard/training",
-      tag: `training-status-${sessionId}`,
-    });
-  }
-
-  return { error: null };
+  const { error } = await admin.from("kegiatan").update({ status }).eq("id", id);
+  return { error: error?.message ?? null };
 }
 
-export async function blastTrainingAction(announcement: {
+export async function deleteKegiatanAction(id: string): Promise<{ error: string | null }> {
+  const auth = await requireKegiatanAuth();
+  if ("error" in auth) return auth;
+
+  const admin = adminClient();
+  const { error } = await admin.from("kegiatan").delete().eq("id", id);
+  return { error: error?.message ?? null };
+}
+
+export async function blastKegiatanAction(announcement: {
   title: string;
   content: string;
   createdBy: string;
 }): Promise<{ error: string | null }> {
-  const auth = await requireTrainingAuth();
+  const auth = await requireKegiatanAuth();
   if ("error" in auth) return auth;
 
   const admin = adminClient();
@@ -116,8 +129,8 @@ export async function blastTrainingAction(announcement: {
     body: announcement.content.length > 80
       ? announcement.content.slice(0, 80) + "…"
       : announcement.content,
-    url: "/dashboard/training",
-    tag: `training-blast-${Date.now()}`,
+    url: "/dashboard/kegiatan",
+    tag: `kegiatan-blast-${Date.now()}`,
   });
 
   return { error: null };

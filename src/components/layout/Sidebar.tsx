@@ -7,7 +7,7 @@ import {
   LayoutDashboard, CheckSquare, TrendingUp,
   Bell, CalendarDays, Settings, LogOut,
   ChevronLeft, ChevronRight, FolderOpen, Wallet,
-  GraduationCap, ClipboardCheck, BarChart2, BellRing, User,
+  Layers, ClipboardCheck, BarChart2, BellRing, User,
   Megaphone, FileImage, Palette, FileText, MessageCircle,
 } from "lucide-react";
 import { useState, useEffect } from "react";
@@ -29,7 +29,7 @@ const NAV = [
   { label: "Dokumen",           href: "/dashboard/docs",             icon: FolderOpen      },
   { label: "Finance",           href: "/dashboard/finance",          icon: Wallet          },
   { label: "RAB",               href: "/dashboard/rab",              icon: FileText        },
-  { label: "Training",          href: "/dashboard/training",         icon: GraduationCap   },
+  { label: "Kegiatan",          href: "/dashboard/kegiatan",         icon: Layers          },
   { label: "Approval Center",   href: "/dashboard/approvals",        icon: ClipboardCheck  },
   { label: "Laporan",           href: "/dashboard/report",           icon: BarChart2       },
   { label: "Notifikasi",        href: "/dashboard/notifications",    icon: BellRing        },

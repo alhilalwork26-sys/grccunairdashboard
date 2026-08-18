@@ -3,7 +3,7 @@
 import { motion } from "framer-motion";
 import {
   BarChart2, CheckSquare, Wallet, TrendingUp,
-  GraduationCap, AlertTriangle, ArrowUpRight,
+  Layers, AlertTriangle, ArrowUpRight,
   Download, Printer, Megaphone, ImageIcon, Pencil,
 } from "lucide-react";
 import Topbar from "@/components/layout/Topbar";
@@ -84,7 +84,7 @@ interface Props {
   totalExpense: number;
   topExpenseCategories: { cat: string; amount: number }[];
   progressRows: { name: string; role: string; count: number; avgMood: number }[];
-  trainingStats: { upcoming: number; ongoing: number; done: number; cancelled: number };
+  kegiatanStats: { belum: number; sudah: number };
   kampanyeStats: { planning: number; active: number; completed: number; cancelled: number };
   kontenStats: { draft: number; review: number; approved: number; rejected: number; posted: number };
   briefStats: { open: number; in_progress: number; delivered: number; revision: number; done: number };
@@ -96,7 +96,7 @@ const MOOD_EMOJI = ["", "😢", "😕", "😐", "😊", "😁"];
 export default function ReportBoard({
   user, taskByStatus, overdueCount, completionRate, totalTasks,
   taskMemberRows, totalIncome, totalExpense, topExpenseCategories,
-  progressRows, trainingStats, kampanyeStats, kontenStats, briefStats, currentMonth,
+  progressRows, kegiatanStats, kampanyeStats, kontenStats, briefStats, currentMonth,
 }: Props) {
   const balance = totalIncome - totalExpense;
 
@@ -132,12 +132,10 @@ export default function ReportBoard({
       ["Nama", "Role", "Hari Submit", "Avg Mood"],
       ...progressRows.map(r => [r.name, r.role?.replace(/_/g, " "), r.count, r.avgMood]),
       [],
-      ["=== TRAINING ==="],
+      ["=== KEGIATAN ==="],
       ["Status", "Jumlah"],
-      ["Akan Datang", trainingStats.upcoming],
-      ["Berlangsung", trainingStats.ongoing],
-      ["Selesai", trainingStats.done],
-      ["Dibatalkan", trainingStats.cancelled],
+      ["Belum", kegiatanStats.belum],
+      ["Sudah", kegiatanStats.sudah],
       [],
       ["=== KAMPANYE ==="],
       ["Status", "Jumlah"],
@@ -199,10 +197,10 @@ export default function ReportBoard({
       icon: TrendingUp, color: "#3b82f6", bg: "#eff6ff", border: "#dbeafe",
     },
     {
-      label: "Total Training",
-      value: trainingStats.upcoming + trainingStats.ongoing + trainingStats.done,
-      sub: `${trainingStats.upcoming} upcoming`,
-      icon: GraduationCap, color: "#8b5cf6", bg: "#f5f3ff", border: "#ede9fe",
+      label: "Total Kegiatan",
+      value: kegiatanStats.belum + kegiatanStats.sudah,
+      sub: `${kegiatanStats.belum} belum selesai`,
+      icon: Layers, color: "#8b5cf6", bg: "#f5f3ff", border: "#ede9fe",
     },
   ];
 
@@ -450,20 +448,18 @@ export default function ReportBoard({
 
         </div>
 
-        {/* Training stats — full width */}
+        {/* Kegiatan stats — full width */}
         <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}
           style={{ background: "#ffffff", borderRadius: 14, border: "1px solid #f3f4f6", padding: "18px 20px", marginBottom: 16 }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 16 }}>
-            <GraduationCap size={15} color="#8b5cf6" strokeWidth={2} />
-            <span style={{ fontSize: 13, fontWeight: 700, color: "#111827" }}>Rekap Training</span>
+            <Layers size={15} color="#8b5cf6" strokeWidth={2} />
+            <span style={{ fontSize: 13, fontWeight: 700, color: "#111827" }}>Rekap Kegiatan</span>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12 }}>
             {[
-              { label: "Akan Datang", value: trainingStats.upcoming,  color: "#3b82f6", bg: "#eff6ff", border: "#bfdbfe" },
-              { label: "Berlangsung", value: trainingStats.ongoing,   color: "#10b981", bg: "#f0fdf4", border: "#d1fae5" },
-              { label: "Selesai",     value: trainingStats.done,      color: "#9ca3af", bg: "#f3f4f6", border: "#e5e7eb" },
-              { label: "Dibatalkan",  value: trainingStats.cancelled, color: "#ef4444", bg: "#fef2f2", border: "#fecaca" },
+              { label: "Belum", value: kegiatanStats.belum, color: "#f59e0b", bg: "#fffbeb", border: "#fde68a" },
+              { label: "Sudah", value: kegiatanStats.sudah, color: "#10b981", bg: "#f0fdf4", border: "#d1fae5" },
             ].map((s, i) => (
               <motion.div key={s.label}
                 initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }}

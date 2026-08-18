@@ -27,7 +27,7 @@ export default async function ReportPage() {
     supabase.from("tasks").select("id, status, priority, due_date, assigned_to, created_at, assignee:profiles!tasks_assigned_to_fkey(full_name)"),
     supabase.from("finance_transactions").select("id, amount, type, category, date, status").eq("status", "confirmed"),
     supabase.from("daily_progress").select("id, user_id, date, mood, profiles(full_name, role)").gte("date", monthStart),
-    supabase.from("training_sessions").select("id, status"),
+    supabase.from("kegiatan").select("id, status"),
     supabase.from("campaigns").select("id, status"),
     supabase.from("content_posts").select("id, status"),
     supabase.from("creative_briefs").select("id, status"),
@@ -92,13 +92,11 @@ export default async function ReportPage() {
     ...m, avgMood: m.count > 0 ? Math.round((m.avgMood / m.count) * 10) / 10 : 0,
   })).sort((a, b) => b.count - a.count);
 
-  // --- Training stats ---
-  const allTrainings = trainings ?? [];
-  const trainingStats = {
-    upcoming:  allTrainings.filter(t => t.status === "upcoming").length,
-    ongoing:   allTrainings.filter(t => t.status === "ongoing").length,
-    done:      allTrainings.filter(t => t.status === "done").length,
-    cancelled: allTrainings.filter(t => t.status === "cancelled").length,
+  // --- Kegiatan stats ---
+  const allKegiatan = trainings ?? [];
+  const kegiatanStats = {
+    belum: allKegiatan.filter(t => t.status === "belum").length,
+    sudah: allKegiatan.filter(t => t.status === "sudah").length,
   };
 
   // --- Kampanye stats ---
@@ -142,7 +140,7 @@ export default async function ReportPage() {
       totalExpense={totalExpense}
       topExpenseCategories={topExpenseCategories}
       progressRows={progressRows}
-      trainingStats={trainingStats}
+      kegiatanStats={kegiatanStats}
       kampanyeStats={kampanyeStats}
       kontenStats={kontenStats}
       briefStats={briefStats}

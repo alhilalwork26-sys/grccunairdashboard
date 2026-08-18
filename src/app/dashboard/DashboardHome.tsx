@@ -185,7 +185,7 @@ export default function DashboardHome({ user, stats, recentTasks, recentAnnounce
                   <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                     {[
                       { label: "Finance", href: "/dashboard/finance", color: "#10b981" },
-                      { label: "Training", href: "/dashboard/training", color: "#f59e0b" },
+                      { label: "Kegiatan", href: "/dashboard/kegiatan", color: "#f59e0b" },
                       { label: "Dokumen", href: "/dashboard/docs", color: "#6366f1" },
                     ].map(l => (
                       <Link key={l.href} href={l.href} style={{ textDecoration: "none" }}>

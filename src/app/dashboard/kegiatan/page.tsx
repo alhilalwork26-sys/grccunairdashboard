@@ -1,11 +1,11 @@
 import { createClient } from "@/lib/supabase/server";
-import TrainingBoard from "./TrainingBoard";
+import KegiatanBoard from "./KegiatanBoard";
 import type { UserProfile } from "@/types";
 import { redirect } from "next/navigation";
 
 const ALLOWED_ROLES = ["super_admin", "manager", "kep_trainer", "staff_dokumen"];
 
-export default async function TrainingPage() {
+export default async function KegiatanPage() {
   const supabase = await createClient();
   const { data: { session } } = await supabase.auth.getSession();
   const user = session?.user;
@@ -20,18 +20,18 @@ export default async function TrainingPage() {
 
   if (!ALLOWED_ROLES.includes(currentUser.role)) redirect("/dashboard");
 
-  const [{ data: sessions }, { data: profiles }] = await Promise.all([
+  const [{ data: items }, { data: profiles }] = await Promise.all([
     supabase
-      .from("training_sessions")
-      .select("*, trainer:profiles!training_sessions_trainer_id_fkey(full_name), creator:profiles!training_sessions_created_by_fkey(full_name), participants:training_participants(count)")
-      .order("date", { ascending: true }),
+      .from("kegiatan")
+      .select("*, pic:profiles!kegiatan_pic_id_fkey(full_name), creator:profiles!kegiatan_created_by_fkey(full_name), lampiran:kegiatan_lampiran(count)")
+      .order("deadline", { ascending: true }),
     supabase.from("profiles").select("id, full_name, role").order("full_name"),
   ]);
 
   return (
-    <TrainingBoard
+    <KegiatanBoard
       currentUser={currentUser}
-      initialSessions={sessions ?? []}
+      initialItems={items ?? []}
       profiles={profiles ?? []}
     />
   );
