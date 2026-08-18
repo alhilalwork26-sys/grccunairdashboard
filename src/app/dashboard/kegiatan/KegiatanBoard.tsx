@@ -9,10 +9,22 @@ import {
   deleteKegiatanAction, blastKegiatanAction,
 } from "./actions";
 import {
-  Layers, Plus, X, Check, Edit2, Trash2, ChevronDown,
+  Layers, Plus, X, Check, Edit2, Trash2, ChevronDown, ChevronUp,
   Search, AlertTriangle, Megaphone, UserCircle2, Paperclip,
-  Upload, Loader2, FileText, CalendarDays,
+  Upload, Loader2, FileText, CalendarDays, Link2,
 } from "lucide-react";
+
+const LINK_FIELDS = [
+  { key: "virtual_background_url", label: "Virtual Background" },
+  { key: "absensi_url",            label: "Absensi" },
+  { key: "materi_url",             label: "Materi" },
+  { key: "record_zoom_url",        label: "Record Zoom" },
+  { key: "ujian_url",              label: "Ujian" },
+  { key: "dokumentasi_url",        label: "Dokumentasi" },
+  { key: "modul_url",              label: "Modul" },
+  { key: "rundown_url",            label: "Rundown" },
+] as const;
+type LinkKey = typeof LINK_FIELDS[number]["key"];
 
 interface Kegiatan {
   id: string;
@@ -26,6 +38,14 @@ interface Kegiatan {
   pic?: { full_name: string } | null;
   creator?: { full_name: string } | null;
   lampiran?: { count: number }[];
+  virtual_background_url?: string | null;
+  absensi_url?: string | null;
+  materi_url?: string | null;
+  record_zoom_url?: string | null;
+  ujian_url?: string | null;
+  dokumentasi_url?: string | null;
+  modul_url?: string | null;
+  rundown_url?: string | null;
 }
 
 interface Lampiran {
@@ -56,9 +76,12 @@ function getDeadlineTone(dateStr: string, status: string) {
   return { color: "#6b7280", label: null };
 }
 
+const EMPTY_LINKS = LINK_FIELDS.reduce((acc, f) => ({ ...acc, [f.key]: "" }), {} as Record<LinkKey, string>);
+
 const EMPTY = {
   title: "", description: "", deadline: "",
   status: "belum" as Kegiatan["status"], pic_id: "",
+  ...EMPTY_LINKS,
 };
 
 interface Props {
@@ -147,6 +170,7 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
   const [deleteId, setDeleteId]     = useState<string | null>(null);
   const [blasting, setBlasting]     = useState<string | null>(null);
   const [toast, setToast]           = useState<{ msg: string; ok: boolean } | null>(null);
+  const [showLinks, setShowLinks]   = useState(false);
 
   const [lampiranList, setLampiranList]   = useState<Lampiran[]>([]);
   const [loadingLampiran, setLoadingLampiran] = useState(false);
@@ -169,13 +193,16 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
     setLoadingLampiran(false);
   }, [supabase]);
 
-  const openCreate = () => { setEditing(null); setForm(EMPTY); setLampiranList([]); setShowModal(true); };
+  const openCreate = () => { setEditing(null); setForm(EMPTY); setLampiranList([]); setShowLinks(false); setShowModal(true); };
   const openEdit = (k: Kegiatan) => {
     setEditing(k);
+    const links = LINK_FIELDS.reduce((acc, f) => ({ ...acc, [f.key]: k[f.key] ?? "" }), {} as Record<LinkKey, string>);
     setForm({
       title: k.title, description: k.description ?? "", deadline: k.deadline,
       status: k.status, pic_id: k.pic_id ?? "",
+      ...links,
     });
+    setShowLinks(LINK_FIELDS.some(f => k[f.key]));
     setShowModal(true);
     loadLampiran(k.id);
   };
@@ -183,12 +210,14 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
   const handleSubmit = async () => {
     if (!form.title.trim() || !form.deadline) return;
     setSubmitting(true);
+    const links = LINK_FIELDS.reduce((acc, f) => ({ ...acc, [f.key]: form[f.key].trim() || null }), {} as Record<LinkKey, string | null>);
     const payload = {
       title: form.title.trim(),
       description: form.description.trim() || null,
       deadline: form.deadline,
       status: form.status,
       pic_id: form.pic_id || null,
+      ...links,
     };
     if (editing) {
       const { data, error } = await updateKegiatanAction(editing.id, payload);
@@ -571,6 +600,35 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
                     onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
                     style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 13, outline: "none", resize: "vertical", fontFamily: "inherit", lineHeight: 1.6, boxSizing: "border-box" }}
                     onFocus={e => (e.target.style.borderColor = "#6366f1")} onBlur={e => (e.target.style.borderColor = "#e5e7eb")} />
+                </div>
+
+                {/* Link & dokumen pendukung — opsional */}
+                <div>
+                  <button type="button" onClick={() => setShowLinks(s => !s)}
+                    style={{
+                      width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
+                      background: "none", border: "none", cursor: "pointer", padding: 0, marginBottom: showLinks ? 10 : 0,
+                    }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                      <Link2 size={12} color="#9ca3af" />
+                      <span style={{ fontSize: 12, fontWeight: 600, color: "#374151" }}>Link &amp; Dokumen Pendukung</span>
+                      <span style={{ fontSize: 11, fontWeight: 400, color: "#9ca3af" }}>(opsional)</span>
+                    </div>
+                    {showLinks ? <ChevronUp size={14} color="#9ca3af" /> : <ChevronDown size={14} color="#9ca3af" />}
+                  </button>
+                  {showLinks && (
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                      {LINK_FIELDS.map(f => (
+                        <div key={f.key}>
+                          <label style={{ fontSize: 11, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 5 }}>{f.label}</label>
+                          <input type="text" placeholder="https://…" value={form[f.key]}
+                            onChange={e => setForm(prev => ({ ...prev, [f.key]: e.target.value }))}
+                            style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 9, fontSize: 12, outline: "none", boxSizing: "border-box", fontFamily: "inherit" }}
+                            onFocus={e => (e.target.style.borderColor = "#6366f1")} onBlur={e => (e.target.style.borderColor = "#e5e7eb")} />
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 {/* Lampiran / upload folder — only once kegiatan exists */}

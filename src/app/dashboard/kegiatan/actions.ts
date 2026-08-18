@@ -15,6 +15,17 @@ const CAN_EDIT = ["super_admin", "manager", "kep_trainer", "staff_dokumen"];
 const SELECT_WITH_RELATIONS =
   "*, pic:profiles!kegiatan_pic_id_fkey(full_name), creator:profiles!kegiatan_created_by_fkey(full_name), lampiran:kegiatan_lampiran(count)";
 
+interface KegiatanLinks {
+  virtual_background_url: string | null;
+  absensi_url: string | null;
+  materi_url: string | null;
+  record_zoom_url: string | null;
+  ujian_url: string | null;
+  dokumentasi_url: string | null;
+  modul_url: string | null;
+  rundown_url: string | null;
+}
+
 async function requireKegiatanAuth(): Promise<{ userId: string; role: string } | { error: string }> {
   try {
     const supabase = await createClient();
@@ -36,7 +47,7 @@ export async function createKegiatanAction(payload: {
   deadline: string;
   status: "belum" | "sudah";
   pic_id: string | null;
-}): Promise<{ data: Record<string, unknown> | null; error: string | null }> {
+} & KegiatanLinks): Promise<{ data: Record<string, unknown> | null; error: string | null }> {
   const auth = await requireKegiatanAuth();
   if ("error" in auth) return { data: null, error: auth.error };
 
@@ -67,7 +78,7 @@ export async function updateKegiatanAction(
     deadline: string;
     status: "belum" | "sudah";
     pic_id: string | null;
-  },
+  } & KegiatanLinks,
 ): Promise<{ data: Record<string, unknown> | null; error: string | null }> {
   const auth = await requireKegiatanAuth();
   if ("error" in auth) return { data: null, error: auth.error };
