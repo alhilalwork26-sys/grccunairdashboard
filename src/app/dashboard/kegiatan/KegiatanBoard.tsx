@@ -11,7 +11,7 @@ import {
 import {
   Layers, Plus, X, Check, Edit2, Trash2, ChevronDown, ChevronUp,
   Search, AlertTriangle, Megaphone, UserCircle2, Paperclip,
-  Upload, Loader2, FileText, CalendarDays, Link2,
+  Upload, Loader2, FileText, CalendarDays, Link2, ListChecks,
 } from "lucide-react";
 
 const LINK_FIELDS = [
@@ -52,6 +52,14 @@ interface Lampiran {
   id: string;
   file_name: string;
   file_url: string;
+  created_at: string;
+}
+
+interface ChecklistItem {
+  id: string;
+  item_name: string;
+  pic: string | null;
+  status: "belum" | "sudah";
   created_at: string;
 }
 
@@ -156,6 +164,31 @@ function StatusBadge({
   );
 }
 
+function ProgressDonut({ done, total }: { done: number; total: number }) {
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+  const size = 72, stroke = 8, r = (size - stroke) / 2, c = 2 * Math.PI * r;
+  const offset = c - (pct / 100) * c;
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+      <svg width={size} height={size} style={{ transform: "rotate(-90deg)", flexShrink: 0 }}>
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#f3f4f6" strokeWidth={stroke} />
+        <motion.circle
+          cx={size / 2} cy={size / 2} r={r} fill="none" stroke={pct === 100 ? "#10b981" : "#6366f1"}
+          strokeWidth={stroke} strokeLinecap="round" strokeDasharray={c}
+          initial={{ strokeDashoffset: c }} animate={{ strokeDashoffset: offset }}
+          transition={{ duration: 0.6, ease: "easeOut" }}
+        />
+      </svg>
+      <div>
+        <p style={{ fontSize: 22, fontWeight: 800, color: "#111827", lineHeight: 1 }}>{pct}%</p>
+        <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>
+          {total === 0 ? "Belum ada checklist" : `${done} dari ${total} selesai`}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export default function KegiatanBoard({ currentUser, initialItems, profiles }: Props) {
   const supabase = createClient();
   const canEdit = ["super_admin", "manager", "kep_trainer", "staff_dokumen"].includes(currentUser.role);
@@ -177,6 +210,12 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
   const [uploading, setUploading]         = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [checklist, setChecklist]         = useState<ChecklistItem[]>([]);
+  const [loadingChecklist, setLoadingChecklist] = useState(false);
+  const [newItemName, setNewItemName]     = useState("");
+  const [newItemPic, setNewItemPic]       = useState("");
+  const [addingItem, setAddingItem]       = useState(false);
+
   const showToast = useCallback((msg: string, ok = true) => {
     setToast({ msg, ok });
     setTimeout(() => setToast(null), 2800);
@@ -193,7 +232,18 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
     setLoadingLampiran(false);
   }, [supabase]);
 
-  const openCreate = () => { setEditing(null); setForm(EMPTY); setLampiranList([]); setShowLinks(false); setShowModal(true); };
+  const loadChecklist = useCallback(async (kegiatanId: string) => {
+    setLoadingChecklist(true);
+    const { data } = await supabase
+      .from("kegiatan_checklist")
+      .select("id, item_name, pic, status, created_at")
+      .eq("kegiatan_id", kegiatanId)
+      .order("created_at", { ascending: true });
+    setChecklist(data ?? []);
+    setLoadingChecklist(false);
+  }, [supabase]);
+
+  const openCreate = () => { setEditing(null); setForm(EMPTY); setLampiranList([]); setChecklist([]); setShowLinks(false); setShowModal(true); };
   const openEdit = (k: Kegiatan) => {
     setEditing(k);
     const links = LINK_FIELDS.reduce((acc, f) => ({ ...acc, [f.key]: k[f.key] ?? "" }), {} as Record<LinkKey, string>);
@@ -205,6 +255,38 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
     setShowLinks(LINK_FIELDS.some(f => k[f.key]));
     setShowModal(true);
     loadLampiran(k.id);
+    loadChecklist(k.id);
+  };
+
+  const handleAddChecklistItem = async () => {
+    if (!newItemName.trim() || !editing) return;
+    setAddingItem(true);
+    const { data, error } = await supabase
+      .from("kegiatan_checklist")
+      .insert({
+        kegiatan_id: editing.id, item_name: newItemName.trim(),
+        pic: newItemPic.trim() || null, status: "belum", created_by: currentUser.id,
+      })
+      .select("id, item_name, pic, status, created_at")
+      .single();
+    if (error) showToast(error.message, false);
+    else { setChecklist(prev => [...prev, data]); setNewItemName(""); setNewItemPic(""); }
+    setAddingItem(false);
+  };
+
+  const handleToggleChecklistStatus = async (item: ChecklistItem, next: ChecklistItem["status"]) => {
+    setChecklist(prev => prev.map(c => c.id === item.id ? { ...c, status: next } : c));
+    const { error } = await supabase.from("kegiatan_checklist").update({ status: next }).eq("id", item.id);
+    if (error) {
+      setChecklist(prev => prev.map(c => c.id === item.id ? { ...c, status: item.status } : c));
+      showToast("Gagal update status checklist", false);
+    }
+  };
+
+  const handleDeleteChecklistItem = async (id: string) => {
+    setChecklist(prev => prev.filter(c => c.id !== id));
+    const { error } = await supabase.from("kegiatan_checklist").delete().eq("id", id);
+    if (error) showToast(error.message, false);
   };
 
   const handleSubmit = async () => {
@@ -681,6 +763,82 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
                         </div>
                       ))}
                     </div>
+                  )}
+                </div>
+
+                {/* Checklist / rincian kebutuhan kegiatan */}
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 10 }}>
+                    <ListChecks size={12} color="#9ca3af" />
+                    <label style={{ fontSize: 12, fontWeight: 600, color: "#374151" }}>Checklist / Rincian Kebutuhan</label>
+                    <span style={{ fontSize: 11, fontWeight: 400, color: "#9ca3af" }}>(opsional)</span>
+                  </div>
+
+                  {!editing ? (
+                    <p style={{ fontSize: 11, color: "#9ca3af", fontStyle: "italic" }}>
+                      Simpan kegiatan dulu, baru bisa tambah checklist.
+                    </p>
+                  ) : (
+                    <>
+                      {checklist.length > 0 && (
+                        <div style={{
+                          display: "flex", alignItems: "center", padding: "12px 14px", marginBottom: 12,
+                          background: "#f9fafb", border: "1px solid #f3f4f6", borderRadius: 12,
+                        }}>
+                          <ProgressDonut done={checklist.filter(c => c.status === "sudah").length} total={checklist.length} />
+                        </div>
+                      )}
+
+                      {loadingChecklist ? (
+                        <p style={{ fontSize: 11, color: "#9ca3af" }}>Memuat checklist…</p>
+                      ) : (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                          {checklist.map((item, i) => (
+                            <div key={item.id} style={{
+                              display: "flex", alignItems: "center", gap: 8, padding: "7px 10px",
+                              background: "#f9fafb", border: "1px solid #f3f4f6", borderRadius: 8,
+                            }}>
+                              <span style={{ fontSize: 10, color: "#d1d5db", fontWeight: 700, width: 16, flexShrink: 0 }}>{i + 1}</span>
+                              <span style={{ fontSize: 12, color: "#374151", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                {item.item_name}
+                              </span>
+                              <span style={{ fontSize: 11, color: "#9ca3af", flexShrink: 0, maxWidth: 110, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                {item.pic || "—"}
+                              </span>
+                              <div style={{ flexShrink: 0 }}>
+                                <StatusBadge status={item.status} editable onChange={s => handleToggleChecklistStatus(item, s)} />
+                              </div>
+                              <button onClick={() => handleDeleteChecklistItem(item.id)}
+                                style={{ border: "none", background: "none", cursor: "pointer", padding: 2, display: "flex", flexShrink: 0 }}>
+                                <X size={13} color="#ef4444" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Quick add row */}
+                      <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                        <input type="text" placeholder="Nama kebutuhan…" value={newItemName}
+                          onChange={e => setNewItemName(e.target.value)}
+                          onKeyDown={e => { if (e.key === "Enter" && newItemName.trim()) handleAddChecklistItem(); }}
+                          style={{ flex: 2, padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 9, fontSize: 12, outline: "none", boxSizing: "border-box", fontFamily: "inherit" }}
+                          onFocus={e => (e.target.style.borderColor = "#6366f1")} onBlur={e => (e.target.style.borderColor = "#e5e7eb")} />
+                        <input type="text" placeholder="PIC…" value={newItemPic}
+                          onChange={e => setNewItemPic(e.target.value)}
+                          onKeyDown={e => { if (e.key === "Enter" && newItemName.trim()) handleAddChecklistItem(); }}
+                          style={{ flex: 1, padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 9, fontSize: 12, outline: "none", boxSizing: "border-box", fontFamily: "inherit" }}
+                          onFocus={e => (e.target.style.borderColor = "#6366f1")} onBlur={e => (e.target.style.borderColor = "#e5e7eb")} />
+                        <button onClick={handleAddChecklistItem} disabled={!newItemName.trim() || addingItem}
+                          style={{
+                            display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+                            width: 34, border: "none", borderRadius: 9, cursor: newItemName.trim() ? "pointer" : "not-allowed",
+                            background: newItemName.trim() ? "#4f46e5" : "#e5e7eb", color: "#fff",
+                          }}>
+                          {addingItem ? <Loader2 size={13} className="spin" /> : <Plus size={15} />}
+                        </button>
+                      </div>
+                    </>
                   )}
                 </div>
 
