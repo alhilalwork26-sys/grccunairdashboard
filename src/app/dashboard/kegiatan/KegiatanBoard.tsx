@@ -61,7 +61,13 @@ interface ChecklistItem {
   item_name: string;
   pic: string | null;
   status: "belum" | "sudah";
+  deadline: string | null;
   created_at: string;
+}
+
+function fmtChecklistDeadline(dateStr: string) {
+  const d = new Date(dateStr + "T00:00:00");
+  return d.toLocaleDateString("id-ID", { day: "numeric", month: "short" });
 }
 
 const STATUS_CFG = {
@@ -236,6 +242,7 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
   const [loadingChecklist, setLoadingChecklist] = useState(false);
   const [newItemName, setNewItemName]     = useState("");
   const [newItemPic, setNewItemPic]       = useState("");
+  const [newItemDeadline, setNewItemDeadline] = useState("");
   const [addingItem, setAddingItem]       = useState(false);
 
   const showToast = useCallback((msg: string, ok = true) => {
@@ -258,7 +265,7 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
     setLoadingChecklist(true);
     const { data } = await supabase
       .from("kegiatan_checklist")
-      .select("id, item_name, pic, status, created_at")
+      .select("id, item_name, pic, status, deadline, created_at")
       .eq("kegiatan_id", kegiatanId)
       .order("created_at", { ascending: true });
     setChecklist(data ?? []);
@@ -293,16 +300,17 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
       .from("kegiatan_checklist")
       .insert({
         kegiatan_id: editing.id, item_name: newItemName.trim(),
-        pic: newItemPic.trim() || null, status: "belum", created_by: currentUser.id,
+        pic: newItemPic.trim() || null, deadline: newItemDeadline || null,
+        status: "belum", created_by: currentUser.id,
       })
-      .select("id, item_name, pic, status, created_at")
+      .select("id, item_name, pic, status, deadline, created_at")
       .single();
     if (error) showToast(error.message, false);
     else {
       const next = [...checklist, data];
       setChecklist(next);
       syncItemChecklist(editing.id, next);
-      setNewItemName(""); setNewItemPic("");
+      setNewItemName(""); setNewItemPic(""); setNewItemDeadline("");
     }
     setAddingItem(false);
   };
@@ -834,6 +842,10 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
                               <span style={{ fontSize: 11, color: "#9ca3af", flexShrink: 0, maxWidth: 110, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                                 {item.pic || "—"}
                               </span>
+                              <span style={{ fontSize: 11, color: item.deadline ? "#6b7280" : "#d1d5db", flexShrink: 0, width: 56, display: "flex", alignItems: "center", gap: 3 }}>
+                                {item.deadline && <CalendarDays size={10} style={{ flexShrink: 0 }} />}
+                                {item.deadline ? fmtChecklistDeadline(item.deadline) : "—"}
+                              </span>
                               <div style={{ flexShrink: 0 }}>
                                 <StatusBadge status={item.status} editable onChange={s => handleToggleChecklistStatus(item, s)} />
                               </div>
@@ -857,6 +869,10 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
                           onChange={e => setNewItemPic(e.target.value)}
                           onKeyDown={e => { if (e.key === "Enter" && newItemName.trim()) handleAddChecklistItem(); }}
                           style={{ flex: 1, padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 9, fontSize: 12, outline: "none", boxSizing: "border-box", fontFamily: "inherit" }}
+                          onFocus={e => (e.target.style.borderColor = "#6366f1")} onBlur={e => (e.target.style.borderColor = "#e5e7eb")} />
+                        <input type="date" value={newItemDeadline}
+                          onChange={e => setNewItemDeadline(e.target.value)}
+                          style={{ width: 132, padding: "8px 8px", border: "1.5px solid #e5e7eb", borderRadius: 9, fontSize: 12, outline: "none", boxSizing: "border-box", flexShrink: 0 }}
                           onFocus={e => (e.target.style.borderColor = "#6366f1")} onBlur={e => (e.target.style.borderColor = "#e5e7eb")} />
                         <button onClick={handleAddChecklistItem} disabled={!newItemName.trim() || addingItem}
                           style={{
