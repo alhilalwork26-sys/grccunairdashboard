@@ -3,7 +3,7 @@ import TrainingBoard from "./TrainingBoard";
 import type { UserProfile } from "@/types";
 import { redirect } from "next/navigation";
 
-const ALLOWED_ROLES = ["super_admin", "manager", "kep_trainer"];
+const ALLOWED_ROLES = ["super_admin", "manager", "kep_trainer", "staff_dokumen"];
 
 export default async function TrainingPage() {
   const supabase = await createClient();
