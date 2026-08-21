@@ -4,6 +4,7 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { createClient } from "@/lib/supabase/client";
 import type { UserProfile } from "@/types";
+import { approveTaskAction, rejectTaskAction } from "../task-management/actions";
 import {
   ClipboardCheck, CheckCircle, XCircle, Check, X,
   DollarSign, ListTodo, Clock, AlertTriangle,
@@ -62,6 +63,7 @@ export default function ApprovalsBoard({ currentUser, pendingReimbursements, rev
   const [reviewingReimb, setReviewingReimb] = useState<PendingReimb | null>(null);
   const [reviewNote, setReviewNote] = useState("");
   const [approvingTask, setApprovingTask] = useState<ReviewTask | null>(null);
+  const [taskFeedback, setTaskFeedback] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
 
@@ -81,16 +83,19 @@ export default function ApprovalsBoard({ currentUser, pendingReimbursements, rev
     setReviewNote("");
   };
 
-  const handleTaskApprove = async (id: string, newStatus: "done" | "in_progress") => {
+  const handleTaskDecision = async (id: string, decision: "approve" | "reject") => {
     setSubmitting(true);
-    const { error } = await supabase.from("tasks").update({ status: newStatus }).eq("id", id);
-    if (error) showToast(error.message, false);
+    const { error } = decision === "approve"
+      ? await approveTaskAction(id)
+      : await rejectTaskAction(id, taskFeedback.trim() || null);
+    if (error) showToast(error, false);
     else {
       setTasks(prev => prev.filter(t => t.id !== id));
-      showToast(newStatus === "done" ? "Task ditandai selesai" : "Task dikembalikan ke progress");
+      showToast(decision === "approve" ? "Task ditandai selesai" : "Task dikembalikan + feedback terkirim ke pengerja");
     }
     setSubmitting(false);
     setApprovingTask(null);
+    setTaskFeedback("");
   };
 
   const total = reimbs.length + tasks.length;
@@ -220,7 +225,7 @@ export default function ApprovalsBoard({ currentUser, pendingReimbursements, rev
                       </div>
                       <div style={{ display: "flex", gap: 8 }}>
                         <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
-                          onClick={() => setApprovingTask(t)}
+                          onClick={() => { setApprovingTask(t); setTaskFeedback(""); }}
                           style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 16px", border: "1.5px solid #e5e7eb", borderRadius: 10, background: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600, color: "#374151" }}>
                           Review Task
                         </motion.button>
@@ -283,7 +288,7 @@ export default function ApprovalsBoard({ currentUser, pendingReimbursements, rev
         {approvingTask && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             style={{ position: "fixed", inset: 0, zIndex: 50, background: "rgba(0,0,0,0.45)", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}
-            onClick={e => { if (e.target === e.currentTarget) setApprovingTask(null); }}>
+            onClick={e => { if (e.target === e.currentTarget) { setApprovingTask(null); setTaskFeedback(""); } }}>
             <motion.div initial={{ opacity: 0, scale: 0.94, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.94, y: 8 }}
               transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
               style={{ background: "#fff", borderRadius: 20, width: "100%", maxWidth: 440, boxShadow: "0 25px 60px rgba(0,0,0,0.18)" }}>
@@ -299,15 +304,24 @@ export default function ApprovalsBoard({ currentUser, pendingReimbursements, rev
                 </div>
               </div>
               <div style={{ padding: "20px 24px", display: "flex", flexDirection: "column", gap: 12 }}>
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}>
+                    Feedback <span style={{ fontSize: 11, fontWeight: 400, color: "#9ca3af" }}>(opsional — dikirim ke pengerja kalau dikembalikan)</span>
+                  </label>
+                  <textarea rows={3} placeholder="Tulis catatan revisi…" value={taskFeedback}
+                    onChange={e => setTaskFeedback(e.target.value)}
+                    style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 13, outline: "none", resize: "vertical", fontFamily: "inherit", lineHeight: 1.6, boxSizing: "border-box" }}
+                    onFocus={e => (e.target.style.borderColor = "#6366f1")} onBlur={e => (e.target.style.borderColor = "#e5e7eb")} />
+                </div>
                 <p style={{ fontSize: 13, color: "#6b7280" }}>Tandai task ini sebagai:</p>
                 <div style={{ display: "flex", gap: 10 }}>
                   <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
-                    onClick={() => handleTaskApprove(approvingTask.id, "in_progress")} disabled={submitting}
+                    onClick={() => handleTaskDecision(approvingTask.id, "reject")} disabled={submitting}
                     style={{ flex: 1, padding: "11px", border: "1.5px solid #fde68a", borderRadius: 11, background: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#d97706", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
                     <AlertTriangle size={14} /> Kembalikan
                   </motion.button>
                   <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
-                    onClick={() => handleTaskApprove(approvingTask.id, "done")} disabled={submitting}
+                    onClick={() => handleTaskDecision(approvingTask.id, "approve")} disabled={submitting}
                     style={{ flex: 1, padding: "11px", border: "none", borderRadius: 11, background: "linear-gradient(135deg, #10b981, #047857)", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
                     <CheckCircle size={14} /> Tandai Selesai
                   </motion.button>
