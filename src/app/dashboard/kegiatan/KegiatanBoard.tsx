@@ -18,6 +18,16 @@ import {
 const CHECKLIST_FILE_ACCEPT = ".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg";
 const CHECKLIST_FILE_ALLOWED_TYPES = ["application/pdf", "image/png", "image/jpeg"];
 
+// Kategori sama persis dengan modul Kalender, supaya sinkron konsisten
+const CALENDAR_TYPE_CFG = {
+  meeting:  { label: "Meeting",  color: "#3b82f6", bg: "#eff6ff" },
+  deadline: { label: "Deadline", color: "#ef4444", bg: "#fef2f2" },
+  event:    { label: "Event",    color: "#8b5cf6", bg: "#f5f3ff" },
+  holiday:  { label: "Libur",    color: "#10b981", bg: "#f0fdf4" },
+  training: { label: "Training", color: "#f59e0b", bg: "#fffbeb" },
+} as const;
+type CalendarType = keyof typeof CALENDAR_TYPE_CFG;
+
 const LINK_FIELDS = [
   { key: "virtual_background_url", label: "Virtual Background" },
   { key: "absensi_url",            label: "Absensi" },
@@ -39,6 +49,7 @@ interface Kegiatan {
   pic_id?: string | null;
   mode?: "online" | "offline" | null;
   location?: string | null;
+  calendar_type?: CalendarType | null;
   created_at: string;
   created_by?: string | null;
   pic?: { full_name: string } | null;
@@ -117,6 +128,7 @@ const EMPTY = {
   title: "", description: "", deadline: "",
   status: "belum" as Kegiatan["status"], pic_id: "",
   mode: "offline" as "online" | "offline", location: "",
+  calendar_type: "event" as CalendarType,
   ...EMPTY_LINKS,
 };
 
@@ -316,6 +328,7 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
       title: k.title, description: k.description ?? "", deadline: k.deadline,
       status: k.status, pic_id: k.pic_id ?? "",
       mode: k.mode ?? "offline", location: k.location ?? "",
+      calendar_type: k.calendar_type ?? "event",
       ...links,
     });
     setShowLinks(LINK_FIELDS.some(f => k[f.key]));
@@ -451,7 +464,10 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
   // supaya bisa dicari/di-update/dihapus lagi tanpa kolom relasi tambahan.
   const syncCalendarEvent = async (
     kegiatanId: string,
-    p: { title: string; description: string | null; deadline: string; mode: "online" | "offline"; location: string | null },
+    p: {
+      title: string; description: string | null; deadline: string;
+      mode: "online" | "offline"; location: string | null; calendar_type: CalendarType;
+    },
     isNew: boolean,
   ) => {
     const marker = `[keg:${kegiatanId}]`;
@@ -465,7 +481,7 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
       description: descParts.join("\n"),
       start_date: p.deadline,
       end_date: p.deadline,
-      type: "event" as const,
+      type: p.calendar_type,
       meet_link: p.mode === "online" ? (p.location || null) : null,
       created_by: currentUser.id,
     };
@@ -495,6 +511,7 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
       pic_id: form.pic_id || null,
       mode: form.mode,
       location: form.location.trim() || null,
+      calendar_type: form.calendar_type,
       ...links,
     };
     if (editing) {
@@ -773,8 +790,12 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
                     onMouseEnter={e => (e.currentTarget.style.background = "#fafafa")}
                     onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
                   >
-                    <span style={{ fontSize: 13, fontWeight: 600, color: "#111827", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {k.title}
+                    <span style={{ fontSize: 13, fontWeight: 600, color: "#111827", display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
+                      <span
+                        title={CALENDAR_TYPE_CFG[k.calendar_type ?? "event"].label}
+                        style={{ width: 7, height: 7, borderRadius: "50%", background: CALENDAR_TYPE_CFG[k.calendar_type ?? "event"].color, flexShrink: 0 }}
+                      />
+                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{k.title}</span>
                     </span>
 
                     <span style={{ fontSize: 12, color: "#6b7280", display: "flex", alignItems: "center", gap: 5, minWidth: 0 }}>
@@ -916,6 +937,28 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
                     onChange={e => setForm(f => ({ ...f, deadline: e.target.value }))}
                     style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 13, outline: "none", boxSizing: "border-box" }}
                     onFocus={e => (e.target.style.borderColor = "#6366f1")} onBlur={e => (e.target.style.borderColor = "#e5e7eb")} />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}>
+                    Kategori Kalender
+                    <span style={{ fontSize: 11, fontWeight: 400, color: "#9ca3af", marginLeft: 6 }}>(sesuai kategori di halaman Kalender)</span>
+                  </label>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    {(Object.entries(CALENDAR_TYPE_CFG) as [CalendarType, typeof CALENDAR_TYPE_CFG[CalendarType]][]).map(([key, cfg]) => (
+                      <button key={key} type="button" onClick={() => setForm(f => ({ ...f, calendar_type: key }))}
+                        style={{
+                          display: "flex", alignItems: "center", gap: 6,
+                          padding: "7px 12px", borderRadius: 9, fontSize: 12, fontWeight: 600, cursor: "pointer",
+                          border: `1.5px solid ${form.calendar_type === key ? cfg.color : "#e5e7eb"}`,
+                          background: form.calendar_type === key ? cfg.bg : "#fff",
+                          color: form.calendar_type === key ? cfg.color : "#6b7280",
+                        }}>
+                        <span style={{ width: 8, height: 8, borderRadius: "50%", background: cfg.color, flexShrink: 0 }} />
+                        {cfg.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 <div>

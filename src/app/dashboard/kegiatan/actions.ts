@@ -49,6 +49,7 @@ export async function createKegiatanAction(payload: {
   pic_id: string | null;
   mode: "online" | "offline";
   location: string | null;
+  calendar_type: "meeting" | "deadline" | "event" | "holiday" | "training";
 } & KegiatanLinks): Promise<{ data: Record<string, unknown> | null; error: string | null }> {
   const auth = await requireKegiatanAuth();
   if ("error" in auth) return { data: null, error: auth.error };
@@ -82,6 +83,7 @@ export async function updateKegiatanAction(
     pic_id: string | null;
     mode: "online" | "offline";
     location: string | null;
+    calendar_type: "meeting" | "deadline" | "event" | "holiday" | "training";
   } & KegiatanLinks,
 ): Promise<{ data: Record<string, unknown> | null; error: string | null }> {
   const auth = await requireKegiatanAuth();
