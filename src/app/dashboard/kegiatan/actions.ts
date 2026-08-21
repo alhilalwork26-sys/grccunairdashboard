@@ -13,7 +13,7 @@ function adminClient() {
 
 const CAN_EDIT = ["super_admin", "manager", "kep_trainer", "staff_dokumen"];
 const SELECT_WITH_RELATIONS =
-  "*, pic:profiles!kegiatan_pic_id_fkey(full_name), creator:profiles!kegiatan_created_by_fkey(full_name), lampiran:kegiatan_lampiran(count), checklist:kegiatan_checklist(status)";
+  "*, pic:profiles!kegiatan_pic_id_fkey(full_name), creator:profiles!kegiatan_created_by_fkey(full_name), lampiran:kegiatan_lampiran(count), checklist:kegiatan_checklist(status), sesi:kegiatan_sesi(id, sesi_ke, tanggal, waktu_mulai, waktu_selesai, pembicara, topik)";
 
 interface KegiatanLinks {
   virtual_background_url: string | null;
@@ -51,6 +51,7 @@ export async function createKegiatanAction(payload: {
   mode: "online" | "offline";
   location: string | null;
   calendar_type: "meeting" | "deadline" | "event" | "holiday" | "training";
+  program?: string | null;
 } & KegiatanLinks): Promise<{ data: Record<string, unknown> | null; error: string | null }> {
   const auth = await requireKegiatanAuth();
   if ("error" in auth) return { data: null, error: auth.error };
@@ -90,6 +91,7 @@ export async function updateKegiatanAction(
     mode: "online" | "offline";
     location: string | null;
     calendar_type: "meeting" | "deadline" | "event" | "holiday" | "training";
+    program?: string | null;
   } & KegiatanLinks,
 ): Promise<{ data: Record<string, unknown> | null; error: string | null }> {
   const auth = await requireKegiatanAuth();

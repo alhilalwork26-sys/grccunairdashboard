@@ -8,11 +8,12 @@ import {
   createKegiatanAction, updateKegiatanAction,
   deleteKegiatanAction, blastKegiatanAction,
 } from "./actions";
+import CsslBatchModal from "./CsslBatchModal";
 import {
   Layers, Plus, X, Check, Edit2, Trash2, ChevronDown, ChevronUp,
   Search, AlertTriangle, Megaphone, UserCircle2, Paperclip,
   Upload, Loader2, FileText, CalendarDays, Link2, ListChecks, ImageIcon,
-  Video, MapPin,
+  Video, MapPin, GraduationCap,
 } from "lucide-react";
 
 const CHECKLIST_FILE_ACCEPT = ".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg";
@@ -51,12 +52,18 @@ interface Kegiatan {
   mode?: "online" | "offline" | null;
   location?: string | null;
   calendar_type?: CalendarType | null;
+  program?: string | null;
   created_at: string;
   created_by?: string | null;
   pic?: { full_name: string } | null;
   creator?: { full_name: string } | null;
   lampiran?: { count: number }[];
   checklist?: { status: "belum" | "sudah" }[];
+  sesi?: {
+    id: string; sesi_ke: number; tanggal: string;
+    waktu_mulai: string | null; waktu_selesai: string | null;
+    pembicara: string | null; topik: string | null;
+  }[];
   virtual_background_url?: string | null;
   absensi_url?: string | null;
   materi_url?: string | null;
@@ -325,6 +332,8 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
   const [toast, setToast]           = useState<{ msg: string; ok: boolean } | null>(null);
   const [showLinks, setShowLinks]   = useState(false);
   const [durationInput, setDurationInput] = useState("1");
+  const [showCsslModal, setShowCsslModal] = useState(false);
+  const [csslEditing, setCsslEditing]     = useState<Kegiatan | null>(null);
 
   const [lampiranList, setLampiranList]   = useState<Lampiran[]>([]);
   const [loadingLampiran, setLoadingLampiran] = useState(false);
@@ -380,7 +389,22 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
     setEditing(null); setForm(EMPTY); setLampiranList([]); setChecklist([]);
     setShowLinks(false); setDurationInput("1"); resetChecklistDraft(); setShowModal(true);
   };
+  const openCsslCreate = () => { setCsslEditing(null); setShowCsslModal(true); };
+  const openCsslEdit = (k: Kegiatan) => { setCsslEditing(k); setShowCsslModal(true); };
+
+  const handleCsslSaved = (data: Record<string, unknown>) => {
+    const saved = data as unknown as Kegiatan;
+    setItems(prev => {
+      const exists = prev.some(k => k.id === saved.id);
+      return exists ? prev.map(k => (k.id === saved.id ? saved : k)) : [...prev, saved].sort((a, b) => a.deadline.localeCompare(b.deadline));
+    });
+    showToast(csslEditing ? "Batch CSSL diperbarui + kalender disinkron" : "Batch CSSL dibuat + 4 sesi masuk Kalender");
+    setShowCsslModal(false);
+    setCsslEditing(null);
+  };
+
   const openEdit = (k: Kegiatan) => {
+    if (k.program === "cssl") { openCsslEdit(k); return; }
     setEditing(k);
     const links = LINK_FIELDS.reduce((acc, f) => ({ ...acc, [f.key]: k[f.key] ?? "" }), {} as Record<LinkKey, string>);
     const end = k.end_date ?? k.deadline;
@@ -601,10 +625,17 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
   };
 
   const handleDelete = async (id: string) => {
+    const target = items.find(k => k.id === id);
     const { error } = await deleteKegiatanAction(id);
     if (error) showToast(error, false);
     else {
-      await removeCalendarEvent(id);
+      if (target?.program === "cssl" && target.sesi?.length) {
+        await Promise.all(target.sesi.map(s =>
+          supabase.from("events").delete().ilike("description", `%[kegsesi:${s.id}]%`)
+        ));
+      } else {
+        await removeCalendarEvent(id);
+      }
       setItems(prev => prev.filter(k => k.id !== id));
       showToast("Kegiatan + event kalender dihapus");
     }
@@ -732,16 +763,28 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
         </div>
 
         {canEdit && (
-          <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }} onClick={openCreate}
-            style={{
-              display: "flex", alignItems: "center", gap: 7, flexShrink: 0,
-              background: "linear-gradient(135deg, #6366f1, #4f46e5)",
-              color: "#fff", border: "none", borderRadius: 10, padding: "9px 16px",
-              cursor: "pointer", fontSize: 13, fontWeight: 600,
-              boxShadow: "0 4px 14px rgba(99,102,241,0.35)",
-            }}>
-            <Plus size={15} /> Tambah Kegiatan
-          </motion.button>
+          <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+            <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }} onClick={openCsslCreate}
+              style={{
+                display: "flex", alignItems: "center", gap: 7, flexShrink: 0,
+                background: "linear-gradient(135deg, #8b5cf6, #a855f7)",
+                color: "#fff", border: "none", borderRadius: 10, padding: "9px 16px",
+                cursor: "pointer", fontSize: 13, fontWeight: 600,
+                boxShadow: "0 4px 14px rgba(139,92,246,0.35)",
+              }}>
+              <GraduationCap size={15} /> Program CSSL
+            </motion.button>
+            <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }} onClick={openCreate}
+              style={{
+                display: "flex", alignItems: "center", gap: 7, flexShrink: 0,
+                background: "linear-gradient(135deg, #6366f1, #4f46e5)",
+                color: "#fff", border: "none", borderRadius: 10, padding: "9px 16px",
+                cursor: "pointer", fontSize: 13, fontWeight: 600,
+                boxShadow: "0 4px 14px rgba(99,102,241,0.35)",
+              }}>
+              <Plus size={15} /> Tambah Kegiatan
+            </motion.button>
+          </div>
         )}
       </div>
 
@@ -858,6 +901,15 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
                         title={CALENDAR_TYPE_CFG[k.calendar_type ?? "event"].label}
                         style={{ width: 7, height: 7, borderRadius: "50%", background: CALENDAR_TYPE_CFG[k.calendar_type ?? "event"].color, flexShrink: 0 }}
                       />
+                      {k.program === "cssl" && (
+                        <span title="Program CSSL" style={{
+                          display: "flex", alignItems: "center", gap: 3, flexShrink: 0,
+                          fontSize: 9, fontWeight: 800, padding: "2px 6px", borderRadius: 6,
+                          background: "linear-gradient(135deg, #8b5cf6, #a855f7)", color: "#fff",
+                        }}>
+                          <GraduationCap size={9} /> CSSL
+                        </span>
+                      )}
                       <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{k.title}</span>
                     </span>
 
@@ -1404,6 +1456,20 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
             }}>
             {toast.ok ? <Check size={14} /> : <X size={14} />} {toast.msg}
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Program CSSL modal */}
+      <AnimatePresence>
+        {showCsslModal && (
+          <CsslBatchModal
+            key={csslEditing?.id ?? "new"}
+            currentUser={currentUser}
+            profiles={profiles}
+            editing={csslEditing}
+            onClose={() => { setShowCsslModal(false); setCsslEditing(null); }}
+            onSaved={handleCsslSaved}
+          />
         )}
       </AnimatePresence>
 
