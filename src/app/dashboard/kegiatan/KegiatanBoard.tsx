@@ -12,6 +12,7 @@ import {
   Layers, Plus, X, Check, Edit2, Trash2, ChevronDown, ChevronUp,
   Search, AlertTriangle, Megaphone, UserCircle2, Paperclip,
   Upload, Loader2, FileText, CalendarDays, Link2, ListChecks, ImageIcon,
+  Video, MapPin,
 } from "lucide-react";
 
 const CHECKLIST_FILE_ACCEPT = ".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg";
@@ -36,6 +37,8 @@ interface Kegiatan {
   deadline: string;
   status: "belum" | "sudah";
   pic_id?: string | null;
+  mode?: "online" | "offline" | null;
+  location?: string | null;
   created_at: string;
   created_by?: string | null;
   pic?: { full_name: string } | null;
@@ -85,6 +88,11 @@ function fmtDeadline(dateStr: string) {
   return d.toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
 }
 
+function getQuarter(dateStr: string): string {
+  const month = new Date(dateStr + "T00:00:00").getMonth();
+  return `Q${Math.floor(month / 3) + 1}`;
+}
+
 function getDeadlineTone(dateStr: string, status: string) {
   if (status === "sudah") return { color: "#9ca3af", label: null };
   const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -101,6 +109,7 @@ const EMPTY_LINKS = LINK_FIELDS.reduce((acc, f) => ({ ...acc, [f.key]: "" }), {}
 const EMPTY = {
   title: "", description: "", deadline: "",
   status: "belum" as Kegiatan["status"], pic_id: "",
+  mode: "offline" as "online" | "offline", location: "",
   ...EMPTY_LINKS,
 };
 
@@ -298,6 +307,7 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
     setForm({
       title: k.title, description: k.description ?? "", deadline: k.deadline,
       status: k.status, pic_id: k.pic_id ?? "",
+      mode: k.mode ?? "offline", location: k.location ?? "",
       ...links,
     });
     setShowLinks(LINK_FIELDS.some(f => k[f.key]));
@@ -429,6 +439,42 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
     setChecklist(prev => prev.map(c => c.id === item.id ? { ...c, file_url: null, file_name: null } : c));
   };
 
+  // Sync kegiatan -> tabel events (Kalender). Ditandai [keg:<id>] di description
+  // supaya bisa dicari/di-update/dihapus lagi tanpa kolom relasi tambahan.
+  const syncCalendarEvent = async (
+    kegiatanId: string,
+    p: { title: string; description: string | null; deadline: string; mode: "online" | "offline"; location: string | null },
+    isNew: boolean,
+  ) => {
+    const marker = `[keg:${kegiatanId}]`;
+    const descParts = [
+      p.description ?? "",
+      p.mode === "offline" && p.location ? `Lokasi: ${p.location}` : "",
+      marker,
+    ].filter(Boolean);
+    const eventPayload = {
+      title: `Kegiatan: ${p.title}`,
+      description: descParts.join("\n"),
+      start_date: p.deadline,
+      end_date: p.deadline,
+      type: "event" as const,
+      meet_link: p.mode === "online" ? (p.location || null) : null,
+      created_by: currentUser.id,
+    };
+    if (isNew) {
+      await supabase.from("events").insert(eventPayload);
+    } else {
+      const { data: existing } = await supabase.from("events")
+        .select("id").ilike("description", `%${marker}%`).maybeSingle();
+      if (existing) await supabase.from("events").update(eventPayload).eq("id", existing.id);
+      else await supabase.from("events").insert(eventPayload);
+    }
+  };
+
+  const removeCalendarEvent = async (kegiatanId: string) => {
+    await supabase.from("events").delete().ilike("description", `%[keg:${kegiatanId}]%`);
+  };
+
   const handleSubmit = async () => {
     if (!form.title.trim() || !form.deadline) return;
     setSubmitting(true);
@@ -439,6 +485,8 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
       deadline: form.deadline,
       status: form.status,
       pic_id: form.pic_id || null,
+      mode: form.mode,
+      location: form.location.trim() || null,
       ...links,
     };
     if (editing) {
@@ -446,8 +494,9 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
       if (error) { showToast(error, false); }
       else {
         setItems(prev => prev.map(k => k.id === editing.id ? (data as unknown as Kegiatan) : k));
-        showToast("Kegiatan diperbarui");
+        showToast("Kegiatan diperbarui + kalender disinkron");
         setShowModal(false);
+        syncCalendarEvent(editing.id, payload, false);
       }
     } else {
       const { data, error } = await createKegiatanAction(payload);
@@ -455,8 +504,9 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
       else {
         const created = data as unknown as Kegiatan;
         setItems(prev => [...prev, created].sort((a, b) => a.deadline.localeCompare(b.deadline)));
-        showToast("Kegiatan ditambahkan");
+        showToast("Kegiatan ditambahkan + kalender disinkron");
         setShowModal(false);
+        syncCalendarEvent(created.id, payload, true);
       }
     }
     setSubmitting(false);
@@ -465,7 +515,11 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
   const handleDelete = async (id: string) => {
     const { error } = await deleteKegiatanAction(id);
     if (error) showToast(error, false);
-    else { setItems(prev => prev.filter(k => k.id !== id)); showToast("Kegiatan dihapus"); }
+    else {
+      await removeCalendarEvent(id);
+      setItems(prev => prev.filter(k => k.id !== id));
+      showToast("Kegiatan + event kalender dihapus");
+    }
     setDeleteId(null);
   };
 
@@ -693,10 +747,16 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
                       total={(k.checklist ?? []).length}
                     />
 
-                    <span style={{ fontSize: 12, color: tone.color, fontWeight: tone.label ? 700 : 500, display: "flex", alignItems: "center", gap: 5 }}>
+                    <span style={{ fontSize: 12, color: tone.color, fontWeight: tone.label ? 700 : 500, display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
                       <CalendarDays size={11} style={{ flexShrink: 0 }} />
                       {fmtDeadline(k.deadline)}
                       {tone.label && <span style={{ fontSize: 10 }}>({tone.label})</span>}
+                      <span style={{
+                        fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 10,
+                        background: "#eef2ff", color: "#4f46e5", flexShrink: 0,
+                      }}>
+                        {getQuarter(k.deadline)}
+                      </span>
                     </span>
 
                     <span style={{ fontSize: 12, color: "#9ca3af", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -797,12 +857,50 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
                 </div>
 
                 <div>
-                  <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}>
-                    Deadline <span style={{ color: "#ef4444" }}>*</span>
-                  </label>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                    <label style={{ fontSize: 12, fontWeight: 600, color: "#374151" }}>
+                      Deadline <span style={{ color: "#ef4444" }}>*</span>
+                      <span style={{ fontSize: 11, fontWeight: 400, color: "#9ca3af", marginLeft: 6 }}>(tanggal kegiatan berlangsung — otomatis masuk Kalender)</span>
+                    </label>
+                    {form.deadline && (
+                      <span style={{
+                        fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 20,
+                        background: "#eef2ff", color: "#4f46e5", border: "1px solid #e0e7ff",
+                      }}>
+                        {getQuarter(form.deadline)} {new Date(form.deadline + "T00:00:00").getFullYear()}
+                      </span>
+                    )}
+                  </div>
                   <input type="date" value={form.deadline}
                     onChange={e => setForm(f => ({ ...f, deadline: e.target.value }))}
                     style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 13, outline: "none", boxSizing: "border-box" }}
+                    onFocus={e => (e.target.style.borderColor = "#6366f1")} onBlur={e => (e.target.style.borderColor = "#e5e7eb")} />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}>Kegiatan Online atau Offline?</label>
+                  <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+                    {([
+                      { key: "offline" as const, label: "Offline", Icon: MapPin },
+                      { key: "online" as const, label: "Online", Icon: Video },
+                    ]).map(({ key, label, Icon }) => (
+                      <button key={key} type="button" onClick={() => setForm(f => ({ ...f, mode: key }))}
+                        style={{
+                          flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                          padding: "9px 12px", borderRadius: 9, fontSize: 13, fontWeight: 600, cursor: "pointer",
+                          border: `1.5px solid ${form.mode === key ? "#6366f1" : "#e5e7eb"}`,
+                          background: form.mode === key ? "#eef2ff" : "#fff",
+                          color: form.mode === key ? "#4f46e5" : "#6b7280",
+                        }}>
+                        <Icon size={13} /> {label}
+                      </button>
+                    ))}
+                  </div>
+                  <input type="text"
+                    placeholder={form.mode === "online" ? "Link Zoom / Google Meet…" : "Lokasi acara…"}
+                    value={form.location}
+                    onChange={e => setForm(f => ({ ...f, location: e.target.value }))}
+                    style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 13, outline: "none", boxSizing: "border-box", fontFamily: "inherit" }}
                     onFocus={e => (e.target.style.borderColor = "#6366f1")} onBlur={e => (e.target.style.borderColor = "#e5e7eb")} />
                 </div>
 

@@ -47,6 +47,8 @@ export async function createKegiatanAction(payload: {
   deadline: string;
   status: "belum" | "sudah";
   pic_id: string | null;
+  mode: "online" | "offline";
+  location: string | null;
 } & KegiatanLinks): Promise<{ data: Record<string, unknown> | null; error: string | null }> {
   const auth = await requireKegiatanAuth();
   if ("error" in auth) return { data: null, error: auth.error };
@@ -78,6 +80,8 @@ export async function updateKegiatanAction(
     deadline: string;
     status: "belum" | "sudah";
     pic_id: string | null;
+    mode: "online" | "offline";
+    location: string | null;
   } & KegiatanLinks,
 ): Promise<{ data: Record<string, unknown> | null; error: string | null }> {
   const auth = await requireKegiatanAuth();
