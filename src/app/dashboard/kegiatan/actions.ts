@@ -107,7 +107,6 @@ export async function deleteKegiatanAction(id: string): Promise<{ error: string 
 export async function blastKegiatanAction(announcement: {
   title: string;
   content: string;
-  createdBy: string;
 }): Promise<{ error: string | null }> {
   const auth = await requireKegiatanAuth();
   if ("error" in auth) return auth;
@@ -118,7 +117,7 @@ export async function blastKegiatanAction(announcement: {
     content: announcement.content,
     type: "info",
     pinned: false,
-    created_by: announcement.createdBy,
+    created_by: auth.userId,
   });
 
   if (error) return { error: error.message };

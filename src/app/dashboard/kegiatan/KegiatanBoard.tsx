@@ -272,7 +272,12 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
     setLoadingChecklist(false);
   }, [supabase]);
 
-  const openCreate = () => { setEditing(null); setForm(EMPTY); setLampiranList([]); setChecklist([]); setShowLinks(false); setShowModal(true); };
+  const resetChecklistDraft = () => { setNewItemName(""); setNewItemPic(""); setNewItemDeadline(""); };
+
+  const openCreate = () => {
+    setEditing(null); setForm(EMPTY); setLampiranList([]); setChecklist([]);
+    setShowLinks(false); resetChecklistDraft(); setShowModal(true);
+  };
   const openEdit = (k: Kegiatan) => {
     setEditing(k);
     const links = LINK_FIELDS.reduce((acc, f) => ({ ...acc, [f.key]: k[f.key] ?? "" }), {} as Record<LinkKey, string>);
@@ -282,6 +287,7 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
       ...links,
     });
     setShowLinks(LINK_FIELDS.some(f => k[f.key]));
+    resetChecklistDraft();
     setShowModal(true);
     loadLampiran(k.id);
     loadChecklist(k.id);
@@ -307,31 +313,39 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
       .single();
     if (error) showToast(error.message, false);
     else {
-      const next = [...checklist, data];
-      setChecklist(next);
-      syncItemChecklist(editing.id, next);
+      setChecklist(prev => {
+        const next = [...prev, data];
+        if (editing) syncItemChecklist(editing.id, next);
+        return next;
+      });
       setNewItemName(""); setNewItemPic(""); setNewItemDeadline("");
     }
     setAddingItem(false);
   };
 
   const handleToggleChecklistStatus = async (item: ChecklistItem, next: ChecklistItem["status"]) => {
-    const nextList = checklist.map(c => c.id === item.id ? { ...c, status: next } : c);
-    setChecklist(nextList);
-    if (editing) syncItemChecklist(editing.id, nextList);
+    setChecklist(prev => {
+      const nextList = prev.map(c => c.id === item.id ? { ...c, status: next } : c);
+      if (editing) syncItemChecklist(editing.id, nextList);
+      return nextList;
+    });
     const { error } = await supabase.from("kegiatan_checklist").update({ status: next }).eq("id", item.id);
     if (error) {
-      const reverted = checklist.map(c => c.id === item.id ? { ...c, status: item.status } : c);
-      setChecklist(reverted);
-      if (editing) syncItemChecklist(editing.id, reverted);
+      setChecklist(prev => {
+        const reverted = prev.map(c => c.id === item.id ? { ...c, status: item.status } : c);
+        if (editing) syncItemChecklist(editing.id, reverted);
+        return reverted;
+      });
       showToast("Gagal update status checklist", false);
     }
   };
 
   const handleDeleteChecklistItem = async (id: string) => {
-    const next = checklist.filter(c => c.id !== id);
-    setChecklist(next);
-    if (editing) syncItemChecklist(editing.id, next);
+    setChecklist(prev => {
+      const next = prev.filter(c => c.id !== id);
+      if (editing) syncItemChecklist(editing.id, next);
+      return next;
+    });
     const { error } = await supabase.from("kegiatan_checklist").delete().eq("id", id);
     if (error) showToast(error.message, false);
   };
@@ -385,7 +399,6 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
     const { error } = await blastKegiatanAction({
       title: `📢 Kegiatan: ${k.title}`,
       content,
-      createdBy: currentUser.id,
     });
 
     if (error) showToast("Gagal mengirim notifikasi", false);
