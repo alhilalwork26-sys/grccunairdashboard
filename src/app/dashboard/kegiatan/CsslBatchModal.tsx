@@ -5,10 +5,23 @@ import { motion, AnimatePresence } from "framer-motion";
 import { createClient } from "@/lib/supabase/client";
 import type { UserProfile } from "@/types";
 import { createKegiatanAction, updateKegiatanAction } from "./actions";
+import KegiatanAttachments from "./KegiatanAttachments";
 import {
   GraduationCap, X, Check, Loader2, Mic, Clock, CalendarDays,
-  Sparkles, AlertTriangle, BookOpen,
+  Sparkles, AlertTriangle, BookOpen, Link2, ChevronDown, ChevronUp,
 } from "lucide-react";
+
+const LINK_FIELDS = [
+  { key: "virtual_background_url", label: "Virtual Background" },
+  { key: "absensi_url",            label: "Absensi" },
+  { key: "materi_url",             label: "Materi" },
+  { key: "record_zoom_url",        label: "Record Zoom" },
+  { key: "ujian_url",              label: "Ujian" },
+  { key: "dokumentasi_url",        label: "Dokumentasi" },
+  { key: "modul_url",              label: "Modul" },
+  { key: "rundown_url",            label: "Rundown" },
+] as const;
+type LinkKey = typeof LINK_FIELDS[number]["key"];
 
 interface Sesi {
   id?: string;
@@ -30,6 +43,14 @@ interface KegiatanLite {
     waktu_mulai: string | null; waktu_selesai: string | null;
     pembicara: string | null; topik: string | null;
   }[];
+  virtual_background_url?: string | null;
+  absensi_url?: string | null;
+  materi_url?: string | null;
+  record_zoom_url?: string | null;
+  ujian_url?: string | null;
+  dokumentasi_url?: string | null;
+  modul_url?: string | null;
+  rundown_url?: string | null;
 }
 
 interface Props {
@@ -82,6 +103,9 @@ export default function CsslBatchModal({ currentUser, profiles, editing, onClose
   const [picId, setPicId] = useState(editing?.pic_id ?? "");
   const [description, setDescription] = useState(editing?.description ?? "");
   const [sessions, setSessions] = useState<Sesi[]>(() => sesiFromEditing(editing));
+  const [links, setLinks] = useState<Record<LinkKey, string>>(() =>
+    LINK_FIELDS.reduce((acc, f) => ({ ...acc, [f.key]: editing?.[f.key] ?? "" }), {} as Record<LinkKey, string>));
+  const [showLinks, setShowLinks] = useState(() => LINK_FIELDS.some(f => editing?.[f.key]));
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -130,6 +154,7 @@ export default function CsslBatchModal({ currentUser, profiles, editing, onClose
     setError(null);
 
     const dates = [...sessions.map(s => s.tanggal)].sort();
+    const linkValues = LINK_FIELDS.reduce((acc, f) => ({ ...acc, [f.key]: links[f.key].trim() || null }), {} as Record<LinkKey, string | null>);
     const payload = {
       title: title.trim(),
       description: description.trim() || null,
@@ -141,8 +166,7 @@ export default function CsslBatchModal({ currentUser, profiles, editing, onClose
       location: null,
       calendar_type: "training" as const,
       program: "cssl",
-      virtual_background_url: null, absensi_url: null, materi_url: null, record_zoom_url: null,
-      ujian_url: null, dokumentasi_url: null, modul_url: null, rundown_url: null,
+      ...linkValues,
     };
 
     const result = editing
@@ -361,6 +385,40 @@ export default function CsslBatchModal({ currentUser, profiles, editing, onClose
                 );
               })}
             </div>
+          </div>
+
+          {/* Link & dokumen pendukung — opsional */}
+          <div style={{ marginTop: 24 }}>
+            <button type="button" onClick={() => setShowLinks(s => !s)}
+              style={{
+                width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
+                background: "none", border: "none", cursor: "pointer", padding: 0, marginBottom: showLinks ? 10 : 0,
+              }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                <Link2 size={12} color="#9ca3af" />
+                <span style={{ fontSize: 12, fontWeight: 600, color: "#374151" }}>Link &amp; Dokumen Pendukung</span>
+                <span style={{ fontSize: 11, fontWeight: 400, color: "#9ca3af" }}>(opsional)</span>
+              </div>
+              {showLinks ? <ChevronUp size={14} color="#9ca3af" /> : <ChevronDown size={14} color="#9ca3af" />}
+            </button>
+            {showLinks && (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                {LINK_FIELDS.map(f => (
+                  <div key={f.key}>
+                    <label style={{ fontSize: 11, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 5 }}>{f.label}</label>
+                    <input type="text" placeholder="https://…" value={links[f.key]}
+                      onChange={e => setLinks(prev => ({ ...prev, [f.key]: e.target.value }))}
+                      style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 9, fontSize: 12, outline: "none", boxSizing: "border-box", fontFamily: "inherit" }}
+                      onFocus={e => (e.target.style.borderColor = "#8b5cf6")} onBlur={e => (e.target.style.borderColor = "#e5e7eb")} />
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Lampiran + Checklist */}
+          <div style={{ marginTop: 24 }}>
+            <KegiatanAttachments currentUser={currentUser} kegiatanId={editing?.id ?? null} />
           </div>
 
           <AnimatePresence>
