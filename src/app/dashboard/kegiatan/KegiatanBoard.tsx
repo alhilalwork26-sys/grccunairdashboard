@@ -45,6 +45,7 @@ interface Kegiatan {
   title: string;
   description?: string | null;
   deadline: string;
+  end_date?: string | null;
   status: "belum" | "sudah";
   pic_id?: string | null;
   mode?: "online" | "offline" | null;
@@ -99,6 +100,28 @@ function fmtDeadline(dateStr: string) {
   return d.toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
 }
 
+function addDays(dateStr: string, days: number): string {
+  const d = new Date(dateStr + "T00:00:00");
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+function daysBetween(startStr: string, endStr: string): number {
+  const start = new Date(startStr + "T00:00:00");
+  const end = new Date(endStr + "T00:00:00");
+  return Math.round((end.getTime() - start.getTime()) / 86400000) + 1;
+}
+
+function fmtDeadlineRange(startStr: string, endStr: string) {
+  if (!endStr || startStr === endStr) return fmtDeadline(startStr);
+  const s = new Date(startStr + "T00:00:00");
+  const e = new Date(endStr + "T00:00:00");
+  if (s.getMonth() === e.getMonth() && s.getFullYear() === e.getFullYear()) {
+    return `${s.getDate()}–${e.getDate()} ${e.toLocaleDateString("id-ID", { month: "short", year: "numeric" })}`;
+  }
+  return `${fmtDeadline(startStr)} – ${fmtDeadline(endStr)}`;
+}
+
 function friendlyDbError(error: { code?: string; message: string }): string {
   if (error.code === "23503") {
     return "Kegiatan ini sudah tidak ada (mungkin dihapus di tab/perangkat lain). Silakan refresh halaman.";
@@ -111,13 +134,15 @@ function getQuarter(dateStr: string): string {
   return `Q${Math.floor(month / 3) + 1}`;
 }
 
-function getDeadlineTone(dateStr: string, status: string) {
+function getDeadlineTone(startStr: string, endStr: string, status: string) {
   if (status === "sudah") return { color: "#9ca3af", label: null };
   const today = new Date(); today.setHours(0, 0, 0, 0);
-  const target = new Date(dateStr + "T00:00:00");
-  const diff = Math.round((target.getTime() - today.getTime()) / 86400000);
-  if (diff < 0) return { color: "#ef4444", label: "Lewat" };
-  if (diff === 0) return { color: "#ef4444", label: "Hari ini" };
+  const start = new Date(startStr + "T00:00:00");
+  const end = new Date((endStr || startStr) + "T00:00:00");
+  if (today > end) return { color: "#ef4444", label: "Lewat" };
+  if (today >= start && today <= end) return { color: "#10b981", label: "Berlangsung" };
+  const diff = Math.round((start.getTime() - today.getTime()) / 86400000);
+  if (diff === 1) return { color: "#f59e0b", label: "Besok" };
   if (diff <= 3) return { color: "#f59e0b", label: `${diff}h lagi` };
   return { color: "#6b7280", label: null };
 }
@@ -125,7 +150,7 @@ function getDeadlineTone(dateStr: string, status: string) {
 const EMPTY_LINKS = LINK_FIELDS.reduce((acc, f) => ({ ...acc, [f.key]: "" }), {} as Record<LinkKey, string>);
 
 const EMPTY = {
-  title: "", description: "", deadline: "",
+  title: "", description: "", deadline: "", end_date: "",
   status: "belum" as Kegiatan["status"], pic_id: "",
   mode: "offline" as "online" | "offline", location: "",
   calendar_type: "event" as CalendarType,
@@ -326,6 +351,7 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
     const links = LINK_FIELDS.reduce((acc, f) => ({ ...acc, [f.key]: k[f.key] ?? "" }), {} as Record<LinkKey, string>);
     setForm({
       title: k.title, description: k.description ?? "", deadline: k.deadline,
+      end_date: k.end_date ?? k.deadline,
       status: k.status, pic_id: k.pic_id ?? "",
       mode: k.mode ?? "offline", location: k.location ?? "",
       calendar_type: k.calendar_type ?? "event",
@@ -465,7 +491,7 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
   const syncCalendarEvent = async (
     kegiatanId: string,
     p: {
-      title: string; description: string | null; deadline: string;
+      title: string; description: string | null; deadline: string; end_date: string;
       mode: "online" | "offline"; location: string | null; calendar_type: CalendarType;
     },
     isNew: boolean,
@@ -480,7 +506,7 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
       title: `Kegiatan: ${p.title}`,
       description: descParts.join("\n"),
       start_date: p.deadline,
-      end_date: p.deadline,
+      end_date: p.end_date || p.deadline,
       type: p.calendar_type,
       meet_link: p.mode === "online" ? (p.location || null) : null,
       created_by: currentUser.id,
@@ -507,6 +533,7 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
       title: form.title.trim(),
       description: form.description.trim() || null,
       deadline: form.deadline,
+      end_date: form.end_date && form.end_date >= form.deadline ? form.end_date : form.deadline,
       status: form.status,
       pic_id: form.pic_id || null,
       mode: form.mode,
@@ -774,7 +801,7 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
 
             <AnimatePresence mode="popLayout">
               {filtered.map((k, i) => {
-                const tone = getDeadlineTone(k.deadline, k.status);
+                const tone = getDeadlineTone(k.deadline, k.end_date ?? k.deadline, k.status);
                 const lampiranCount = k.lampiran?.[0]?.count ?? 0;
                 return (
                   <motion.div key={k.id} layout
@@ -811,7 +838,7 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
 
                     <span style={{ fontSize: 12, color: tone.color, fontWeight: tone.label ? 700 : 500, display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
                       <CalendarDays size={11} style={{ flexShrink: 0 }} />
-                      {fmtDeadline(k.deadline)}
+                      {fmtDeadlineRange(k.deadline, k.end_date ?? k.deadline)}
                       {tone.label && <span style={{ fontSize: 10 }}>({tone.label})</span>}
                       <span style={{
                         fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 10,
@@ -922,7 +949,7 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
                     <label style={{ fontSize: 12, fontWeight: 600, color: "#374151" }}>
                       Deadline <span style={{ color: "#ef4444" }}>*</span>
-                      <span style={{ fontSize: 11, fontWeight: 400, color: "#9ca3af", marginLeft: 6 }}>(tanggal kegiatan berlangsung — otomatis masuk Kalender)</span>
+                      <span style={{ fontSize: 11, fontWeight: 400, color: "#9ca3af", marginLeft: 6 }}>(tanggal mulai — otomatis masuk Kalender)</span>
                     </label>
                     {form.deadline && (
                       <span style={{
@@ -933,10 +960,36 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
                       </span>
                     )}
                   </div>
-                  <input type="date" value={form.deadline}
-                    onChange={e => setForm(f => ({ ...f, deadline: e.target.value }))}
-                    style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 13, outline: "none", boxSizing: "border-box" }}
-                    onFocus={e => (e.target.style.borderColor = "#6366f1")} onBlur={e => (e.target.style.borderColor = "#e5e7eb")} />
+                  <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 10, marginBottom: 4 }}>
+                    <span />
+                    <span style={{ fontSize: 10, fontWeight: 600, color: "#9ca3af" }}>Jumlah Hari</span>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 10 }}>
+                    <input type="date" value={form.deadline}
+                      onChange={e => {
+                        const nextDeadline = e.target.value;
+                        setForm(f => {
+                          const duration = f.deadline && f.end_date ? daysBetween(f.deadline, f.end_date) : 1;
+                          return { ...f, deadline: nextDeadline, end_date: nextDeadline ? addDays(nextDeadline, Math.max(0, duration - 1)) : "" };
+                        });
+                      }}
+                      style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 13, outline: "none", boxSizing: "border-box" }}
+                      onFocus={e => (e.target.style.borderColor = "#6366f1")} onBlur={e => (e.target.style.borderColor = "#e5e7eb")} />
+                    <input type="number" min={1} placeholder="Jumlah hari"
+                      value={form.deadline && form.end_date ? daysBetween(form.deadline, form.end_date) : 1}
+                      onChange={e => {
+                        const n = Math.max(1, Number(e.target.value) || 1);
+                        setForm(f => ({ ...f, end_date: f.deadline ? addDays(f.deadline, n - 1) : "" }));
+                      }}
+                      disabled={!form.deadline}
+                      style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 13, outline: "none", boxSizing: "border-box" }}
+                      onFocus={e => (e.target.style.borderColor = "#6366f1")} onBlur={e => (e.target.style.borderColor = "#e5e7eb")} />
+                  </div>
+                  {form.deadline && form.end_date && form.end_date > form.deadline && (
+                    <p style={{ fontSize: 11, color: "#6366f1", marginTop: 6, fontWeight: 600 }}>
+                      Berlangsung {daysBetween(form.deadline, form.end_date)} hari — sampai {fmtDeadline(form.end_date)}
+                    </p>
+                  )}
                 </div>
 
                 <div>

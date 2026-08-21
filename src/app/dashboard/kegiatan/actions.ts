@@ -45,6 +45,7 @@ export async function createKegiatanAction(payload: {
   title: string;
   description: string | null;
   deadline: string;
+  end_date: string;
   status: "belum" | "sudah";
   pic_id: string | null;
   mode: "online" | "offline";
@@ -63,9 +64,13 @@ export async function createKegiatanAction(payload: {
 
   if (error) return { data: null, error: error.message };
 
+  const isMultiDay = payload.end_date > payload.deadline;
+  const dateLabel = isMultiDay
+    ? `${new Date(payload.deadline + "T00:00:00").toLocaleDateString("id-ID", { day: "numeric", month: "long" })} – ${new Date(payload.end_date + "T00:00:00").toLocaleDateString("id-ID", { day: "numeric", month: "long" })}`
+    : new Date(payload.deadline + "T00:00:00").toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long" });
   await sendPushToAll({
     title: `🗂️ Kegiatan baru: ${payload.title}`,
-    body: `Deadline ${new Date(payload.deadline + "T00:00:00").toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long" })}`,
+    body: `${isMultiDay ? "Tanggal" : "Deadline"} ${dateLabel}`,
     url: "/dashboard/kegiatan",
     tag: `kegiatan-new-${data.id}`,
   });
@@ -79,6 +84,7 @@ export async function updateKegiatanAction(
     title: string;
     description: string | null;
     deadline: string;
+    end_date: string;
     status: "belum" | "sudah";
     pic_id: string | null;
     mode: "online" | "offline";
