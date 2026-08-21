@@ -16,8 +16,12 @@ import {
   Video, MapPin, GraduationCap,
 } from "lucide-react";
 
-const CHECKLIST_FILE_ACCEPT = ".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg";
-const CHECKLIST_FILE_ALLOWED_TYPES = ["application/pdf", "image/png", "image/jpeg"];
+const CHECKLIST_FILE_ACCEPT = ".pdf,.png,.jpg,.jpeg,.doc,.docx,.xls,.xlsx,application/pdf,image/png,image/jpeg,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+const CHECKLIST_FILE_ALLOWED_TYPES = [
+  "application/pdf", "image/png", "image/jpeg",
+  "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+];
 
 // Kategori sama persis dengan modul Kalender, supaya sinkron konsisten
 const CALENDAR_TYPE_CFG = {
@@ -1305,9 +1309,9 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
                                   <div style={{ display: "flex", alignItems: "center", gap: 2, flexShrink: 0 }}>
                                     <a href={item.file_url} target="_blank" rel="noopener noreferrer" title={item.file_name ?? "Lihat file"}
                                       style={{ display: "flex", padding: 5, borderRadius: 6, background: "#f0fdf4", border: "1px solid #d1fae5" }}>
-                                      {item.file_name?.toLowerCase().endsWith(".pdf")
-                                        ? <FileText size={12} color="#10b981" />
-                                        : <ImageIcon size={12} color="#10b981" />}
+                                      {/\.(png|jpe?g|gif|webp)$/i.test(item.file_name ?? "")
+                                        ? <ImageIcon size={12} color="#10b981" />
+                                        : <FileText size={12} color="#10b981" />}
                                     </a>
                                     <button onClick={() => handleRemoveChecklistFile(item)} title="Hapus file"
                                       style={{ border: "none", background: "none", cursor: "pointer", padding: 2, display: "flex" }}>
