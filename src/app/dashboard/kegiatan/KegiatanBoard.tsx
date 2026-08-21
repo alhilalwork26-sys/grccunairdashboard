@@ -237,6 +237,7 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
 
   const [items, setItems]           = useState<Kegiatan[]>(initialItems);
   const [tab, setTab]               = useState<"all" | "belum" | "sudah">("all");
+  const [quarterFilter, setQuarterFilter] = useState<"all" | "Q1" | "Q2" | "Q3" | "Q4">("all");
   const [search, setSearch]         = useState("");
   const [showModal, setShowModal]   = useState(false);
   const [editing, setEditing]       = useState<Kegiatan | null>(null);
@@ -581,6 +582,7 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
 
   const filtered = useMemo(() => {
     let list = items.filter(k => tab === "all" ? true : k.status === tab);
+    if (quarterFilter !== "all") list = list.filter(k => getQuarter(k.deadline) === quarterFilter);
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter(k =>
@@ -590,7 +592,7 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
       );
     }
     return list;
-  }, [items, tab, search]);
+  }, [items, tab, search, quarterFilter]);
 
   const stats = {
     total: items.length,
@@ -657,31 +659,63 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
       </div>
 
       {/* Tabs */}
-      <div style={{ background: "#fff", borderBottom: "1px solid #f3f4f6", padding: "0 28px", display: "flex", gap: 4, flexShrink: 0 }}>
-        {([
-          { key: "all",   label: "Semua",  count: stats.total },
-          { key: "belum", label: "Belum",  count: stats.belum },
-          { key: "sudah", label: "Sudah",  count: stats.sudah },
-        ] as const).map(t => (
-          <button key={t.key} onClick={() => setTab(t.key)}
-            style={{
-              padding: "14px 16px", border: "none", background: "transparent",
-              cursor: "pointer", fontSize: 13, display: "flex", alignItems: "center", gap: 6,
-              fontWeight: tab === t.key ? 700 : 500,
-              color: tab === t.key ? "#4f46e5" : "#6b7280",
-              borderBottom: tab === t.key ? "2px solid #4f46e5" : "2px solid transparent",
-              transition: "all 0.15s",
-            }}>
-            {t.label}
-            <span style={{
-              fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 10,
-              background: tab === t.key ? "#eef2ff" : "#f3f4f6",
-              color: tab === t.key ? "#4f46e5" : "#9ca3af",
-            }}>
-              {t.count}
-            </span>
-          </button>
-        ))}
+      <div style={{
+        background: "#fff", borderBottom: "1px solid #f3f4f6", padding: "0 28px",
+        display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0, flexWrap: "wrap",
+      }}>
+        <div style={{ display: "flex", gap: 4 }}>
+          {([
+            { key: "all",   label: "Semua",  count: stats.total },
+            { key: "belum", label: "Belum",  count: stats.belum },
+            { key: "sudah", label: "Sudah",  count: stats.sudah },
+          ] as const).map(t => (
+            <button key={t.key} onClick={() => setTab(t.key)}
+              style={{
+                padding: "14px 16px", border: "none", background: "transparent",
+                cursor: "pointer", fontSize: 13, display: "flex", alignItems: "center", gap: 6,
+                fontWeight: tab === t.key ? 700 : 500,
+                color: tab === t.key ? "#4f46e5" : "#6b7280",
+                borderBottom: tab === t.key ? "2px solid #4f46e5" : "2px solid transparent",
+                transition: "all 0.15s",
+              }}>
+              {t.label}
+              <span style={{
+                fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 10,
+                background: tab === t.key ? "#eef2ff" : "#f3f4f6",
+                color: tab === t.key ? "#4f46e5" : "#9ca3af",
+              }}>
+                {t.count}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        <div style={{ display: "flex", gap: 4, padding: "8px 0" }}>
+          {(["all", "Q1", "Q2", "Q3", "Q4"] as const).map(q => {
+            const count = q === "all"
+              ? items.filter(k => tab === "all" || k.status === tab).length
+              : items.filter(k => (tab === "all" || k.status === tab) && getQuarter(k.deadline) === q).length;
+            return (
+              <button key={q} onClick={() => setQuarterFilter(q)}
+                style={{
+                  padding: "6px 12px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer",
+                  border: `1px solid ${quarterFilter === q ? "#c7d2fe" : "#e5e7eb"}`,
+                  background: quarterFilter === q ? "#eef2ff" : "#fff",
+                  color: quarterFilter === q ? "#4f46e5" : "#6b7280",
+                  display: "flex", alignItems: "center", gap: 5,
+                }}>
+                {q === "all" ? "Semua Kuartal" : q}
+                <span style={{
+                  fontSize: 10, fontWeight: 700, padding: "1px 5px", borderRadius: 10,
+                  background: quarterFilter === q ? "#e0e7ff" : "#f3f4f6",
+                  color: quarterFilter === q ? "#4f46e5" : "#9ca3af",
+                }}>
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       <div className="board-main" style={{ flex: 1, overflow: "auto", padding: 24 }}>
