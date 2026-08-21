@@ -324,6 +324,7 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
   const [blasting, setBlasting]     = useState<string | null>(null);
   const [toast, setToast]           = useState<{ msg: string; ok: boolean } | null>(null);
   const [showLinks, setShowLinks]   = useState(false);
+  const [durationInput, setDurationInput] = useState("1");
 
   const [lampiranList, setLampiranList]   = useState<Lampiran[]>([]);
   const [loadingLampiran, setLoadingLampiran] = useState(false);
@@ -377,19 +378,21 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
 
   const openCreate = () => {
     setEditing(null); setForm(EMPTY); setLampiranList([]); setChecklist([]);
-    setShowLinks(false); resetChecklistDraft(); setShowModal(true);
+    setShowLinks(false); setDurationInput("1"); resetChecklistDraft(); setShowModal(true);
   };
   const openEdit = (k: Kegiatan) => {
     setEditing(k);
     const links = LINK_FIELDS.reduce((acc, f) => ({ ...acc, [f.key]: k[f.key] ?? "" }), {} as Record<LinkKey, string>);
+    const end = k.end_date ?? k.deadline;
     setForm({
       title: k.title, description: k.description ?? "", deadline: k.deadline,
-      end_date: k.end_date ?? k.deadline,
+      end_date: end,
       status: k.status, pic_id: k.pic_id ?? "",
       mode: k.mode ?? "offline", location: k.location ?? "",
       calendar_type: k.calendar_type ?? "event",
       ...links,
     });
+    setDurationInput(String(daysBetween(k.deadline, end)));
     setShowLinks(LINK_FIELDS.some(f => k[f.key]));
     resetChecklistDraft();
     setShowModal(true);
@@ -1008,22 +1011,27 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
                     <input type="date" value={form.deadline}
                       onChange={e => {
                         const nextDeadline = e.target.value;
-                        setForm(f => {
-                          const duration = f.deadline && f.end_date ? daysBetween(f.deadline, f.end_date) : 1;
-                          return { ...f, deadline: nextDeadline, end_date: nextDeadline ? addDays(nextDeadline, Math.max(0, duration - 1)) : "" };
-                        });
+                        const duration = Math.max(1, parseInt(durationInput, 10) || 1);
+                        setForm(f => ({ ...f, deadline: nextDeadline, end_date: nextDeadline ? addDays(nextDeadline, duration - 1) : "" }));
                       }}
                       style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 13, outline: "none", boxSizing: "border-box" }}
                       onFocus={e => (e.target.style.borderColor = "#6366f1")} onBlur={e => (e.target.style.borderColor = "#e5e7eb")} />
                     <input type="number" min={1} placeholder="Jumlah hari"
-                      value={form.deadline && form.end_date ? daysBetween(form.deadline, form.end_date) : 1}
+                      value={durationInput}
                       onChange={e => {
-                        const n = Math.max(1, Number(e.target.value) || 1);
+                        const raw = e.target.value;
+                        setDurationInput(raw);
+                        const n = Math.max(1, parseInt(raw, 10) || 1);
                         setForm(f => ({ ...f, end_date: f.deadline ? addDays(f.deadline, n - 1) : "" }));
+                      }}
+                      onBlur={e => {
+                        (e.target as HTMLInputElement).style.borderColor = "#e5e7eb";
+                        const n = Math.max(1, parseInt(durationInput, 10) || 1);
+                        setDurationInput(String(n));
                       }}
                       disabled={!form.deadline}
                       style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 13, outline: "none", boxSizing: "border-box" }}
-                      onFocus={e => (e.target.style.borderColor = "#6366f1")} onBlur={e => (e.target.style.borderColor = "#e5e7eb")} />
+                      onFocus={e => (e.target.style.borderColor = "#6366f1")} />
                   </div>
                   {form.deadline && form.end_date && form.end_date > form.deadline && (
                     <p style={{ fontSize: 11, color: "#6366f1", marginTop: 6, fontWeight: 600 }}>
