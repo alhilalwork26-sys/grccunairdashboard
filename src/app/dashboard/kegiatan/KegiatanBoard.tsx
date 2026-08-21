@@ -88,6 +88,13 @@ function fmtDeadline(dateStr: string) {
   return d.toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
 }
 
+function friendlyDbError(error: { code?: string; message: string }): string {
+  if (error.code === "23503") {
+    return "Kegiatan ini sudah tidak ada (mungkin dihapus di tab/perangkat lain). Silakan refresh halaman.";
+  }
+  return error.message;
+}
+
 function getQuarter(dateStr: string): string {
   const month = new Date(dateStr + "T00:00:00").getMonth();
   return `Q${Math.floor(month / 3) + 1}`;
@@ -336,7 +343,7 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
       })
       .select("id, item_name, pic, status, deadline, file_url, file_name, created_at")
       .single();
-    if (error) showToast(error.message, false);
+    if (error) showToast(friendlyDbError(error), false);
     else {
       setChecklist(prev => {
         const next = [...prev, data];
@@ -554,7 +561,7 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
         .insert({ kegiatan_id: editing.id, file_name: file.name, file_url: publicUrl, uploaded_by: currentUser.id })
         .select("id, file_name, file_url, created_at")
         .single();
-      if (insErr) { showToast(`Gagal simpan ${file.name}: ${insErr.message}`, false); continue; }
+      if (insErr) { showToast(`Gagal simpan ${file.name}: ${friendlyDbError(insErr)}`, false); continue; }
       setLampiranList(prev => [row, ...prev]);
       setItems(prev => prev.map(k => k.id === editing.id
         ? { ...k, lampiran: [{ count: (k.lampiran?.[0]?.count ?? 0) + 1 }] }
