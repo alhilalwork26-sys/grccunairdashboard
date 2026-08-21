@@ -150,6 +150,36 @@ function getDeadlineTone(startStr: string, endStr: string, status: string) {
   return { color: "#6b7280", label: null };
 }
 
+type EventPhase = "akan_datang" | "berlangsung" | "selesai";
+
+const EVENT_PHASE_CFG: Record<EventPhase, { label: string; color: string; bg: string; border: string }> = {
+  akan_datang: { label: "Akan Datang", color: "#3b82f6", bg: "#eff6ff", border: "#bfdbfe" },
+  berlangsung: { label: "Berlangsung", color: "#10b981", bg: "#f0fdf4", border: "#d1fae5" },
+  selesai:     { label: "Selesai",     color: "#6b7280", bg: "#f3f4f6", border: "#e5e7eb" },
+};
+
+function getEventPhase(startStr: string, endStr: string): EventPhase {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const start = new Date(startStr + "T00:00:00");
+  const end = new Date((endStr || startStr) + "T00:00:00");
+  if (today > end) return "selesai";
+  if (today >= start && today <= end) return "berlangsung";
+  return "akan_datang";
+}
+
+function EventPhaseBadge({ phase }: { phase: EventPhase }) {
+  const cfg = EVENT_PHASE_CFG[phase];
+  return (
+    <span style={{
+      fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 20,
+      background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.border}`,
+      whiteSpace: "nowrap", flexShrink: 0,
+    }}>
+      {cfg.label}
+    </span>
+  );
+}
+
 const EMPTY_LINKS = LINK_FIELDS.reduce((acc, f) => ({ ...acc, [f.key]: "" }), {} as Record<LinkKey, string>);
 
 const EMPTY = {
@@ -839,15 +869,19 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
                       total={(k.checklist ?? []).length}
                     />
 
-                    <span style={{ fontSize: 12, color: tone.color, fontWeight: tone.label ? 700 : 500, display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
-                      <CalendarDays size={11} style={{ flexShrink: 0 }} />
-                      {fmtDeadlineRange(k.deadline, k.end_date ?? k.deadline)}
-                      {tone.label && <span style={{ fontSize: 10 }}>({tone.label})</span>}
-                      <span style={{
-                        fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 10,
-                        background: "#eef2ff", color: "#4f46e5", flexShrink: 0,
-                      }}>
-                        {getQuarter(k.deadline)}
+                    <span style={{ fontSize: 12, color: tone.color, fontWeight: tone.label ? 700 : 500, display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 4 }}>
+                      <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                        <CalendarDays size={11} style={{ flexShrink: 0 }} />
+                        {fmtDeadlineRange(k.deadline, k.end_date ?? k.deadline)}
+                      </span>
+                      <span style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
+                        <EventPhaseBadge phase={getEventPhase(k.deadline, k.end_date ?? k.deadline)} />
+                        <span style={{
+                          fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 10,
+                          background: "#eef2ff", color: "#4f46e5", flexShrink: 0,
+                        }}>
+                          {getQuarter(k.deadline)}
+                        </span>
                       </span>
                     </span>
 
@@ -955,11 +989,14 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
                       <span style={{ fontSize: 11, fontWeight: 400, color: "#9ca3af", marginLeft: 6 }}>(tanggal mulai — otomatis masuk Kalender)</span>
                     </label>
                     {form.deadline && (
-                      <span style={{
-                        fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 20,
-                        background: "#eef2ff", color: "#4f46e5", border: "1px solid #e0e7ff",
-                      }}>
-                        {getQuarter(form.deadline)} {new Date(form.deadline + "T00:00:00").getFullYear()}
+                      <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <EventPhaseBadge phase={getEventPhase(form.deadline, form.end_date || form.deadline)} />
+                        <span style={{
+                          fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 20,
+                          background: "#eef2ff", color: "#4f46e5", border: "1px solid #e0e7ff",
+                        }}>
+                          {getQuarter(form.deadline)} {new Date(form.deadline + "T00:00:00").getFullYear()}
+                        </span>
                       </span>
                     )}
                   </div>
