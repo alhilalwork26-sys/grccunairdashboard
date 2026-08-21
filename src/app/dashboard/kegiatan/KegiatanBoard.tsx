@@ -11,8 +11,11 @@ import {
 import {
   Layers, Plus, X, Check, Edit2, Trash2, ChevronDown, ChevronUp,
   Search, AlertTriangle, Megaphone, UserCircle2, Paperclip,
-  Upload, Loader2, FileText, CalendarDays, Link2, ListChecks,
+  Upload, Loader2, FileText, CalendarDays, Link2, ListChecks, ImageIcon,
 } from "lucide-react";
+
+const CHECKLIST_FILE_ACCEPT = ".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg";
+const CHECKLIST_FILE_ALLOWED_TYPES = ["application/pdf", "image/png", "image/jpeg"];
 
 const LINK_FIELDS = [
   { key: "virtual_background_url", label: "Virtual Background" },
@@ -62,6 +65,8 @@ interface ChecklistItem {
   pic: string | null;
   status: "belum" | "sudah";
   deadline: string | null;
+  file_url: string | null;
+  file_name: string | null;
   created_at: string;
 }
 
@@ -245,6 +250,12 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
   const [newItemDeadline, setNewItemDeadline] = useState("");
   const [addingItem, setAddingItem]       = useState(false);
 
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [editDraft, setEditDraft]         = useState({ item_name: "", pic: "", deadline: "" });
+  const [savingEdit, setSavingEdit]       = useState(false);
+  const [uploadTargetId, setUploadTargetId] = useState<string | null>(null);
+  const checklistFileInputRef = useRef<HTMLInputElement>(null);
+
   const showToast = useCallback((msg: string, ok = true) => {
     setToast({ msg, ok });
     setTimeout(() => setToast(null), 2800);
@@ -265,14 +276,17 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
     setLoadingChecklist(true);
     const { data } = await supabase
       .from("kegiatan_checklist")
-      .select("id, item_name, pic, status, deadline, created_at")
+      .select("id, item_name, pic, status, deadline, file_url, file_name, created_at")
       .eq("kegiatan_id", kegiatanId)
       .order("created_at", { ascending: true });
     setChecklist(data ?? []);
     setLoadingChecklist(false);
   }, [supabase]);
 
-  const resetChecklistDraft = () => { setNewItemName(""); setNewItemPic(""); setNewItemDeadline(""); };
+  const resetChecklistDraft = () => {
+    setNewItemName(""); setNewItemPic(""); setNewItemDeadline("");
+    setEditingItemId(null); setUploadTargetId(null);
+  };
 
   const openCreate = () => {
     setEditing(null); setForm(EMPTY); setLampiranList([]); setChecklist([]);
@@ -309,7 +323,7 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
         pic: newItemPic.trim() || null, deadline: newItemDeadline || null,
         status: "belum", created_by: currentUser.id,
       })
-      .select("id, item_name, pic, status, deadline, created_at")
+      .select("id, item_name, pic, status, deadline, file_url, file_name, created_at")
       .single();
     if (error) showToast(error.message, false);
     else {
@@ -348,6 +362,71 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
     });
     const { error } = await supabase.from("kegiatan_checklist").delete().eq("id", id);
     if (error) showToast(error.message, false);
+  };
+
+  const startEditChecklistItem = (item: ChecklistItem) => {
+    setEditingItemId(item.id);
+    setEditDraft({ item_name: item.item_name, pic: item.pic ?? "", deadline: item.deadline ?? "" });
+  };
+
+  const cancelEditChecklistItem = () => setEditingItemId(null);
+
+  const handleSaveEditChecklistItem = async () => {
+    if (!editingItemId || !editDraft.item_name.trim()) return;
+    setSavingEdit(true);
+    const payload = {
+      item_name: editDraft.item_name.trim(),
+      pic: editDraft.pic.trim() || null,
+      deadline: editDraft.deadline || null,
+    };
+    const { error } = await supabase.from("kegiatan_checklist").update(payload).eq("id", editingItemId);
+    if (error) showToast(error.message, false);
+    else {
+      setChecklist(prev => prev.map(c => c.id === editingItemId ? { ...c, ...payload } : c));
+      setEditingItemId(null);
+    }
+    setSavingEdit(false);
+  };
+
+  const handleUploadChecklistFile = async (itemId: string, file: File | undefined) => {
+    if (!file || !editing) return;
+    if (!CHECKLIST_FILE_ALLOWED_TYPES.includes(file.type)) {
+      showToast("File harus PDF, PNG, atau JPG", false);
+      if (checklistFileInputRef.current) checklistFileInputRef.current.value = "";
+      return;
+    }
+    setUploadTargetId(itemId);
+    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const path = `checklist/${itemId}/${Date.now()}-${safeName}`;
+    const { error: upErr } = await supabase.storage.from("kegiatan-lampiran").upload(path, file, { contentType: file.type });
+    if (upErr) { showToast(`Gagal upload: ${upErr.message}`, false); setUploadTargetId(null); return; }
+    const { data: { publicUrl } } = supabase.storage.from("kegiatan-lampiran").getPublicUrl(path);
+    const { error: updErr } = await supabase
+      .from("kegiatan_checklist")
+      .update({ file_url: publicUrl, file_name: file.name })
+      .eq("id", itemId);
+    if (updErr) { showToast(updErr.message, false); }
+    else {
+      setChecklist(prev => prev.map(c => c.id === itemId ? { ...c, file_url: publicUrl, file_name: file.name } : c));
+    }
+    setUploadTargetId(null);
+    if (checklistFileInputRef.current) checklistFileInputRef.current.value = "";
+  };
+
+  const handleRemoveChecklistFile = async (item: ChecklistItem) => {
+    if (!item.file_url) return;
+    const marker = "/kegiatan-lampiran/";
+    const idx = item.file_url.indexOf(marker);
+    if (idx !== -1) {
+      const path = item.file_url.slice(idx + marker.length);
+      await supabase.storage.from("kegiatan-lampiran").remove([path]);
+    }
+    const { error } = await supabase
+      .from("kegiatan_checklist")
+      .update({ file_url: null, file_name: null })
+      .eq("id", item.id);
+    if (error) { showToast(error.message, false); return; }
+    setChecklist(prev => prev.map(c => c.id === item.id ? { ...c, file_url: null, file_name: null } : c));
   };
 
   const handleSubmit = async () => {
@@ -671,7 +750,7 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.94, y: 8 }}
               transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
-              style={{ background: "#fff", borderRadius: 20, width: "100%", maxWidth: 560, boxShadow: "0 25px 60px rgba(0,0,0,0.18)", maxHeight: "92vh", overflow: "auto" }}
+              style={{ background: "#fff", borderRadius: 20, width: "100%", maxWidth: 760, boxShadow: "0 25px 60px rgba(0,0,0,0.18)", maxHeight: "92vh", overflow: "auto" }}
             >
               <div style={{ padding: "20px 24px 16px", borderBottom: "1px solid #f3f4f6", display: "flex", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, background: "#fff", zIndex: 1 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -839,35 +918,111 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
                         </div>
                       )}
 
+                      <input ref={checklistFileInputRef} type="file" accept={CHECKLIST_FILE_ACCEPT} style={{ display: "none" }}
+                        onChange={e => { if (uploadTargetId) handleUploadChecklistFile(uploadTargetId, e.target.files?.[0]); }} />
+
                       {loadingChecklist ? (
                         <p style={{ fontSize: 11, color: "#9ca3af" }}>Memuat checklist…</p>
                       ) : (
                         <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                          {checklist.map((item, i) => (
-                            <div key={item.id} style={{
-                              display: "flex", alignItems: "center", gap: 8, padding: "7px 10px",
-                              background: "#f9fafb", border: "1px solid #f3f4f6", borderRadius: 8,
-                            }}>
-                              <span style={{ fontSize: 10, color: "#d1d5db", fontWeight: 700, width: 16, flexShrink: 0 }}>{i + 1}</span>
-                              <span style={{ fontSize: 12, color: "#374151", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                {item.item_name}
-                              </span>
-                              <span style={{ fontSize: 11, color: "#9ca3af", flexShrink: 0, maxWidth: 110, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                {item.pic || "—"}
-                              </span>
-                              <span style={{ fontSize: 11, color: item.deadline ? "#6b7280" : "#d1d5db", flexShrink: 0, width: 56, display: "flex", alignItems: "center", gap: 3 }}>
-                                {item.deadline && <CalendarDays size={10} style={{ flexShrink: 0 }} />}
-                                {item.deadline ? fmtChecklistDeadline(item.deadline) : "—"}
-                              </span>
-                              <div style={{ flexShrink: 0 }}>
-                                <StatusBadge status={item.status} editable onChange={s => handleToggleChecklistStatus(item, s)} />
+                          {checklist.map((item, i) => {
+                            const isEditing = editingItemId === item.id;
+                            const isUploadingThis = uploadTargetId === item.id;
+                            return (
+                              <div key={item.id} style={{
+                                display: "flex", alignItems: "center", gap: 8, padding: "7px 10px",
+                                background: isEditing ? "#eef2ff" : "#f9fafb",
+                                border: `1px solid ${isEditing ? "#c7d2fe" : "#f3f4f6"}`, borderRadius: 8,
+                              }}>
+                                <span style={{ fontSize: 10, color: "#d1d5db", fontWeight: 700, width: 16, flexShrink: 0 }}>{i + 1}</span>
+
+                                {isEditing ? (
+                                  <>
+                                    <input type="text" value={editDraft.item_name} autoFocus
+                                      onChange={e => setEditDraft(d => ({ ...d, item_name: e.target.value }))}
+                                      onKeyDown={e => { if (e.key === "Enter") handleSaveEditChecklistItem(); if (e.key === "Escape") cancelEditChecklistItem(); }}
+                                      style={{ flex: 1, minWidth: 0, padding: "5px 8px", border: "1.5px solid #c7d2fe", borderRadius: 7, fontSize: 12, outline: "none", fontFamily: "inherit" }} />
+                                    <input type="text" value={editDraft.pic} placeholder="PIC…"
+                                      onChange={e => setEditDraft(d => ({ ...d, pic: e.target.value }))}
+                                      onKeyDown={e => { if (e.key === "Enter") handleSaveEditChecklistItem(); if (e.key === "Escape") cancelEditChecklistItem(); }}
+                                      style={{ width: 100, flexShrink: 0, padding: "5px 8px", border: "1.5px solid #c7d2fe", borderRadius: 7, fontSize: 12, outline: "none", fontFamily: "inherit" }} />
+                                    <input type="date" value={editDraft.deadline}
+                                      onChange={e => setEditDraft(d => ({ ...d, deadline: e.target.value }))}
+                                      style={{ width: 132, flexShrink: 0, padding: "5px 6px", border: "1.5px solid #c7d2fe", borderRadius: 7, fontSize: 12, outline: "none" }} />
+                                  </>
+                                ) : (
+                                  <>
+                                    <span style={{ fontSize: 12, color: "#374151", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                      {item.item_name}
+                                    </span>
+                                    <span style={{ fontSize: 11, color: "#9ca3af", flexShrink: 0, maxWidth: 100, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                      {item.pic || "—"}
+                                    </span>
+                                    <span style={{ fontSize: 11, color: item.deadline ? "#6b7280" : "#d1d5db", flexShrink: 0, width: 56, display: "flex", alignItems: "center", gap: 3 }}>
+                                      {item.deadline && <CalendarDays size={10} style={{ flexShrink: 0 }} />}
+                                      {item.deadline ? fmtChecklistDeadline(item.deadline) : "—"}
+                                    </span>
+                                  </>
+                                )}
+
+                                {/* File bukti */}
+                                {item.file_url ? (
+                                  <div style={{ display: "flex", alignItems: "center", gap: 2, flexShrink: 0 }}>
+                                    <a href={item.file_url} target="_blank" rel="noopener noreferrer" title={item.file_name ?? "Lihat file"}
+                                      style={{ display: "flex", padding: 5, borderRadius: 6, background: "#f0fdf4", border: "1px solid #d1fae5" }}>
+                                      {item.file_name?.toLowerCase().endsWith(".pdf")
+                                        ? <FileText size={12} color="#10b981" />
+                                        : <ImageIcon size={12} color="#10b981" />}
+                                    </a>
+                                    <button onClick={() => handleRemoveChecklistFile(item)} title="Hapus file"
+                                      style={{ border: "none", background: "none", cursor: "pointer", padding: 2, display: "flex" }}>
+                                      <X size={11} color="#ef4444" />
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    onClick={() => { setUploadTargetId(item.id); checklistFileInputRef.current?.click(); }}
+                                    disabled={isUploadingThis}
+                                    title="Upload file bukti (PDF/PNG/JPG)"
+                                    style={{
+                                      flexShrink: 0, display: "flex", padding: 5, borderRadius: 6,
+                                      border: "1px solid #e5e7eb", background: "#fff",
+                                      cursor: isUploadingThis ? "not-allowed" : "pointer",
+                                    }}>
+                                    {isUploadingThis ? <Loader2 size={12} color="#9ca3af" className="spin" /> : <Upload size={12} color="#9ca3af" />}
+                                  </button>
+                                )}
+
+                                <div style={{ flexShrink: 0 }}>
+                                  <StatusBadge status={item.status} editable onChange={s => handleToggleChecklistStatus(item, s)} />
+                                </div>
+
+                                {isEditing ? (
+                                  <>
+                                    <button onClick={handleSaveEditChecklistItem} disabled={savingEdit || !editDraft.item_name.trim()}
+                                      style={{ border: "none", background: "none", cursor: "pointer", padding: 2, display: "flex", flexShrink: 0 }}>
+                                      {savingEdit ? <Loader2 size={13} color="#6366f1" className="spin" /> : <Check size={14} color="#10b981" />}
+                                    </button>
+                                    <button onClick={cancelEditChecklistItem}
+                                      style={{ border: "none", background: "none", cursor: "pointer", padding: 2, display: "flex", flexShrink: 0 }}>
+                                      <X size={13} color="#9ca3af" />
+                                    </button>
+                                  </>
+                                ) : (
+                                  <>
+                                    <button onClick={() => startEditChecklistItem(item)}
+                                      style={{ border: "none", background: "none", cursor: "pointer", padding: 2, display: "flex", flexShrink: 0 }}>
+                                      <Edit2 size={12} color="#9ca3af" />
+                                    </button>
+                                    <button onClick={() => handleDeleteChecklistItem(item.id)}
+                                      style={{ border: "none", background: "none", cursor: "pointer", padding: 2, display: "flex", flexShrink: 0 }}>
+                                      <X size={13} color="#ef4444" />
+                                    </button>
+                                  </>
+                                )}
                               </div>
-                              <button onClick={() => handleDeleteChecklistItem(item.id)}
-                                style={{ border: "none", background: "none", cursor: "pointer", padding: 2, display: "flex", flexShrink: 0 }}>
-                                <X size={13} color="#ef4444" />
-                              </button>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       )}
 
