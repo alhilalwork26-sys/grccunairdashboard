@@ -59,6 +59,8 @@ interface Props {
   editing: KegiatanLite | null;
   onClose: () => void;
   onSaved: (kegiatan: Record<string, unknown>) => void;
+  onChecklistChange?: (checklist: { status: "belum" | "sudah" }[]) => void;
+  onLampiranCountChange?: (count: number) => void;
 }
 
 const emptySesi = (n: number): Sesi => ({ sesi_ke: n, tanggal: "", waktu_mulai: "", waktu_selesai: "", pembicara: "", topik: "" });
@@ -97,7 +99,7 @@ function sesiFromEditing(editing: KegiatanLite | null): Sesi[] {
 
 // Catatan: parent me-render komponen ini dengan key={editing?.id ?? "new"},
 // jadi state di bawah cukup di-init sekali dari props tanpa perlu useEffect sync.
-export default function CsslBatchModal({ currentUser, profiles, editing, onClose, onSaved }: Props) {
+export default function CsslBatchModal({ currentUser, profiles, editing, onClose, onSaved, onChecklistChange, onLampiranCountChange }: Props) {
   const supabase = createClient();
   const [title, setTitle] = useState(editing?.title ?? "");
   const [picId, setPicId] = useState(editing?.pic_id ?? "");
@@ -113,14 +115,17 @@ export default function CsslBatchModal({ currentUser, profiles, editing, onClose
     setSessions(prev => prev.map((s, i) => (i === idx ? { ...s, ...patch } : s)));
   };
 
-  // Isi tanggal sesi 1 -> otomatis sarankan sesi 2-4 (pola 2 sesi/minggu, 2 minggu),
-  // hanya kalau sesi berikutnya belum diisi manual.
+  // Isi tanggal sesi 1 -> otomatis sarankan sesi 2-4 (pola 2 sesi/minggu, 2 minggu).
+  // Sesi berikutnya ikut bergeser kalau tanggalnya masih persis hasil saran
+  // sebelumnya (belum disentuh manual) -- kalau sudah diubah manual, dibiarkan.
   const handleFirstDateChange = (date: string) => {
     setSessions(prev => {
+      const oldDate = prev[0].tanggal;
       const next = [...prev];
       next[0] = { ...next[0], tanggal: date };
       for (let i = 1; i < 4; i++) {
-        if (!prev[i].tanggal) {
+        const expectedFromOld = oldDate ? addDaysLocal(oldDate, SESI_OFFSETS[i]) : "";
+        if (!prev[i].tanggal || prev[i].tanggal === expectedFromOld) {
           next[i] = { ...next[i], tanggal: date ? addDaysLocal(date, SESI_OFFSETS[i]) : "" };
         }
       }
@@ -418,7 +423,11 @@ export default function CsslBatchModal({ currentUser, profiles, editing, onClose
 
           {/* Lampiran + Checklist */}
           <div style={{ marginTop: 24 }}>
-            <KegiatanAttachments currentUser={currentUser} profiles={profiles} kegiatanId={editing?.id ?? null} kegiatanTitle={title || editing?.title} />
+            <KegiatanAttachments
+              currentUser={currentUser} profiles={profiles}
+              kegiatanId={editing?.id ?? null} kegiatanTitle={title || editing?.title}
+              onChecklistChange={onChecklistChange} onLampiranCountChange={onLampiranCountChange}
+            />
           </div>
 
           <AnimatePresence>

@@ -134,11 +134,13 @@ interface Props {
   profiles: { id: string; full_name: string; role: string }[];
   kegiatanId: string | null;
   kegiatanTitle?: string;
+  onChecklistChange?: (checklist: { status: "belum" | "sudah" }[]) => void;
+  onLampiranCountChange?: (count: number) => void;
 }
 
 const CHECKLIST_SELECT = "id, item_name, pic, pic_id, pic_profile:profiles!kegiatan_checklist_pic_id_fkey(full_name), status, deadline, file_url, file_name, created_at";
 
-export default function KegiatanAttachments({ currentUser, profiles, kegiatanId, kegiatanTitle }: Props) {
+export default function KegiatanAttachments({ currentUser, profiles, kegiatanId, kegiatanTitle, onChecklistChange, onLampiranCountChange }: Props) {
   const supabase = createClient();
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
 
@@ -193,7 +195,11 @@ export default function KegiatanAttachments({ currentUser, profiles, kegiatanId,
         .select("id, file_name, file_url, created_at")
         .single();
       if (insErr) { showToast(`Gagal simpan ${file.name}: ${friendlyDbError(insErr)}`, false); continue; }
-      setLampiranList(prev => [row, ...prev]);
+      setLampiranList(prev => {
+        const next = [row, ...prev];
+        onLampiranCountChange?.(next.length);
+        return next;
+      });
     }
     setUploading(false);
     if (fileInputRef.current) fileInputRef.current.value = "";
@@ -207,7 +213,11 @@ export default function KegiatanAttachments({ currentUser, profiles, kegiatanId,
       await supabase.storage.from("kegiatan-lampiran").remove([path]);
     }
     await supabase.from("kegiatan_lampiran").delete().eq("id", l.id);
-    setLampiranList(prev => prev.filter(x => x.id !== l.id));
+    setLampiranList(prev => {
+      const next = prev.filter(x => x.id !== l.id);
+      onLampiranCountChange?.(next.length);
+      return next;
+    });
     showToast("Lampiran dihapus");
   };
 
@@ -229,7 +239,11 @@ export default function KegiatanAttachments({ currentUser, profiles, kegiatanId,
       .single();
     if (error) showToast(friendlyDbError(error), false);
     else {
-      setChecklist(prev => [...prev, data as unknown as ChecklistItem]);
+      setChecklist(prev => {
+        const next = [...prev, data as unknown as ChecklistItem];
+        onChecklistChange?.(next.map(c => ({ status: c.status })));
+        return next;
+      });
       resetChecklistDraft();
       if (picId) notifyChecklistPicAction(picId, itemName, kegiatanTitle ?? "Kegiatan");
     }
@@ -237,16 +251,28 @@ export default function KegiatanAttachments({ currentUser, profiles, kegiatanId,
   };
 
   const handleToggleChecklistStatus = async (item: ChecklistItem, next: ChecklistItem["status"]) => {
-    setChecklist(prev => prev.map(c => (c.id === item.id ? { ...c, status: next } : c)));
+    setChecklist(prev => {
+      const nextList = prev.map(c => (c.id === item.id ? { ...c, status: next } : c));
+      onChecklistChange?.(nextList.map(c => ({ status: c.status })));
+      return nextList;
+    });
     const { error } = await supabase.from("kegiatan_checklist").update({ status: next }).eq("id", item.id);
     if (error) {
-      setChecklist(prev => prev.map(c => (c.id === item.id ? { ...c, status: item.status } : c)));
+      setChecklist(prev => {
+        const reverted = prev.map(c => (c.id === item.id ? { ...c, status: item.status } : c));
+        onChecklistChange?.(reverted.map(c => ({ status: c.status })));
+        return reverted;
+      });
       showToast("Gagal update status checklist", false);
     }
   };
 
   const handleDeleteChecklistItem = async (id: string) => {
-    setChecklist(prev => prev.filter(c => c.id !== id));
+    setChecklist(prev => {
+      const next = prev.filter(c => c.id !== id);
+      onChecklistChange?.(next.map(c => ({ status: c.status })));
+      return next;
+    });
     const { error } = await supabase.from("kegiatan_checklist").delete().eq("id", id);
     if (error) showToast(error.message, false);
   };

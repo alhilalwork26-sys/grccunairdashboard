@@ -846,7 +846,18 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
                   )}
                 </div>
 
-                <KegiatanAttachments currentUser={currentUser} profiles={profiles} kegiatanId={editing?.id ?? null} kegiatanTitle={form.title || editing?.title} />
+                <KegiatanAttachments
+                  currentUser={currentUser} profiles={profiles}
+                  kegiatanId={editing?.id ?? null} kegiatanTitle={form.title || editing?.title}
+                  onChecklistChange={next => {
+                    if (!editing) return;
+                    setItems(prev => prev.map(k => (k.id === editing.id ? { ...k, checklist: next } : k)));
+                  }}
+                  onLampiranCountChange={count => {
+                    if (!editing) return;
+                    setItems(prev => prev.map(k => (k.id === editing.id ? { ...k, lampiran: [{ count }] } : k)));
+                  }}
+                />
 
                 <motion.button whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.98 }} onClick={handleSubmit}
                   disabled={submitting || !form.title.trim() || !form.deadline}
@@ -927,6 +938,14 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
             editing={csslEditing}
             onClose={() => { setShowCsslModal(false); setCsslEditing(null); }}
             onSaved={handleCsslSaved}
+            onChecklistChange={next => {
+              if (!csslEditing) return;
+              setItems(prev => prev.map(k => (k.id === csslEditing.id ? { ...k, checklist: next } : k)));
+            }}
+            onLampiranCountChange={count => {
+              if (!csslEditing) return;
+              setItems(prev => prev.map(k => (k.id === csslEditing.id ? { ...k, lampiran: [{ count }] } : k)));
+            }}
           />
         )}
       </AnimatePresence>
