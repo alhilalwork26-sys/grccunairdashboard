@@ -3,7 +3,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { SUPABASE_URL } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
-import { sendPushToAll } from "@/lib/webpush";
+import { sendPushToAll, sendPushToUser } from "@/lib/webpush";
 
 function adminClient() {
   return createServerClient(SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
@@ -143,6 +143,25 @@ export async function blastKegiatanAction(announcement: {
       : announcement.content,
     url: "/dashboard/kegiatan",
     tag: `kegiatan-blast-${Date.now()}`,
+  });
+
+  return { error: null };
+}
+
+export async function notifyChecklistPicAction(
+  picUserId: string,
+  itemName: string,
+  kegiatanTitle: string,
+): Promise<{ error: string | null }> {
+  const auth = await requireKegiatanAuth();
+  if ("error" in auth) return auth;
+  if (picUserId === auth.userId) return { error: null };
+
+  await sendPushToUser(picUserId, {
+    title: "Kamu ditugaskan checklist baru",
+    body: `"${itemName}" — ${kegiatanTitle}`,
+    url: "/dashboard/kegiatan",
+    tag: `checklist-assign-${Date.now()}`,
   });
 
   return { error: null };

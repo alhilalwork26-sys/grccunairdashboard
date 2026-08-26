@@ -418,7 +418,7 @@ export default function CsslBatchModal({ currentUser, profiles, editing, onClose
 
           {/* Lampiran + Checklist */}
           <div style={{ marginTop: 24 }}>
-            <KegiatanAttachments currentUser={currentUser} kegiatanId={editing?.id ?? null} />
+            <KegiatanAttachments currentUser={currentUser} profiles={profiles} kegiatanId={editing?.id ?? null} kegiatanTitle={title || editing?.title} />
           </div>
 
           <AnimatePresence>

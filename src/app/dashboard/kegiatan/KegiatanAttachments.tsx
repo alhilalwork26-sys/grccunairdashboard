@@ -3,9 +3,10 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { UserProfile } from "@/types";
+import { notifyChecklistPicAction } from "./actions";
 import {
   X, Check, Edit2, Paperclip, Upload, Loader2, FileText,
-  CalendarDays, ListChecks, ImageIcon, Plus, ChevronDown,
+  CalendarDays, ListChecks, ImageIcon, Plus, ChevronDown, UserCircle2,
 } from "lucide-react";
 
 const CHECKLIST_FILE_ACCEPT = ".pdf,.png,.jpg,.jpeg,.doc,.docx,.xls,.xlsx,application/pdf,image/png,image/jpeg,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
@@ -26,11 +27,17 @@ interface ChecklistItem {
   id: string;
   item_name: string;
   pic: string | null;
+  pic_id: string | null;
+  pic_profile?: { full_name: string } | null;
   status: "belum" | "sudah";
   deadline: string | null;
   file_url: string | null;
   file_name: string | null;
   created_at: string;
+}
+
+function picDisplayName(item: Pick<ChecklistItem, "pic" | "pic_profile">) {
+  return item.pic_profile?.full_name ?? item.pic ?? null;
 }
 
 const STATUS_CFG = {
@@ -124,10 +131,14 @@ function ProgressDonut({ done, total }: { done: number; total: number }) {
 
 interface Props {
   currentUser: UserProfile;
+  profiles: { id: string; full_name: string; role: string }[];
   kegiatanId: string | null;
+  kegiatanTitle?: string;
 }
 
-export default function KegiatanAttachments({ currentUser, kegiatanId }: Props) {
+const CHECKLIST_SELECT = "id, item_name, pic, pic_id, pic_profile:profiles!kegiatan_checklist_pic_id_fkey(full_name), status, deadline, file_url, file_name, created_at";
+
+export default function KegiatanAttachments({ currentUser, profiles, kegiatanId, kegiatanTitle }: Props) {
   const supabase = createClient();
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
 
@@ -139,12 +150,12 @@ export default function KegiatanAttachments({ currentUser, kegiatanId }: Props) 
   const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
   const [loadingChecklist, setLoadingChecklist] = useState(!!kegiatanId);
   const [newItemName, setNewItemName] = useState("");
-  const [newItemPic, setNewItemPic] = useState("");
+  const [newItemPicId, setNewItemPicId] = useState("");
   const [newItemDeadline, setNewItemDeadline] = useState("");
   const [addingItem, setAddingItem] = useState(false);
 
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
-  const [editDraft, setEditDraft] = useState({ item_name: "", pic: "", deadline: "" });
+  const [editDraft, setEditDraft] = useState({ item_name: "", picId: "", deadline: "" });
   const [savingEdit, setSavingEdit] = useState(false);
   const [uploadTargetId, setUploadTargetId] = useState<string | null>(null);
   const checklistFileInputRef = useRef<HTMLInputElement>(null);
@@ -160,9 +171,9 @@ export default function KegiatanAttachments({ currentUser, kegiatanId }: Props) 
     supabase.from("kegiatan_lampiran").select("id, file_name, file_url, created_at")
       .eq("kegiatan_id", kegiatanId).order("created_at", { ascending: false })
       .then(({ data }) => { if (!cancelled) { setLampiranList(data ?? []); setLoadingLampiran(false); } });
-    supabase.from("kegiatan_checklist").select("id, item_name, pic, status, deadline, file_url, file_name, created_at")
+    supabase.from("kegiatan_checklist").select(CHECKLIST_SELECT)
       .eq("kegiatan_id", kegiatanId).order("created_at", { ascending: true })
-      .then(({ data }) => { if (!cancelled) { setChecklist(data ?? []); setLoadingChecklist(false); } });
+      .then(({ data }) => { if (!cancelled) { setChecklist((data ?? []) as unknown as ChecklistItem[]); setLoadingChecklist(false); } });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kegiatanId]);
@@ -200,22 +211,28 @@ export default function KegiatanAttachments({ currentUser, kegiatanId }: Props) 
     showToast("Lampiran dihapus");
   };
 
-  const resetChecklistDraft = () => { setNewItemName(""); setNewItemPic(""); setNewItemDeadline(""); };
+  const resetChecklistDraft = () => { setNewItemName(""); setNewItemPicId(""); setNewItemDeadline(""); };
 
   const handleAddChecklistItem = async () => {
     if (!newItemName.trim() || !kegiatanId) return;
     setAddingItem(true);
+    const itemName = newItemName.trim();
+    const picId = newItemPicId || null;
     const { data, error } = await supabase
       .from("kegiatan_checklist")
       .insert({
-        kegiatan_id: kegiatanId, item_name: newItemName.trim(),
-        pic: newItemPic.trim() || null, deadline: newItemDeadline || null,
+        kegiatan_id: kegiatanId, item_name: itemName,
+        pic_id: picId, deadline: newItemDeadline || null,
         status: "belum", created_by: currentUser.id,
       })
-      .select("id, item_name, pic, status, deadline, file_url, file_name, created_at")
+      .select(CHECKLIST_SELECT)
       .single();
     if (error) showToast(friendlyDbError(error), false);
-    else { setChecklist(prev => [...prev, data]); resetChecklistDraft(); }
+    else {
+      setChecklist(prev => [...prev, data as unknown as ChecklistItem]);
+      resetChecklistDraft();
+      if (picId) notifyChecklistPicAction(picId, itemName, kegiatanTitle ?? "Kegiatan");
+    }
     setAddingItem(false);
   };
 
@@ -236,23 +253,29 @@ export default function KegiatanAttachments({ currentUser, kegiatanId }: Props) 
 
   const startEditChecklistItem = (item: ChecklistItem) => {
     setEditingItemId(item.id);
-    setEditDraft({ item_name: item.item_name, pic: item.pic ?? "", deadline: item.deadline ?? "" });
+    setEditDraft({ item_name: item.item_name, picId: item.pic_id ?? "", deadline: item.deadline ?? "" });
   };
   const cancelEditChecklistItem = () => setEditingItemId(null);
 
   const handleSaveEditChecklistItem = async () => {
     if (!editingItemId || !editDraft.item_name.trim()) return;
     setSavingEdit(true);
+    const prevItem = checklist.find(c => c.id === editingItemId);
+    const picId = editDraft.picId || null;
     const payload = {
       item_name: editDraft.item_name.trim(),
-      pic: editDraft.pic.trim() || null,
+      pic_id: picId,
       deadline: editDraft.deadline || null,
     };
-    const { error } = await supabase.from("kegiatan_checklist").update(payload).eq("id", editingItemId);
+    const { data, error } = await supabase.from("kegiatan_checklist").update(payload)
+      .eq("id", editingItemId).select(CHECKLIST_SELECT).single();
     if (error) showToast(error.message, false);
     else {
-      setChecklist(prev => prev.map(c => (c.id === editingItemId ? { ...c, ...payload } : c)));
+      setChecklist(prev => prev.map(c => (c.id === editingItemId ? (data as unknown as ChecklistItem) : c)));
       setEditingItemId(null);
+      if (picId && picId !== prevItem?.pic_id) {
+        notifyChecklistPicAction(picId, payload.item_name, kegiatanTitle ?? "Kegiatan");
+      }
     }
     setSavingEdit(false);
   };
@@ -390,10 +413,12 @@ export default function KegiatanAttachments({ currentUser, kegiatanId }: Props) 
                             onChange={e => setEditDraft(d => ({ ...d, item_name: e.target.value }))}
                             onKeyDown={e => { if (e.key === "Enter") handleSaveEditChecklistItem(); if (e.key === "Escape") cancelEditChecklistItem(); }}
                             style={{ flex: 1, minWidth: 0, padding: "5px 8px", border: "1.5px solid #c7d2fe", borderRadius: 7, fontSize: 12, outline: "none", fontFamily: "inherit" }} />
-                          <input type="text" value={editDraft.pic} placeholder="PIC…"
-                            onChange={e => setEditDraft(d => ({ ...d, pic: e.target.value }))}
-                            onKeyDown={e => { if (e.key === "Enter") handleSaveEditChecklistItem(); if (e.key === "Escape") cancelEditChecklistItem(); }}
-                            style={{ width: 100, flexShrink: 0, padding: "5px 8px", border: "1.5px solid #c7d2fe", borderRadius: 7, fontSize: 12, outline: "none", fontFamily: "inherit" }} />
+                          <select value={editDraft.picId}
+                            onChange={e => setEditDraft(d => ({ ...d, picId: e.target.value }))}
+                            style={{ width: 110, flexShrink: 0, padding: "5px 6px", border: "1.5px solid #c7d2fe", borderRadius: 7, fontSize: 12, outline: "none", background: "#fff" }}>
+                            <option value="">— PIC —</option>
+                            {profiles.map(p => <option key={p.id} value={p.id}>{p.full_name}</option>)}
+                          </select>
                           <input type="date" value={editDraft.deadline}
                             onChange={e => setEditDraft(d => ({ ...d, deadline: e.target.value }))}
                             style={{ width: 132, flexShrink: 0, padding: "5px 6px", border: "1.5px solid #c7d2fe", borderRadius: 7, fontSize: 12, outline: "none" }} />
@@ -403,8 +428,9 @@ export default function KegiatanAttachments({ currentUser, kegiatanId }: Props) 
                           <span style={{ fontSize: 12, color: "#374151", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                             {item.item_name}
                           </span>
-                          <span style={{ fontSize: 11, color: "#9ca3af", flexShrink: 0, maxWidth: 100, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {item.pic || "—"}
+                          <span style={{ fontSize: 11, color: "#9ca3af", flexShrink: 0, maxWidth: 100, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 3 }}>
+                            {picDisplayName(item) && <UserCircle2 size={10} style={{ flexShrink: 0 }} />}
+                            {picDisplayName(item) ?? "—"}
                           </span>
                           <span style={{ fontSize: 11, color: item.deadline ? "#6b7280" : "#d1d5db", flexShrink: 0, width: 56, display: "flex", alignItems: "center", gap: 3 }}>
                             {item.deadline && <CalendarDays size={10} style={{ flexShrink: 0 }} />}
@@ -479,11 +505,12 @@ export default function KegiatanAttachments({ currentUser, kegiatanId }: Props) 
                 onKeyDown={e => { if (e.key === "Enter" && newItemName.trim()) handleAddChecklistItem(); }}
                 style={{ flex: 2, padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 9, fontSize: 12, outline: "none", boxSizing: "border-box", fontFamily: "inherit" }}
                 onFocus={e => (e.target.style.borderColor = "#6366f1")} onBlur={e => (e.target.style.borderColor = "#e5e7eb")} />
-              <input type="text" placeholder="PIC…" value={newItemPic}
-                onChange={e => setNewItemPic(e.target.value)}
-                onKeyDown={e => { if (e.key === "Enter" && newItemName.trim()) handleAddChecklistItem(); }}
-                style={{ flex: 1, padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 9, fontSize: 12, outline: "none", boxSizing: "border-box", fontFamily: "inherit" }}
-                onFocus={e => (e.target.style.borderColor = "#6366f1")} onBlur={e => (e.target.style.borderColor = "#e5e7eb")} />
+              <select value={newItemPicId}
+                onChange={e => setNewItemPicId(e.target.value)}
+                style={{ flex: 1, padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 9, fontSize: 12, outline: "none", boxSizing: "border-box", background: "#fff" }}>
+                <option value="">— PIC —</option>
+                {profiles.map(p => <option key={p.id} value={p.id}>{p.full_name}</option>)}
+              </select>
               <input type="date" value={newItemDeadline}
                 onChange={e => setNewItemDeadline(e.target.value)}
                 style={{ width: 132, padding: "8px 8px", border: "1.5px solid #e5e7eb", borderRadius: 9, fontSize: 12, outline: "none", boxSizing: "border-box", flexShrink: 0 }}
