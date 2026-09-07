@@ -172,6 +172,7 @@ export default function CsslBatchModal({ currentUser, profiles, editing, onClose
       calendar_type: "training" as const,
       program: "cssl",
       jumlah_peserta: null,
+      pembicara: null,
       ...linkValues,
     };
 
