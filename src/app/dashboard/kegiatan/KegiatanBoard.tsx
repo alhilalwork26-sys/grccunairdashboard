@@ -14,7 +14,7 @@ import {
   Layers, Plus, X, Check, Edit2, Trash2, ChevronDown, ChevronUp,
   Search, AlertTriangle, Megaphone, UserCircle2, Paperclip,
   Loader2, CalendarDays, Link2,
-  Video, MapPin, GraduationCap,
+  Video, MapPin, GraduationCap, Users,
 } from "lucide-react";
 
 // Kategori sama persis dengan modul Kalender, supaya sinkron konsisten
@@ -51,6 +51,7 @@ interface Kegiatan {
   location?: string | null;
   calendar_type?: CalendarType | null;
   program?: string | null;
+  jumlah_peserta?: number | null;
   created_at: string;
   created_by?: string | null;
   pic?: { full_name: string } | null;
@@ -162,6 +163,7 @@ const EMPTY = {
   status: "belum" as Kegiatan["status"], pic_id: "",
   mode: "offline" as "online" | "offline", location: "",
   calendar_type: "event" as CalendarType,
+  jumlah_peserta: "",
   ...EMPTY_LINKS,
 };
 
@@ -246,6 +248,7 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
       status: k.status, pic_id: k.pic_id ?? "",
       mode: k.mode ?? "offline", location: k.location ?? "",
       calendar_type: k.calendar_type ?? "event",
+      jumlah_peserta: k.jumlah_peserta != null ? String(k.jumlah_peserta) : "",
       ...links,
     });
     setDurationInput(String(daysBetween(k.deadline, end)));
@@ -306,6 +309,7 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
       mode: form.mode,
       location: form.location.trim() || null,
       calendar_type: form.calendar_type,
+      jumlah_peserta: form.jumlah_peserta.trim() ? Number(form.jumlah_peserta) : null,
       ...links,
     };
     if (editing) {
@@ -806,6 +810,17 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
                     value={form.location}
                     onChange={e => setForm(f => ({ ...f, location: e.target.value }))}
                     style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 13, outline: "none", boxSizing: "border-box", fontFamily: "inherit" }}
+                    onFocus={e => (e.target.style.borderColor = "#6366f1")} onBlur={e => (e.target.style.borderColor = "#e5e7eb")} />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "flex", alignItems: "center", gap: 5, marginBottom: 6 }}>
+                    <Users size={12} color="#9ca3af" /> Jumlah Peserta
+                    <span style={{ fontSize: 11, fontWeight: 400, color: "#9ca3af" }}>(opsional)</span>
+                  </label>
+                  <input type="number" min={0} placeholder="Perkiraan jumlah peserta…" value={form.jumlah_peserta}
+                    onChange={e => setForm(f => ({ ...f, jumlah_peserta: e.target.value }))}
+                    style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 13, outline: "none", boxSizing: "border-box" }}
                     onFocus={e => (e.target.style.borderColor = "#6366f1")} onBlur={e => (e.target.style.borderColor = "#e5e7eb")} />
                 </div>
 
