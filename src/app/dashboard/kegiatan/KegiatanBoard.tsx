@@ -159,13 +159,18 @@ function EventPhaseBadge({ phase }: { phase: EventPhase }) {
 
 const EMPTY_LINKS = LINK_FIELDS.reduce((acc, f) => ({ ...acc, [f.key]: "" }), {} as Record<LinkKey, string>);
 
+function parsePembicara(value: string | null | undefined): string[] {
+  const names = (value ?? "").split(",").map(s => s.trim()).filter(Boolean);
+  return names.length ? names : [""];
+}
+
 const EMPTY = {
   title: "", description: "", deadline: "", end_date: "",
   status: "belum" as Kegiatan["status"], pic_id: "",
   mode: "offline" as "online" | "offline", location: "",
   calendar_type: "event" as CalendarType,
   jumlah_peserta: "",
-  pembicara: "",
+  pembicara: [""] as string[],
   ...EMPTY_LINKS,
 };
 
@@ -251,7 +256,7 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
       mode: k.mode ?? "offline", location: k.location ?? "",
       calendar_type: k.calendar_type ?? "event",
       jumlah_peserta: k.jumlah_peserta != null ? String(k.jumlah_peserta) : "",
-      pembicara: k.pembicara ?? "",
+      pembicara: parsePembicara(k.pembicara),
       ...links,
     });
     setDurationInput(String(daysBetween(k.deadline, end)));
@@ -313,7 +318,7 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
       location: form.location.trim() || null,
       calendar_type: form.calendar_type,
       jumlah_peserta: form.jumlah_peserta.trim() ? Number(form.jumlah_peserta) : null,
-      pembicara: form.pembicara.trim() || null,
+      pembicara: form.pembicara.map(s => s.trim()).filter(Boolean).join(", ") || null,
       ...links,
     };
     if (editing) {
@@ -817,27 +822,48 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
                     onFocus={e => (e.target.style.borderColor = "#6366f1")} onBlur={e => (e.target.style.borderColor = "#e5e7eb")} />
                 </div>
 
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 10 }}>
-                  <div>
-                    <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "flex", alignItems: "center", gap: 5, marginBottom: 6 }}>
-                      <Users size={12} color="#9ca3af" /> Jumlah Peserta
-                      <span style={{ fontSize: 11, fontWeight: 400, color: "#9ca3af" }}>(opsional)</span>
-                    </label>
-                    <input type="number" min={0} placeholder="Perkiraan…" value={form.jumlah_peserta}
-                      onChange={e => setForm(f => ({ ...f, jumlah_peserta: e.target.value }))}
-                      style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 13, outline: "none", boxSizing: "border-box" }}
-                      onFocus={e => (e.target.style.borderColor = "#6366f1")} onBlur={e => (e.target.style.borderColor = "#e5e7eb")} />
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "flex", alignItems: "center", gap: 5, marginBottom: 6 }}>
+                    <Users size={12} color="#9ca3af" /> Jumlah Peserta
+                    <span style={{ fontSize: 11, fontWeight: 400, color: "#9ca3af" }}>(opsional)</span>
+                  </label>
+                  <input type="number" min={0} placeholder="Perkiraan…" value={form.jumlah_peserta}
+                    onChange={e => setForm(f => ({ ...f, jumlah_peserta: e.target.value }))}
+                    style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 13, outline: "none", boxSizing: "border-box" }}
+                    onFocus={e => (e.target.style.borderColor = "#6366f1")} onBlur={e => (e.target.style.borderColor = "#e5e7eb")} />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "flex", alignItems: "center", gap: 5, marginBottom: 6 }}>
+                    <Mic size={12} color="#9ca3af" /> Pembicara
+                    <span style={{ fontSize: 11, fontWeight: 400, color: "#9ca3af" }}>(opsional, boleh lebih dari satu)</span>
+                  </label>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {form.pembicara.map((name, i) => (
+                      <div key={i} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <input type="text" placeholder={`Nama pembicara ${i + 1}…`} value={name}
+                          onChange={e => setForm(f => ({
+                            ...f, pembicara: f.pembicara.map((n, j) => (j === i ? e.target.value : n)),
+                          }))}
+                          style={{ flex: 1, padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 13, outline: "none", boxSizing: "border-box", fontFamily: "inherit" }}
+                          onFocus={e => (e.target.style.borderColor = "#6366f1")} onBlur={e => (e.target.style.borderColor = "#e5e7eb")} />
+                        {form.pembicara.length > 1 && (
+                          <button type="button" onClick={() => setForm(f => ({ ...f, pembicara: f.pembicara.filter((_, j) => j !== i) }))}
+                            style={{ border: "none", background: "none", cursor: "pointer", padding: 6, display: "flex", flexShrink: 0 }}>
+                            <X size={14} color="#ef4444" />
+                          </button>
+                        )}
+                      </div>
+                    ))}
                   </div>
-                  <div>
-                    <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "flex", alignItems: "center", gap: 5, marginBottom: 6 }}>
-                      <Mic size={12} color="#9ca3af" /> Pembicara
-                      <span style={{ fontSize: 11, fontWeight: 400, color: "#9ca3af" }}>(opsional, boleh lebih dari satu)</span>
-                    </label>
-                    <input type="text" placeholder="Contoh: Budi, Siti, Ahmad" value={form.pembicara}
-                      onChange={e => setForm(f => ({ ...f, pembicara: e.target.value }))}
-                      style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 13, outline: "none", boxSizing: "border-box", fontFamily: "inherit" }}
-                      onFocus={e => (e.target.style.borderColor = "#6366f1")} onBlur={e => (e.target.style.borderColor = "#e5e7eb")} />
-                  </div>
+                  <button type="button" onClick={() => setForm(f => ({ ...f, pembicara: [...f.pembicara, ""] }))}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 5, marginTop: 8,
+                      border: "1.5px dashed #d1d5db", background: "none", borderRadius: 8,
+                      padding: "6px 10px", fontSize: 12, fontWeight: 600, color: "#6366f1", cursor: "pointer",
+                    }}>
+                    <Plus size={12} /> Tambah Pembicara
+                  </button>
                 </div>
 
                 <div>
