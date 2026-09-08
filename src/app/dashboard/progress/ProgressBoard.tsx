@@ -87,8 +87,18 @@ function emptyCategory(name = ""): TodoCategory {
   return { id: genId(), name, items: [{ id: genId(), text: "", done: false }] };
 }
 
+// Older entries saved `todos` as a flat TodoItem[] (before the bab-pekerjaan grouping) —
+// wrap those into a single category instead of crashing on `.items`.
+function normalizeTodoCategories(raw: unknown): TodoCategory[] {
+  if (!Array.isArray(raw) || raw.length === 0) return [];
+  const first = raw[0] as { items?: unknown };
+  if (first && Array.isArray(first.items)) return raw as TodoCategory[];
+  return [{ id: genId(), name: "To Do List", items: raw as TodoCategory["items"] }];
+}
+
 function seedMorningCategories(entry?: DailyProgress | null): TodoCategory[] {
-  if (entry?.todos && entry.todos.length > 0) return entry.todos.map(c => ({ ...c, items: c.items.map(i => ({ ...i })) }));
+  const normalized = normalizeTodoCategories(entry?.todos).map(c => ({ ...c, items: c.items.map(i => ({ ...i })) }));
+  if (normalized.length > 0) return normalized;
   if (entry?.morning_plan) return [{ id: genId(), name: "Pekerjaan", items: [{ id: genId(), text: entry.morning_plan, done: false }] }];
   return [emptyCategory("Pekerjaan")];
 }
@@ -223,7 +233,7 @@ export default function ProgressBoard({ currentUser, initialEntries, profiles, t
   // ── Evening ──
   const openEvening = () => {
     setEveningForm({
-      categories: (myEntry?.todos ?? []).map(c => ({ ...c, items: c.items.map(i => ({ ...i })) })),
+      categories: normalizeTodoCategories(myEntry?.todos).map(c => ({ ...c, items: c.items.map(i => ({ ...i })) })),
       achievements: myEntry?.achievements ?? "",
       obstacles: myEntry?.obstacles ?? "",
       plan_tomorrow: myEntry?.plan_tomorrow ?? "",
@@ -1014,7 +1024,7 @@ export default function ProgressBoard({ currentUser, initialEntries, profiles, t
 // ── Sub-components ──────────────────────────────────────────────
 
 function TodoChecklist({ todos, fallbackText, size = 13 }: { todos?: TodoCategory[] | null; fallbackText?: string | null; size?: number }) {
-  const categories = (todos ?? []).filter(c => c.items.length > 0);
+  const categories = normalizeTodoCategories(todos).filter(c => c.items.length > 0);
   if (categories.length > 0) {
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
