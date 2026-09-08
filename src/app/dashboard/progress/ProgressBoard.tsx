@@ -8,7 +8,7 @@ import {
   ChevronLeft, ChevronRight, X, Check, AlertCircle, Lightbulb,
   CalendarDays, Users, TrendingUp, Edit2, BarChart2,
   Lock, ChevronDown, Paperclip, Link as LinkIcon, Upload, FileText, ExternalLink, Bell,
-  Plus, Circle, CheckCircle2, FolderKanban,
+  Plus, FolderKanban,
 } from "lucide-react";
 
 const MOOD_CFG = [
@@ -26,6 +26,13 @@ const ROLE_LABELS: Record<string, string> = {
   staff_finance: "Staff Finance", staff_dokumen: "Staff Dokumen",
   kep_trainer: "Kep. Trainer",
 };
+
+function getGreeting(hour: number) {
+  if (hour < 11) return { text: "Selamat Pagi", emoji: "☀️" };
+  if (hour < 15) return { text: "Selamat Siang", emoji: "🌤️" };
+  if (hour < 18) return { text: "Selamat Sore", emoji: "🌇" };
+  return { text: "Selamat Malam", emoji: "🌙" };
+}
 
 function fmt(dateStr: string) {
   return new Date(dateStr + "T00:00:00").toLocaleDateString("id-ID", {
@@ -148,6 +155,13 @@ export default function ProgressBoard({ currentUser, initialEntries, profiles, t
   const [proofMode, setProofMode]     = useState<"file" | "url">("file");
   const [proofUploading, setProofUploading] = useState(false);
   const [blasting, setBlasting] = useState(false);
+  const [tipDismissed, setTipDismissed] = useState(false);
+  const [collapsedCats, setCollapsedCats] = useState<Set<string>>(new Set());
+  const toggleCollapsedCat = (id: string) => setCollapsedCats(s => {
+    const next = new Set(s);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
 
   const showToast = (msg: string, ok = true) => {
     setToast({ msg, ok });
@@ -558,6 +572,33 @@ export default function ProgressBoard({ currentUser, initialEntries, profiles, t
         {/* ═══ DAILY TAB ═══ */}
         {tab === "daily" && (
           <>
+            {/* Greeting */}
+            <div>
+              <h2 style={{ fontSize: 24, fontWeight: 800, color: "#111827", letterSpacing: "-0.02em", display: "flex", alignItems: "center", gap: 8, margin: 0 }}>
+                {getGreeting(now.getHours()).text}, {currentUser.full_name.split(" ")[0]}
+                <span>{getGreeting(now.getHours()).emoji}</span>
+              </h2>
+              <p style={{ fontSize: 13, color: "#9ca3af", marginTop: 3 }}>Ini {fmt(today)}</p>
+            </div>
+
+            {/* Tip banner */}
+            <AnimatePresence>
+              {!tipDismissed && (
+                <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, height: 0, marginBottom: -20 }}
+                  transition={{ duration: 0.2 }}
+                  style={{ display: "flex", alignItems: "flex-start", gap: 10, background: "#f9fafb", border: "1px solid #f3f4f6", borderRadius: 14, padding: "14px 16px" }}>
+                  <Lightbulb size={16} color="#f59e0b" style={{ flexShrink: 0, marginTop: 1 }} />
+                  <p style={{ flex: 1, fontSize: 12.5, color: "#6b7280", lineHeight: 1.6, margin: 0 }}>
+                    Susun tugasmu ke dalam beberapa bab pekerjaan di pagi hari (sebelum 11.00), lalu tinggal centang satu-satu di sore hari (sebelum 18.00) — cara sederhana melacak progres harianmu.
+                  </p>
+                  <button onClick={() => setTipDismissed(true)}
+                    style={{ border: "none", background: "none", cursor: "pointer", padding: 2, display: "flex", flexShrink: 0 }}>
+                    <X size={14} color="#9ca3af" />
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             {/* Date navigator */}
             <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
               <div style={{ display: "flex", alignItems: "center", background: "#fff", border: "1px solid #e5e7eb", borderRadius: 12, overflow: "hidden" }}>
@@ -637,7 +678,11 @@ export default function ProgressBoard({ currentUser, initialEntries, profiles, t
                     exit={{ opacity: 0, scale: 0.94, height: 0, marginBottom: -12 }}
                     transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
                     style={{ border: "1.5px solid #fde68a", borderRadius: 14, overflow: "hidden", background: "#fffbeb" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", borderBottom: "1px solid #fde68a" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", borderBottom: collapsedCats.has(cat.id) ? "none" : "1px solid #fde68a" }}>
+                      <motion.button whileTap={{ scale: 0.9 }} type="button" onClick={() => toggleCollapsedCat(cat.id)}
+                        style={{ border: "none", background: "none", cursor: "pointer", padding: 0, display: "flex", flexShrink: 0 }}>
+                        <ChevronDown size={13} color="#d97706" style={{ transform: collapsedCats.has(cat.id) ? "rotate(-90deg)" : "none", transition: "transform 0.15s" }} />
+                      </motion.button>
                       <FolderKanban size={14} color="#d97706" style={{ flexShrink: 0 }} />
                       <input type="text" placeholder={`Bab Pekerjaan ${ci + 1}`} value={cat.name}
                         onChange={e => editMorningCategoryName(cat.id, e.target.value)}
@@ -652,6 +697,7 @@ export default function ProgressBoard({ currentUser, initialEntries, profiles, t
                         </motion.button>
                       )}
                     </div>
+                    {!collapsedCats.has(cat.id) && (
                     <div style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 6 }}>
                       <AnimatePresence initial={false}>
                         {cat.items.map(it => (
@@ -684,6 +730,7 @@ export default function ProgressBoard({ currentUser, initialEntries, profiles, t
                         <Plus size={11} /> Tambah Tugas
                       </motion.button>
                     </div>
+                    )}
                   </motion.div>
                 ))}
               </AnimatePresence>
@@ -770,13 +817,16 @@ export default function ProgressBoard({ currentUser, initialEntries, profiles, t
                       const doneCount = cat.items.filter(i => i.done).length;
                       return (
                         <div key={cat.id} style={{ border: "1.5px solid #e5e7eb", borderRadius: 12, overflow: "hidden" }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "8px 12px", background: "#f9fafb", borderBottom: "1px solid #f3f4f6" }}>
+                          <button type="button" onClick={() => toggleCollapsedCat(cat.id)}
+                            style={{ width: "100%", display: "flex", alignItems: "center", gap: 7, padding: "8px 12px", background: "#f9fafb", border: "none", borderBottom: collapsedCats.has(cat.id) ? "none" : "1px solid #f3f4f6", cursor: "pointer", textAlign: "left" }}>
+                            <ChevronDown size={12} color="#9ca3af" style={{ flexShrink: 0, transform: collapsedCats.has(cat.id) ? "rotate(-90deg)" : "none", transition: "transform 0.15s" }} />
                             <FolderKanban size={13} color="#6366f1" style={{ flexShrink: 0 }} />
                             <span style={{ flex: 1, fontSize: 12, fontWeight: 700, color: "#374151" }}>{cat.name}</span>
                             <span style={{ fontSize: 10, fontWeight: 700, color: "#4f46e5", background: "#eef2ff", padding: "2px 7px", borderRadius: 20, flexShrink: 0 }}>
                               {doneCount}/{cat.items.length}
                             </span>
-                          </div>
+                          </button>
+                          {!collapsedCats.has(cat.id) && (
                           <div style={{ padding: "6px 8px", display: "flex", flexDirection: "column", gap: 3 }}>
                             {cat.items.map(it => (
                               <motion.button key={it.id} type="button" layout whileTap={{ scale: 0.99 }} onClick={() => toggleEveningTodo(cat.id, it.id)}
@@ -798,6 +848,7 @@ export default function ProgressBoard({ currentUser, initialEntries, profiles, t
                               </motion.button>
                             ))}
                           </div>
+                          )}
                         </div>
                       );
                     })}
@@ -920,31 +971,50 @@ export default function ProgressBoard({ currentUser, initialEntries, profiles, t
 // ── Sub-components ──────────────────────────────────────────────
 
 function TodoChecklist({ todos, fallbackText, size = 13 }: { todos?: TodoCategory[] | null; fallbackText?: string | null; size?: number }) {
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const toggle = (id: string) => setCollapsed(s => {
+    const next = new Set(s);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
   const categories = normalizeTodoCategories(todos).filter(c => c.items.length > 0);
   if (categories.length > 0) {
     return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {categories.map(cat => (
-          <div key={cat.id}>
-            {cat.name && (
-              <p style={{ fontSize: 10, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 3 }}>
-                {cat.name}
-              </p>
-            )}
-            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              {cat.items.map(t => (
-                <div key={t.id} style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
-                  {t.done
-                    ? <CheckCircle2 size={size} color="#10b981" style={{ flexShrink: 0, marginTop: 1 }} />
-                    : <Circle size={size} color="#d1d5db" style={{ flexShrink: 0, marginTop: 1 }} />}
-                  <span style={{ fontSize: 12, color: t.done ? "#9ca3af" : "#374151", textDecoration: t.done ? "line-through" : "none", lineHeight: 1.5 }}>
-                    {t.text}
-                  </span>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {categories.map(cat => {
+          const isCollapsed = collapsed.has(cat.id);
+          const doneCount = cat.items.filter(i => i.done).length;
+          return (
+            <div key={cat.id} style={{ border: "1px solid #f3f4f6", borderRadius: 10, overflow: "hidden" }}>
+              <button type="button" onClick={() => toggle(cat.id)}
+                style={{ width: "100%", display: "flex", alignItems: "center", gap: 6, padding: "6px 8px", border: "none", background: "#fafafa", cursor: "pointer", textAlign: "left" }}>
+                <ChevronDown size={12} color="#9ca3af" style={{ flexShrink: 0, transform: isCollapsed ? "rotate(-90deg)" : "none", transition: "transform 0.15s" }} />
+                <span style={{ flex: 1, fontSize: 11, fontWeight: 700, color: "#6b7280" }}>{cat.name}</span>
+                <span style={{ fontSize: 10, fontWeight: 700, color: "#9ca3af", background: "#f3f4f6", borderRadius: 20, padding: "1px 6px", flexShrink: 0 }}>
+                  {doneCount}/{cat.items.length}
+                </span>
+              </button>
+              {!isCollapsed && (
+                <div style={{ padding: "6px 8px", display: "flex", flexDirection: "column", gap: 4 }}>
+                  {cat.items.map(t => (
+                    <div key={t.id} style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
+                      <span style={{
+                        width: size, height: size, borderRadius: 4, flexShrink: 0, marginTop: 1,
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        background: t.done ? "#4f46e5" : "#fff", border: `1.5px solid ${t.done ? "#4f46e5" : "#d1d5db"}`,
+                      }}>
+                        {t.done && <Check size={size - 5} color="#fff" strokeWidth={3} />}
+                      </span>
+                      <span style={{ fontSize: 12, color: t.done ? "#9ca3af" : "#374151", textDecoration: t.done ? "line-through" : "none", lineHeight: 1.5 }}>
+                        {t.text}
+                      </span>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     );
   }
