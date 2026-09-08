@@ -67,6 +67,12 @@ export interface TaskLog {
   actor?: { full_name: string; role: string } | null;
 }
 
+export interface TodoItem {
+  id: string;
+  text: string;
+  done: boolean;
+}
+
 export interface DailyProgress {
   id: string;
   user_id: string;
@@ -78,6 +84,7 @@ export interface DailyProgress {
   plan_tomorrow?: string | null;
   mood?: number | null;
   proof_url?: string | null;
+  todos?: TodoItem[] | null;
   created_at: string;
   updated_at: string;
   profiles?: { full_name: string; role: string } | null;
