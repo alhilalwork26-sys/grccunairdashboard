@@ -610,110 +610,6 @@ export default function ProgressBoard({ currentUser, initialEntries, profiles, t
                 </div>
               )}
             </div>
-
-            {/* TEAM SECTION — super admin / manager */}
-            {canViewAll && (
-              <div>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-                  <p style={{ fontSize: 11, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.07em" }}>
-                    Progress Tim — {isToday ? "Hari Ini" : fmt(date)}
-                  </p>
-                  <span style={{ fontSize: 11, color: "#9ca3af" }}>
-                    {entries.filter(e => e.user_id !== currentUser.id).length}/{profiles.filter(p => p.id !== currentUser.id).length} anggota
-                  </span>
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  {profiles
-                    .filter(p => p.id !== currentUser.id)
-                    .map((p, i) => {
-                      const entry = entries.find(e => e.user_id === p.id);
-                      const hasMorning = !!entry?.morning_plan;
-                      const hasEvening = !!entry?.activities;
-                      const isOpen = expandedUser === p.id;
-                      const moodCfg = entry?.mood ? MOOD_CFG[(entry.mood ?? 3) - 1] : null;
-                      return (
-                        <motion.div key={p.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }}
-                          style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 14, overflow: "hidden" }}>
-                          <div
-                            style={{ padding: "14px 18px", display: "flex", alignItems: "center", gap: 12, cursor: entry ? "pointer" : "default" }}
-                            onClick={() => entry && setExpandedUser(isOpen ? null : p.id)}>
-                            <div style={{
-                              width: 36, height: 36, borderRadius: "50%", flexShrink: 0,
-                              background: entry ? "linear-gradient(135deg, #6366f1, #4f46e5)" : "#e5e7eb",
-                              display: "flex", alignItems: "center", justifyContent: "center",
-                              fontSize: 13, fontWeight: 700, color: entry ? "#fff" : "#9ca3af",
-                            }}>{p.full_name.charAt(0).toUpperCase()}</div>
-                            <div style={{ flex: 1 }}>
-                              <p style={{ fontSize: 13, fontWeight: 700, color: "#111827" }}>{p.full_name}</p>
-                              <p style={{ fontSize: 11, color: "#9ca3af" }}>{ROLE_LABELS[p.role] ?? p.role}</p>
-                            </div>
-                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                              <PhaseBadge phase="morning" done={hasMorning} />
-                              <PhaseBadge phase="evening" done={hasEvening} />
-                              {moodCfg && <span style={{ fontSize: 18 }}>{moodCfg.emoji}</span>}
-                              {entry && (
-                                <ChevronDown size={14} color="#9ca3af"
-                                  style={{ transform: isOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
-                              )}
-                            </div>
-                          </div>
-                          <AnimatePresence>
-                            {isOpen && entry && (
-                              <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }}
-                                transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }} style={{ overflow: "hidden" }}>
-                                <div style={{ borderTop: "1px solid #f3f4f6", padding: "14px 18px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-                                  {/* Morning detail */}
-                                  <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 12, padding: "12px 14px" }}>
-                                    <p style={{ fontSize: 10, fontWeight: 700, color: "#d97706", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>🌅 To Do List</p>
-                                    <TodoChecklist todos={entry.todos} fallbackText={entry.morning_plan} size={12} />
-                                  </div>
-                                  {/* Evening detail */}
-                                  <div style={{ background: "#eef2ff", border: "1px solid #c7d2fe", borderRadius: 12, padding: "12px 14px" }}>
-                                    <p style={{ fontSize: 10, fontWeight: 700, color: "#4f46e5", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>🌆 Update Sore</p>
-                                    {entry.activities ? (
-                                      <>
-                                        <p style={{ fontSize: 12, color: "#374151", lineHeight: 1.6 }}>{entry.activities}</p>
-                                        {entry.achievements && (
-                                          <div style={{ marginTop: 8 }}>
-                                            <p style={{ fontSize: 10, fontWeight: 600, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 2 }}>Pencapaian</p>
-                                            <p style={{ fontSize: 12, color: "#374151" }}>{entry.achievements}</p>
-                                          </div>
-                                        )}
-                                        {entry.obstacles && (
-                                          <div style={{ marginTop: 8 }}>
-                                            <p style={{ fontSize: 10, fontWeight: 600, color: "#f59e0b", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 2 }}>Hambatan</p>
-                                            <p style={{ fontSize: 12, color: "#d97706" }}>{entry.obstacles}</p>
-                                          </div>
-                                        )}
-                                        {entry.plan_tomorrow && (
-                                          <div style={{ marginTop: 8 }}>
-                                            <p style={{ fontSize: 10, fontWeight: 600, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 2 }}>Rencana Besok</p>
-                                            <p style={{ fontSize: 12, color: "#374151" }}>{entry.plan_tomorrow}</p>
-                                          </div>
-                                        )}
-                                        {entry.proof_url && (
-                                          <div style={{ marginTop: 8 }}>
-                                            <a href={entry.proof_url} target="_blank" rel="noreferrer"
-                                              style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 600, color: "#4f46e5", textDecoration: "none", background: "#eef2ff", padding: "5px 10px", borderRadius: 8, border: "1px solid #c7d2fe" }}>
-                                              <Paperclip size={12} />Lihat Bukti Kerja<ExternalLink size={11} />
-                                            </a>
-                                          </div>
-                                        )}
-                                      </>
-                                    ) : (
-                                      <p style={{ fontSize: 12, color: "#d1d5db", fontStyle: "italic" }}>Belum diisi</p>
-                                    )}
-                                  </div>
-                                </div>
-                              </motion.div>
-                            )}
-                          </AnimatePresence>
-                        </motion.div>
-                      );
-                    })}
-                </div>
-              </div>
-            )}
           </>
         )}
       </div>
@@ -1223,21 +1119,6 @@ function PhaseCard({ phase, status, entry, isToday, isSuperAdmin, onAction }: {
         )}
       </div>
     </motion.div>
-  );
-}
-
-function PhaseBadge({ phase, done }: { phase: "morning" | "evening"; done: boolean }) {
-  const icon = phase === "morning" ? "🌅" : "🌆";
-  return (
-    <div style={{
-      display: "flex", alignItems: "center", gap: 4,
-      padding: "3px 8px", borderRadius: 20, fontSize: 11, fontWeight: 600,
-      background: done ? "#dcfce7" : "#f3f4f6",
-      border: `1px solid ${done ? "#bbf7d0" : "#e5e7eb"}`,
-      color: done ? "#059669" : "#9ca3af",
-    }}>
-      {icon} {done ? "✓" : "–"}
-    </div>
   );
 }
 
