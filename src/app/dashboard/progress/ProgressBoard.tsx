@@ -3,12 +3,12 @@
 import { useState, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { createClient } from "@/lib/supabase/client";
-import type { UserProfile, DailyProgress, TodoItem } from "@/types";
+import type { UserProfile, DailyProgress, TodoCategory } from "@/types";
 import {
   ChevronLeft, ChevronRight, X, Check, AlertCircle, Lightbulb,
   CalendarDays, Users, TrendingUp, Edit2, BarChart2,
   Lock, ChevronDown, Paperclip, Link as LinkIcon, Upload, FileText, ExternalLink, Bell,
-  Plus, Circle, CheckCircle2,
+  Plus, Circle, CheckCircle2, FolderKanban,
 } from "lucide-react";
 
 const MOOD_CFG = [
@@ -83,14 +83,18 @@ function genId() {
   return Math.random().toString(36).slice(2, 10);
 }
 
-function seedMorningTodos(entry?: DailyProgress | null): TodoItem[] {
-  if (entry?.todos && entry.todos.length > 0) return entry.todos.map(t => ({ ...t }));
-  if (entry?.morning_plan) return [{ id: genId(), text: entry.morning_plan, done: false }];
-  return [{ id: genId(), text: "", done: false }];
+function emptyCategory(name = ""): TodoCategory {
+  return { id: genId(), name, items: [{ id: genId(), text: "", done: false }] };
 }
 
-const EMPTY_MORNING = { todos: [] as TodoItem[] };
-const EMPTY_EVENING = { todos: [] as TodoItem[], achievements: "", obstacles: "", plan_tomorrow: "", mood: 4, proof_url: "" };
+function seedMorningCategories(entry?: DailyProgress | null): TodoCategory[] {
+  if (entry?.todos && entry.todos.length > 0) return entry.todos.map(c => ({ ...c, items: c.items.map(i => ({ ...i })) }));
+  if (entry?.morning_plan) return [{ id: genId(), name: "Pekerjaan", items: [{ id: genId(), text: entry.morning_plan, done: false }] }];
+  return [emptyCategory("Pekerjaan")];
+}
+
+const EMPTY_MORNING = { categories: [] as TodoCategory[] };
+const EMPTY_EVENING = { categories: [] as TodoCategory[], achievements: "", obstacles: "", plan_tomorrow: "", mood: 4, proof_url: "" };
 
 interface WeekSummary {
   userId: string; name: string; role: string;
@@ -168,20 +172,34 @@ export default function ProgressBoard({ currentUser, initialEntries, profiles, t
 
   // ── Morning ──
   const openMorning = () => {
-    setMorningForm({ todos: seedMorningTodos(myEntry) });
+    setMorningForm({ categories: seedMorningCategories(myEntry) });
     setMorningOpen(true);
   };
 
-  const addMorningTodo = () => setMorningForm(f => ({ ...f, todos: [...f.todos, { id: genId(), text: "", done: false }] }));
-  const removeMorningTodo = (id: string) => setMorningForm(f => ({ ...f, todos: f.todos.filter(t => t.id !== id) }));
-  const editMorningTodo = (id: string, text: string) => setMorningForm(f => ({ ...f, todos: f.todos.map(t => t.id === id ? { ...t, text } : t) }));
+  const addMorningCategory = () => setMorningForm(f => ({ ...f, categories: [...f.categories, emptyCategory()] }));
+  const removeMorningCategory = (catId: string) => setMorningForm(f => ({ ...f, categories: f.categories.filter(c => c.id !== catId) }));
+  const editMorningCategoryName = (catId: string, name: string) => setMorningForm(f => ({
+    ...f, categories: f.categories.map(c => c.id === catId ? { ...c, name } : c),
+  }));
+  const addMorningItem = (catId: string) => setMorningForm(f => ({
+    ...f, categories: f.categories.map(c => c.id === catId ? { ...c, items: [...c.items, { id: genId(), text: "", done: false }] } : c),
+  }));
+  const removeMorningItem = (catId: string, itemId: string) => setMorningForm(f => ({
+    ...f, categories: f.categories.map(c => c.id === catId ? { ...c, items: c.items.filter(i => i.id !== itemId) } : c),
+  }));
+  const editMorningItem = (catId: string, itemId: string, text: string) => setMorningForm(f => ({
+    ...f, categories: f.categories.map(c => c.id === catId ? { ...c, items: c.items.map(i => i.id === itemId ? { ...i, text } : i) } : c),
+  }));
 
   const saveMorning = async () => {
-    const cleaned = morningForm.todos.map(t => ({ ...t, text: t.text.trim() })).filter(t => t.text);
+    const cleaned = morningForm.categories
+      .map(c => ({ ...c, name: c.name.trim() || "Pekerjaan", items: c.items.map(i => ({ ...i, text: i.text.trim() })).filter(i => i.text) }))
+      .filter(c => c.items.length > 0);
     if (cleaned.length === 0) return;
     setSubmitting(true);
     try {
-      const payload = { todos: cleaned, morning_plan: cleaned.map((t, i) => `${i + 1}. ${t.text}`).join("\n") };
+      const summary = cleaned.map(c => `${c.name}: ${c.items.map(i => i.text).join(", ")}`).join(" | ");
+      const payload = { todos: cleaned, morning_plan: summary };
       if (myEntry) {
         const { data, error } = await supabase.from("daily_progress")
           .update(payload)
@@ -205,7 +223,7 @@ export default function ProgressBoard({ currentUser, initialEntries, profiles, t
   // ── Evening ──
   const openEvening = () => {
     setEveningForm({
-      todos: (myEntry?.todos ?? []).map(t => ({ ...t })),
+      categories: (myEntry?.todos ?? []).map(c => ({ ...c, items: c.items.map(i => ({ ...i })) })),
       achievements: myEntry?.achievements ?? "",
       obstacles: myEntry?.obstacles ?? "",
       plan_tomorrow: myEntry?.plan_tomorrow ?? "",
@@ -217,7 +235,12 @@ export default function ProgressBoard({ currentUser, initialEntries, profiles, t
     setEveningOpen(true);
   };
 
-  const toggleEveningTodo = (id: string) => setEveningForm(f => ({ ...f, todos: f.todos.map(t => t.id === id ? { ...t, done: !t.done } : t) }));
+  const toggleEveningTodo = (catId: string, itemId: string) => setEveningForm(f => ({
+    ...f,
+    categories: f.categories.map(c => c.id === catId
+      ? { ...c, items: c.items.map(i => i.id === itemId ? { ...i, done: !i.done } : i) }
+      : c),
+  }));
 
   const saveEvening = async () => {
     const hasProof = proofFile !== null || eveningForm.proof_url.trim() !== "";
@@ -241,13 +264,14 @@ export default function ProgressBoard({ currentUser, initialEntries, profiles, t
         finalProofUrl = urlData.publicUrl;
       }
 
-      const doneTodos = eveningForm.todos.filter(t => t.done);
-      const activitiesSummary = eveningForm.todos.length > 0
-        ? `${doneTodos.length}/${eveningForm.todos.length} to do selesai${doneTodos.length ? ": " + doneTodos.map(t => t.text).join(", ") : ""}`
+      const allItems = eveningForm.categories.flatMap(c => c.items);
+      const doneItems = allItems.filter(i => i.done);
+      const activitiesSummary = allItems.length > 0
+        ? `${doneItems.length}/${allItems.length} to do selesai${doneItems.length ? ": " + doneItems.map(i => i.text).join(", ") : ""}`
         : "Tidak ada to do list pagi ini";
 
       const payload = {
-        todos: eveningForm.todos,
+        todos: eveningForm.categories,
         activities: activitiesSummary,
         achievements: eveningForm.achievements.trim() || null,
         obstacles: eveningForm.obstacles.trim() || null,
@@ -698,54 +722,81 @@ export default function ProgressBoard({ currentUser, initialEntries, profiles, t
                 <X size={16} color="#6b7280" />
               </motion.button>
             </div>
-            <div style={{ padding: "20px 24px", display: "flex", flexDirection: "column", gap: 14 }}>
-              <label style={{ fontSize: 12, fontWeight: 600, color: "#374151" }}>
-                To Do List Hari Ini <span style={{ color: "#ef4444" }}>*</span>
-              </label>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                <AnimatePresence initial={false}>
-                  {morningForm.todos.map((t, i) => (
-                    <motion.div key={t.id} layout
-                      initial={{ opacity: 0, y: -6, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, scale: 0.9, height: 0, marginBottom: -8 }}
-                      transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
-                      style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{
-                        width: 22, height: 22, borderRadius: 7, background: "#fef3c7", color: "#d97706",
-                        fontSize: 11, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
-                      }}>{i + 1}</span>
-                      <input type="text" placeholder="Tulis satu tugas…" value={t.text}
-                        onChange={e => editMorningTodo(t.id, e.target.value)}
-                        onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addMorningTodo(); } }}
-                        style={{ flex: 1, padding: "10px 12px", border: "1.5px solid #fde68a", borderRadius: 10, fontSize: 13, color: "#111827", outline: "none", fontFamily: "inherit", boxSizing: "border-box", background: "#fffbeb" }}
-                        onFocus={e => (e.target.style.borderColor = "#f59e0b")}
-                        onBlur={e => (e.target.style.borderColor = "#fde68a")} />
-                      {morningForm.todos.length > 1 && (
-                        <motion.button whileTap={{ scale: 0.9 }} type="button" onClick={() => removeMorningTodo(t.id)}
-                          style={{ border: "none", background: "none", cursor: "pointer", padding: 6, display: "flex", flexShrink: 0 }}>
-                          <X size={14} color="#ef4444" />
+            <div style={{ padding: "20px 24px", display: "flex", flexDirection: "column", gap: 12 }}>
+              <p style={{ fontSize: 12, color: "#9ca3af", margin: 0 }}>Kelompokkan tugasmu ke dalam beberapa bab pekerjaan.</p>
+              <AnimatePresence initial={false}>
+                {morningForm.categories.map((cat, ci) => (
+                  <motion.div key={cat.id} layout
+                    initial={{ opacity: 0, y: -6, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.94, height: 0, marginBottom: -12 }}
+                    transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+                    style={{ border: "1.5px solid #fde68a", borderRadius: 14, overflow: "hidden", background: "#fffbeb" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", borderBottom: "1px solid #fde68a" }}>
+                      <FolderKanban size={14} color="#d97706" style={{ flexShrink: 0 }} />
+                      <input type="text" placeholder={`Bab Pekerjaan ${ci + 1}`} value={cat.name}
+                        onChange={e => editMorningCategoryName(cat.id, e.target.value)}
+                        style={{ flex: 1, border: "none", outline: "none", background: "transparent", fontSize: 13, fontWeight: 700, color: "#92400e", fontFamily: "inherit" }} />
+                      <span style={{ fontSize: 10, fontWeight: 700, color: "#d97706", background: "#fef3c7", borderRadius: 20, padding: "2px 7px", flexShrink: 0 }}>
+                        {cat.items.length}
+                      </span>
+                      {morningForm.categories.length > 1 && (
+                        <motion.button whileTap={{ scale: 0.9 }} type="button" onClick={() => removeMorningCategory(cat.id)}
+                          style={{ border: "none", background: "none", cursor: "pointer", padding: 4, display: "flex", flexShrink: 0 }}>
+                          <X size={13} color="#ef4444" />
                         </motion.button>
                       )}
-                    </motion.div>
-                  ))}
-                </AnimatePresence>
-              </div>
-              <motion.button whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.97 }} type="button" onClick={addMorningTodo}
+                    </div>
+                    <div style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 6 }}>
+                      <AnimatePresence initial={false}>
+                        {cat.items.map(it => (
+                          <motion.div key={it.id} layout
+                            initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, height: 0, marginBottom: -6 }} transition={{ duration: 0.16 }}
+                            style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#f59e0b", flexShrink: 0, marginLeft: 2 }} />
+                            <input type="text" placeholder="Tulis satu tugas…" value={it.text}
+                              onChange={e => editMorningItem(cat.id, it.id, e.target.value)}
+                              onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addMorningItem(cat.id); } }}
+                              style={{ flex: 1, padding: "8px 10px", border: "1.5px solid #fde68a", borderRadius: 8, fontSize: 13, color: "#111827", outline: "none", fontFamily: "inherit", boxSizing: "border-box", background: "#fff" }}
+                              onFocus={e => (e.target.style.borderColor = "#f59e0b")}
+                              onBlur={e => (e.target.style.borderColor = "#fde68a")} />
+                            {cat.items.length > 1 && (
+                              <motion.button whileTap={{ scale: 0.9 }} type="button" onClick={() => removeMorningItem(cat.id, it.id)}
+                                style={{ border: "none", background: "none", cursor: "pointer", padding: 4, display: "flex", flexShrink: 0 }}>
+                                <X size={12} color="#ef4444" />
+                              </motion.button>
+                            )}
+                          </motion.div>
+                        ))}
+                      </AnimatePresence>
+                      <motion.button whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.97 }} type="button" onClick={() => addMorningItem(cat.id)}
+                        style={{
+                          display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
+                          border: "1.5px dashed #fcd34d", background: "#fff", borderRadius: 8,
+                          padding: "6px 10px", fontSize: 11, fontWeight: 700, color: "#d97706", cursor: "pointer", marginTop: 2,
+                        }}>
+                        <Plus size={11} /> Tambah Tugas
+                      </motion.button>
+                    </div>
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+              <motion.button whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.97 }} type="button" onClick={addMorningCategory}
                 style={{
                   display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
-                  border: "1.5px dashed #fcd34d", background: "#fffbeb", borderRadius: 10,
+                  border: "1.5px dashed #d97706", background: "none", borderRadius: 10,
                   padding: "9px 10px", fontSize: 12, fontWeight: 700, color: "#d97706", cursor: "pointer",
                 }}>
-                <Plus size={13} /> Tambah To Do
+                <Plus size={13} /> Tambah Bab Pekerjaan
               </motion.button>
               <motion.button whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.98 }}
-                onClick={saveMorning} disabled={submitting || morningForm.todos.every(t => !t.text.trim())}
+                onClick={saveMorning} disabled={submitting || morningForm.categories.every(c => c.items.every(i => !i.text.trim()))}
                 style={{
                   width: "100%", padding: "12px",
-                  background: submitting || morningForm.todos.every(t => !t.text.trim()) ? "#d1d5db" : "linear-gradient(135deg, #f59e0b, #d97706)",
+                  background: submitting || morningForm.categories.every(c => c.items.every(i => !i.text.trim())) ? "#d1d5db" : "linear-gradient(135deg, #f59e0b, #d97706)",
                   color: "#fff", border: "none", borderRadius: 12, fontSize: 14, fontWeight: 700,
-                  cursor: submitting || morningForm.todos.every(t => !t.text.trim()) ? "not-allowed" : "pointer",
-                  boxShadow: morningForm.todos.some(t => t.text.trim()) ? "0 4px 14px rgba(245,158,11,0.4)" : "none",
+                  cursor: submitting || morningForm.categories.every(c => c.items.every(i => !i.text.trim())) ? "not-allowed" : "pointer",
+                  boxShadow: morningForm.categories.some(c => c.items.some(i => i.text.trim())) ? "0 4px 14px rgba(245,158,11,0.4)" : "none",
                   transition: "all 0.2s ease",
                 }}>
                 {submitting ? "Menyimpan..." : "Simpan To Do List"}
@@ -792,35 +843,58 @@ export default function ProgressBoard({ currentUser, initialEntries, profiles, t
               <div>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
                   <label style={{ fontSize: 12, fontWeight: 600, color: "#374151" }}>To Do List Pagi Ini</label>
-                  {eveningForm.todos.length > 0 && (
-                    <motion.span key={eveningForm.todos.filter(t => t.done).length}
-                      initial={{ scale: 0.85 }} animate={{ scale: 1 }} transition={{ duration: 0.18 }}
-                      style={{ fontSize: 11, fontWeight: 700, color: "#4f46e5", background: "#eef2ff", padding: "2px 8px", borderRadius: 20 }}>
-                      {eveningForm.todos.filter(t => t.done).length}/{eveningForm.todos.length} selesai
-                    </motion.span>
-                  )}
+                  {eveningForm.categories.length > 0 && (() => {
+                    const allItems = eveningForm.categories.flatMap(c => c.items);
+                    return allItems.length > 0 ? (
+                      <motion.span key={allItems.filter(i => i.done).length}
+                        initial={{ scale: 0.85 }} animate={{ scale: 1 }} transition={{ duration: 0.18 }}
+                        style={{ fontSize: 11, fontWeight: 700, color: "#4f46e5", background: "#eef2ff", padding: "2px 8px", borderRadius: 20 }}>
+                        {allItems.filter(i => i.done).length}/{allItems.length} selesai
+                      </motion.span>
+                    ) : null;
+                  })()}
                 </div>
-                {eveningForm.todos.length === 0 ? (
+                {eveningForm.categories.every(c => c.items.length === 0) || eveningForm.categories.length === 0 ? (
                   <div style={{ padding: "20px 14px", textAlign: "center", border: "1.5px dashed #e5e7eb", borderRadius: 12, background: "#fafafa" }}>
                     <p style={{ fontSize: 12, color: "#9ca3af" }}>Kamu belum membuat to do list pagi ini.</p>
                   </div>
                 ) : (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                    {eveningForm.todos.map(t => (
-                      <motion.button key={t.id} type="button" layout whileTap={{ scale: 0.99 }} onClick={() => toggleEveningTodo(t.id)}
-                        style={{
-                          display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", textAlign: "left",
-                          border: `1.5px solid ${t.done ? "#c7d2fe" : "#e5e7eb"}`, borderRadius: 10, cursor: "pointer",
-                          background: t.done ? "#eef2ff" : "#fafafa", transition: "background 0.15s, border-color 0.15s",
-                        }}>
-                        <motion.span animate={{ scale: t.done ? [1, 1.3, 1] : 1 }} transition={{ duration: 0.28 }} style={{ display: "flex", flexShrink: 0 }}>
-                          {t.done ? <CheckCircle2 size={18} color="#4f46e5" /> : <Circle size={18} color="#c7d2fe" />}
-                        </motion.span>
-                        <span style={{ fontSize: 13, color: t.done ? "#6b7280" : "#111827", textDecoration: t.done ? "line-through" : "none", transition: "color 0.15s" }}>
-                          {t.text}
-                        </span>
-                      </motion.button>
-                    ))}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    {eveningForm.categories.filter(c => c.items.length > 0).map(cat => {
+                      const doneCount = cat.items.filter(i => i.done).length;
+                      return (
+                        <div key={cat.id} style={{ border: "1.5px solid #e5e7eb", borderRadius: 12, overflow: "hidden" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "8px 12px", background: "#f9fafb", borderBottom: "1px solid #f3f4f6" }}>
+                            <FolderKanban size={13} color="#6366f1" style={{ flexShrink: 0 }} />
+                            <span style={{ flex: 1, fontSize: 12, fontWeight: 700, color: "#374151" }}>{cat.name}</span>
+                            <span style={{ fontSize: 10, fontWeight: 700, color: "#4f46e5", background: "#eef2ff", padding: "2px 7px", borderRadius: 20, flexShrink: 0 }}>
+                              {doneCount}/{cat.items.length}
+                            </span>
+                          </div>
+                          <div style={{ padding: "6px 8px", display: "flex", flexDirection: "column", gap: 3 }}>
+                            {cat.items.map(it => (
+                              <motion.button key={it.id} type="button" layout whileTap={{ scale: 0.99 }} onClick={() => toggleEveningTodo(cat.id, it.id)}
+                                style={{
+                                  display: "flex", alignItems: "center", gap: 9, padding: "7px 9px", textAlign: "left",
+                                  border: "none", borderRadius: 8, cursor: "pointer",
+                                  background: it.done ? "#eef2ff" : "transparent", transition: "background 0.15s",
+                                }}>
+                                <motion.span animate={{ scale: it.done ? [1, 1.25, 1] : 1 }} transition={{ duration: 0.28 }}
+                                  style={{
+                                    width: 17, height: 17, borderRadius: 5, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+                                    background: it.done ? "#4f46e5" : "#fff", border: `1.5px solid ${it.done ? "#4f46e5" : "#d1d5db"}`, transition: "background 0.15s, border-color 0.15s",
+                                  }}>
+                                  {it.done && <Check size={11} color="#fff" strokeWidth={3} />}
+                                </motion.span>
+                                <span style={{ fontSize: 13, color: it.done ? "#9ca3af" : "#111827", textDecoration: it.done ? "line-through" : "none", transition: "color 0.15s" }}>
+                                  {it.text}
+                                </span>
+                              </motion.button>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -939,18 +1013,30 @@ export default function ProgressBoard({ currentUser, initialEntries, profiles, t
 
 // ── Sub-components ──────────────────────────────────────────────
 
-function TodoChecklist({ todos, fallbackText, size = 13 }: { todos?: TodoItem[] | null; fallbackText?: string | null; size?: number }) {
-  if (todos && todos.length > 0) {
+function TodoChecklist({ todos, fallbackText, size = 13 }: { todos?: TodoCategory[] | null; fallbackText?: string | null; size?: number }) {
+  const categories = (todos ?? []).filter(c => c.items.length > 0);
+  if (categories.length > 0) {
     return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-        {todos.map(t => (
-          <div key={t.id} style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
-            {t.done
-              ? <CheckCircle2 size={size} color="#10b981" style={{ flexShrink: 0, marginTop: 1 }} />
-              : <Circle size={size} color="#d1d5db" style={{ flexShrink: 0, marginTop: 1 }} />}
-            <span style={{ fontSize: 12, color: t.done ? "#9ca3af" : "#374151", textDecoration: t.done ? "line-through" : "none", lineHeight: 1.5 }}>
-              {t.text}
-            </span>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {categories.map(cat => (
+          <div key={cat.id}>
+            {cat.name && (
+              <p style={{ fontSize: 10, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 3 }}>
+                {cat.name}
+              </p>
+            )}
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              {cat.items.map(t => (
+                <div key={t.id} style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
+                  {t.done
+                    ? <CheckCircle2 size={size} color="#10b981" style={{ flexShrink: 0, marginTop: 1 }} />
+                    : <Circle size={size} color="#d1d5db" style={{ flexShrink: 0, marginTop: 1 }} />}
+                  <span style={{ fontSize: 12, color: t.done ? "#9ca3af" : "#374151", textDecoration: t.done ? "line-through" : "none", lineHeight: 1.5 }}>
+                    {t.text}
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
         ))}
       </div>

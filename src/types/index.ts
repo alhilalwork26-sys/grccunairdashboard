@@ -73,6 +73,12 @@ export interface TodoItem {
   done: boolean;
 }
 
+export interface TodoCategory {
+  id: string;
+  name: string;
+  items: TodoItem[];
+}
+
 export interface DailyProgress {
   id: string;
   user_id: string;
@@ -84,7 +90,7 @@ export interface DailyProgress {
   plan_tomorrow?: string | null;
   mood?: number | null;
   proof_url?: string | null;
-  todos?: TodoItem[] | null;
+  todos?: TodoCategory[] | null;
   created_at: string;
   updated_at: string;
   profiles?: { full_name: string; role: string } | null;
