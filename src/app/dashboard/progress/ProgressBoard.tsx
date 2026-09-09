@@ -7,7 +7,7 @@ import type { UserProfile, DailyProgress, TodoCategory } from "@/types";
 import {
   ChevronLeft, ChevronRight, X, Check, AlertCircle, Lightbulb,
   CalendarDays, Users, TrendingUp, Edit2, BarChart2,
-  Lock, ChevronDown, Paperclip, Link as LinkIcon, Upload, FileText, ExternalLink, Bell,
+  ChevronDown, Paperclip, Link as LinkIcon, Upload, FileText, ExternalLink, Bell,
   Plus, FolderKanban,
 } from "lucide-react";
 
@@ -56,33 +56,32 @@ function getWeekRange(today: string) {
   return { start: toStr(mon), end: toStr(sun) };
 }
 
-type PhaseStatus = "active" | "done" | "missed" | "locked_future" | "past_view";
+type PhaseStatus = "active" | "done" | "past_view";
 
-function getMorningStatus(isToday: boolean, hour: number, entry?: DailyProgress | null): PhaseStatus {
+function getMorningStatus(isToday: boolean, entry?: DailyProgress | null): PhaseStatus {
   if (!isToday) return "past_view";
   if ((entry?.todos && entry.todos.length > 0) || entry?.morning_plan) return "done";
-  return hour < 11 ? "active" : "missed";
+  return "active";
 }
 
-function getEveningStatus(isToday: boolean, hour: number, entry?: DailyProgress | null): PhaseStatus {
+function getEveningStatus(isToday: boolean, entry?: DailyProgress | null): PhaseStatus {
   if (!isToday) return "past_view";
   if (entry?.activities) return "done";
-  if (hour < 12) return "locked_future";
-  return hour < 18 ? "active" : "missed";
+  return "active";
 }
 
 const PHASE_CFG = {
   morning: {
-    icon: "🌅", title: "Rencana Pagi", deadline: "Batas 11.00 WIB",
+    icon: "🌅", title: "Rencana Pagi",
     color: "#f59e0b", bg: "#fffbeb", border: "#fde68a", activeColor: "#d97706",
     cta: "✍️  Buat To Do List",
-    hint: "Tuliskan daftar tugas yang ingin kamu selesaikan hari ini sebelum jam 11.00.",
+    hint: "Tuliskan daftar tugas yang ingin kamu selesaikan hari ini.",
   },
   evening: {
-    icon: "🌆", title: "Update Sore", deadline: "Batas 18.00 WIB",
+    icon: "🌆", title: "Update Sore",
     color: "#6366f1", bg: "#eef2ff", border: "#c7d2fe", activeColor: "#4f46e5",
     cta: "✅  Centang To Do List",
-    hint: "Centang tugas yang sudah kamu selesaikan hari ini sebelum jam 18.00.",
+    hint: "Centang tugas yang sudah kamu selesaikan hari ini.",
   },
 };
 
@@ -170,13 +169,12 @@ export default function ProgressBoard({ currentUser, initialEntries, profiles, t
 
   const isToday = date === today;
   const now = new Date();
-  const currentHour = isToday ? now.getHours() + now.getMinutes() / 60 : 0;
   const canViewAll  = ["super_admin", "manager"].includes(currentUser.role);
   const isSuperAdmin = currentUser.role === "super_admin";
 
   const myEntry = entries.find(e => e.user_id === currentUser.id);
-  const morningStatus = getMorningStatus(isToday, currentHour, myEntry);
-  const eveningStatus = getEveningStatus(isToday, currentHour, myEntry);
+  const morningStatus = getMorningStatus(isToday, myEntry);
+  const eveningStatus = getEveningStatus(isToday, myEntry);
 
   const fetchEntries = useCallback(async (d: string) => {
     setLoading(true);
@@ -589,7 +587,7 @@ export default function ProgressBoard({ currentUser, initialEntries, profiles, t
                   style={{ display: "flex", alignItems: "flex-start", gap: 10, background: "#f9fafb", border: "1px solid #f3f4f6", borderRadius: 14, padding: "14px 16px" }}>
                   <Lightbulb size={16} color="#f59e0b" style={{ flexShrink: 0, marginTop: 1 }} />
                   <p style={{ flex: 1, fontSize: 12.5, color: "#6b7280", lineHeight: 1.6, margin: 0 }}>
-                    Susun tugasmu ke dalam beberapa bab pekerjaan di pagi hari (sebelum 11.00), lalu tinggal centang satu-satu di sore hari (sebelum 18.00) — cara sederhana melacak progres harianmu.
+                    Susun tugasmu ke dalam beberapa bab pekerjaan di Rencana Pagi, lalu tinggal centang satu-satu di Update Sore — bisa diisi kapan pun, cara sederhana melacak progres harianmu.
                   </p>
                   <button onClick={() => setTipDismissed(true)}
                     style={{ border: "none", background: "none", cursor: "pointer", padding: 2, display: "flex", flexShrink: 0 }}>
@@ -662,7 +660,7 @@ export default function ProgressBoard({ currentUser, initialEntries, profiles, t
             <div style={{ padding: "20px 24px 16px", borderBottom: "1px solid #f3f4f6", display: "flex", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, background: "#fff", zIndex: 1 }}>
               <div>
                 <h2 style={{ fontSize: 16, fontWeight: 700, color: "#111827" }}>🌅 Rencana Pagi</h2>
-                <p style={{ fontSize: 12, color: "#9ca3af", marginTop: 2 }}>{fmt(date)} · Batas 11.00 WIB</p>
+                <p style={{ fontSize: 12, color: "#9ca3af", marginTop: 2 }}>{fmt(date)}</p>
               </div>
               <motion.button whileTap={{ scale: 0.95 }} onClick={() => setMorningOpen(false)}
                 style={{ padding: 6, border: "none", background: "#f3f4f6", borderRadius: 8, cursor: "pointer" }}>
@@ -766,7 +764,7 @@ export default function ProgressBoard({ currentUser, initialEntries, profiles, t
             <div style={{ padding: "20px 24px 16px", borderBottom: "1px solid #f3f4f6", display: "flex", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, background: "#fff", zIndex: 1 }}>
               <div>
                 <h2 style={{ fontSize: 16, fontWeight: 700, color: "#111827" }}>🌆 Update Sore</h2>
-                <p style={{ fontSize: 12, color: "#9ca3af", marginTop: 2 }}>{fmt(date)} · Batas 18.00 WIB</p>
+                <p style={{ fontSize: 12, color: "#9ca3af", marginTop: 2 }}>{fmt(date)}</p>
               </div>
               <motion.button whileTap={{ scale: 0.95 }} onClick={() => setEveningOpen(false)}
                 style={{ padding: 6, border: "none", background: "#f3f4f6", borderRadius: 8, cursor: "pointer" }}>
@@ -1037,7 +1035,6 @@ function PhaseCard({ phase, status, entry, isToday, isSuperAdmin, onAction }: {
           <span style={{ fontSize: 18 }}>{cfg.icon}</span>
           <div style={{ flex: 1 }}>
             <p style={{ fontSize: 13, fontWeight: 700, color: "#111827" }}>{cfg.title}</p>
-            <p style={{ fontSize: 10, color: cfg.activeColor, fontWeight: 600 }}>{cfg.deadline}</p>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <span style={{ fontSize: 10, fontWeight: 700, color: "#059669", background: "#dcfce7", border: "1px solid #bbf7d0", borderRadius: 20, padding: "2px 8px" }}>✓ Diisi</span>
@@ -1091,7 +1088,6 @@ function PhaseCard({ phase, status, entry, isToday, isSuperAdmin, onAction }: {
           <span style={{ fontSize: 18 }}>{cfg.icon}</span>
           <div style={{ flex: 1 }}>
             <p style={{ fontSize: 13, fontWeight: 700, color: "#111827" }}>{cfg.title}</p>
-            <p style={{ fontSize: 10, color: cfg.activeColor, fontWeight: 600 }}>{cfg.deadline}</p>
           </div>
           <span style={{ fontSize: 10, fontWeight: 700, color: cfg.activeColor, background: "#fff", border: `1px solid ${cfg.border}`, borderRadius: 20, padding: "2px 8px" }}>Aktif</span>
         </div>
@@ -1107,47 +1103,6 @@ function PhaseCard({ phase, status, entry, isToday, isSuperAdmin, onAction }: {
             }}>
             {cfg.cta}
           </motion.button>
-        </div>
-      </motion.div>
-    );
-  }
-
-  if (status === "missed") {
-    return (
-      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-        style={{ background: "#fff", border: "1px solid #fee2e2", borderRadius: 16, overflow: "hidden" }}>
-        <div style={{ padding: "14px 16px", background: "#fef2f2", borderBottom: "1px solid #fecaca", display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontSize: 18 }}>{cfg.icon}</span>
-          <div style={{ flex: 1 }}>
-            <p style={{ fontSize: 13, fontWeight: 700, color: "#111827" }}>{cfg.title}</p>
-            <p style={{ fontSize: 10, color: "#ef4444", fontWeight: 600 }}>Lewat deadline</p>
-          </div>
-          <span style={{ fontSize: 10, fontWeight: 700, color: "#ef4444", background: "#fee2e2", border: "1px solid #fecaca", borderRadius: 20, padding: "2px 8px" }}>✗ Terlewat</span>
-        </div>
-        <div style={{ padding: "28px 16px", textAlign: "center" }}>
-          <Lock size={22} color="#e5e7eb" style={{ margin: "0 auto 8px", display: "block" }} />
-          <p style={{ fontSize: 12, color: "#9ca3af" }}>Waktu pengisian sudah berakhir</p>
-          <p style={{ fontSize: 11, color: "#d1d5db", marginTop: 3 }}>{cfg.deadline}</p>
-        </div>
-      </motion.div>
-    );
-  }
-
-  if (status === "locked_future") {
-    return (
-      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-        style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 16, overflow: "hidden" }}>
-        <div style={{ padding: "14px 16px", borderBottom: "1px solid #f3f4f6", display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontSize: 18, opacity: 0.5 }}>{cfg.icon}</span>
-          <div style={{ flex: 1 }}>
-            <p style={{ fontSize: 13, fontWeight: 700, color: "#9ca3af" }}>{cfg.title}</p>
-            <p style={{ fontSize: 10, color: "#d1d5db", fontWeight: 600 }}>{cfg.deadline}</p>
-          </div>
-        </div>
-        <div style={{ padding: "28px 16px", textAlign: "center" }}>
-          <Lock size={22} color="#d1d5db" style={{ margin: "0 auto 8px", display: "block" }} />
-          <p style={{ fontSize: 12, color: "#9ca3af" }}>Tersedia mulai jam 12.00 siang</p>
-          <p style={{ fontSize: 11, color: "#d1d5db", marginTop: 3 }}>Isi sebelum jam 18.00 WIB</p>
         </div>
       </motion.div>
     );
