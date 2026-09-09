@@ -79,6 +79,15 @@ export interface TodoCategory {
   items: TodoItem[];
 }
 
+export interface PersonalTodo {
+  id: string;
+  user_id: string;
+  text: string;
+  done: boolean;
+  position: number;
+  created_at: string;
+}
+
 export interface DailyProgress {
   id: string;
   user_id: string;

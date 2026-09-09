@@ -3,12 +3,12 @@
 import { useState, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { createClient } from "@/lib/supabase/client";
-import type { UserProfile, DailyProgress, TodoCategory } from "@/types";
+import type { UserProfile, DailyProgress, TodoCategory, PersonalTodo } from "@/types";
 import {
   ChevronLeft, ChevronRight, X, Check, AlertCircle, Lightbulb,
   CalendarDays, Users, TrendingUp, Edit2, BarChart2,
   ChevronDown, Paperclip, Link as LinkIcon, Upload, FileText, ExternalLink, Bell,
-  Plus, FolderKanban,
+  Plus, FolderKanban, Home, CheckCircle2, Briefcase, User,
 } from "lucide-react";
 
 const MOOD_CFG = [
@@ -137,6 +137,45 @@ export default function ProgressBoard({ currentUser, initialEntries, profiles, t
   const [expandedUser, setExpandedUser] = useState<string | null>(null);
   const [toast, setToast]         = useState<{ msg: string; ok: boolean } | null>(null);
 
+  const [sidebarView, setSidebarView] = useState<"home" | "completed" | "today" | "personal" | "work">("home");
+  const [personalTodos, setPersonalTodos] = useState<PersonalTodo[]>([]);
+  const [personalLoading, setPersonalLoading] = useState(true);
+  const [newPersonalText, setNewPersonalText] = useState("");
+
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase
+        .from("personal_todos").select("*")
+        .eq("user_id", currentUser.id)
+        .order("position", { ascending: true }).order("created_at", { ascending: true });
+      setPersonalTodos(data ?? []);
+      setPersonalLoading(false);
+    })();
+  }, [supabase, currentUser.id]);
+
+  const addPersonalTodo = async () => {
+    const text = newPersonalText.trim();
+    if (!text) return;
+    setNewPersonalText("");
+    const { data, error } = await supabase
+      .from("personal_todos")
+      .insert({ user_id: currentUser.id, text, position: personalTodos.length })
+      .select("*").single();
+    if (!error && data) setPersonalTodos(p => [...p, data]);
+  };
+
+  const togglePersonalTodo = async (id: string) => {
+    const item = personalTodos.find(t => t.id === id);
+    if (!item) return;
+    setPersonalTodos(p => p.map(t => t.id === id ? { ...t, done: !t.done } : t));
+    await supabase.from("personal_todos").update({ done: !item.done }).eq("id", id);
+  };
+
+  const removePersonalTodo = async (id: string) => {
+    setPersonalTodos(p => p.filter(t => t.id !== id));
+    await supabase.from("personal_todos").delete().eq("id", id);
+  };
+
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
@@ -175,6 +214,17 @@ export default function ProgressBoard({ currentUser, initialEntries, profiles, t
   const myEntry = entries.find(e => e.user_id === currentUser.id);
   const morningStatus = getMorningStatus(isToday, myEntry);
   const eveningStatus = getEveningStatus(isToday, myEntry);
+
+  const workItems = normalizeTodoCategories(myEntry?.todos).flatMap(c => c.items);
+  const workDoneCount = workItems.filter(i => i.done).length;
+  const personalDoneCount = personalTodos.filter(t => t.done).length;
+  const sidebarCounts = {
+    home: workItems.length + personalTodos.length,
+    completed: workDoneCount + personalDoneCount,
+    today: workItems.length,
+    personal: personalTodos.length,
+    work: workItems.length,
+  };
 
   const fetchEntries = useCallback(async (d: string) => {
     setLoading(true);
@@ -597,57 +647,79 @@ export default function ProgressBoard({ currentUser, initialEntries, profiles, t
               )}
             </AnimatePresence>
 
-            {/* Date navigator */}
-            <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-              <div style={{ display: "flex", alignItems: "center", background: "#fff", border: "1px solid #e5e7eb", borderRadius: 12, overflow: "hidden" }}>
-                <button onClick={() => changeDate(-1)}
-                  style={{ padding: "10px 14px", border: "none", background: "transparent", cursor: "pointer", display: "flex" }}>
-                  <ChevronLeft size={16} color="#6b7280" />
-                </button>
-                <div style={{ padding: "10px 20px", borderLeft: "1px solid #f3f4f6", borderRight: "1px solid #f3f4f6", fontSize: 13, fontWeight: 600, color: "#111827", whiteSpace: "nowrap" }}>
-                  {fmt(date)}
-                  {isToday && (
-                    <span style={{ marginLeft: 8, fontSize: 10, fontWeight: 700, color: "#10b981", background: "#f0fdf4", border: "1px solid #d1fae5", borderRadius: 20, padding: "1px 7px" }}>
-                      Hari Ini
-                    </span>
-                  )}
-                </div>
-                <button onClick={() => changeDate(1)} disabled={isToday}
-                  style={{ padding: "10px 14px", border: "none", background: "transparent", cursor: isToday ? "not-allowed" : "pointer", display: "flex", opacity: isToday ? 0.3 : 1 }}>
-                  <ChevronRight size={16} color="#6b7280" />
-                </button>
-              </div>
-              <div style={{ marginLeft: "auto", background: "#fff", border: "1px solid #e5e7eb", borderRadius: 12, padding: "10px 16px", display: "flex", alignItems: "center", gap: 8 }}>
-                <Users size={14} color="#3b82f6" />
-                <div>
-                  <p style={{ fontSize: 10, color: "#9ca3af", fontWeight: 500 }}>Tim Melaporkan</p>
-                  <p style={{ fontSize: 13, fontWeight: 700, color: "#111827" }}>{entries.length} orang</p>
-                </div>
-              </div>
-            </div>
+            <div style={{ display: "flex", gap: 20, alignItems: "flex-start" }}>
+              <ProgressSidebar view={sidebarView} onChange={setSidebarView} counts={sidebarCounts} />
 
-            {/* TWO PHASE CARDS — my own */}
-            <div>
-              <p style={{ fontSize: 11, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 12 }}>
-                Progress Kamu
-              </p>
-              {loading ? (
-                <div style={{ display: "flex", justifyContent: "center", padding: 40 }}>
-                  <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                    style={{ width: 24, height: 24, border: "3px solid #e5e7eb", borderTopColor: "#10b981", borderRadius: "50%" }} />
-                </div>
-              ) : (
-                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 16 }}>
-                  <PhaseCard
-                    phase="morning" status={morningStatus} entry={myEntry}
-                    isToday={isToday} isSuperAdmin={isSuperAdmin} onAction={openMorning}
+              <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 20 }}>
+                {(sidebarView === "home" || sidebarView === "today" || sidebarView === "work") && (
+                  <>
+                    {/* Date navigator */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                      <div style={{ display: "flex", alignItems: "center", background: "#fff", border: "1px solid #e5e7eb", borderRadius: 12, overflow: "hidden" }}>
+                        <button onClick={() => changeDate(-1)}
+                          style={{ padding: "10px 14px", border: "none", background: "transparent", cursor: "pointer", display: "flex" }}>
+                          <ChevronLeft size={16} color="#6b7280" />
+                        </button>
+                        <div style={{ padding: "10px 20px", borderLeft: "1px solid #f3f4f6", borderRight: "1px solid #f3f4f6", fontSize: 13, fontWeight: 600, color: "#111827", whiteSpace: "nowrap" }}>
+                          {fmt(date)}
+                          {isToday && (
+                            <span style={{ marginLeft: 8, fontSize: 10, fontWeight: 700, color: "#10b981", background: "#f0fdf4", border: "1px solid #d1fae5", borderRadius: 20, padding: "1px 7px" }}>
+                              Hari Ini
+                            </span>
+                          )}
+                        </div>
+                        <button onClick={() => changeDate(1)} disabled={isToday}
+                          style={{ padding: "10px 14px", border: "none", background: "transparent", cursor: isToday ? "not-allowed" : "pointer", display: "flex", opacity: isToday ? 0.3 : 1 }}>
+                          <ChevronRight size={16} color="#6b7280" />
+                        </button>
+                      </div>
+                      <div style={{ marginLeft: "auto", background: "#fff", border: "1px solid #e5e7eb", borderRadius: 12, padding: "10px 16px", display: "flex", alignItems: "center", gap: 8 }}>
+                        <Users size={14} color="#3b82f6" />
+                        <div>
+                          <p style={{ fontSize: 10, color: "#9ca3af", fontWeight: 500 }}>Tim Melaporkan</p>
+                          <p style={{ fontSize: 13, fontWeight: 700, color: "#111827" }}>{entries.length} orang</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* TWO PHASE CARDS — my own */}
+                    <div>
+                      <p style={{ fontSize: 11, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 12 }}>
+                        Progress Kamu
+                      </p>
+                      {loading ? (
+                        <div style={{ display: "flex", justifyContent: "center", padding: 40 }}>
+                          <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                            style={{ width: 24, height: 24, border: "3px solid #e5e7eb", borderTopColor: "#10b981", borderRadius: "50%" }} />
+                        </div>
+                      ) : (
+                        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 16 }}>
+                          <PhaseCard
+                            phase="morning" status={morningStatus} entry={myEntry}
+                            isToday={isToday} isSuperAdmin={isSuperAdmin} onAction={openMorning}
+                          />
+                          <PhaseCard
+                            phase="evening" status={eveningStatus} entry={myEntry}
+                            isToday={isToday} isSuperAdmin={isSuperAdmin} onAction={openEvening}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+
+                {(sidebarView === "home" || sidebarView === "personal") && (
+                  <PersonalTodoPanel
+                    todos={personalTodos} loading={personalLoading} newText={newPersonalText}
+                    onNewTextChange={setNewPersonalText} onAdd={addPersonalTodo}
+                    onToggle={togglePersonalTodo} onRemove={removePersonalTodo}
                   />
-                  <PhaseCard
-                    phase="evening" status={eveningStatus} entry={myEntry}
-                    isToday={isToday} isSuperAdmin={isSuperAdmin} onAction={openEvening}
-                  />
-                </div>
-              )}
+                )}
+
+                {sidebarView === "completed" && (
+                  <CompletedView workCategories={normalizeTodoCategories(myEntry?.todos)} personalTodos={personalTodos} />
+                )}
+              </div>
             </div>
           </>
         )}
@@ -1018,6 +1090,143 @@ function TodoChecklist({ todos, fallbackText, size = 13 }: { todos?: TodoCategor
   }
   if (fallbackText) return <p style={{ fontSize: 12, color: "#374151", lineHeight: 1.5 }}>{fallbackText}</p>;
   return <p style={{ fontSize: 12, color: "#d1d5db", fontStyle: "italic" }}>Belum diisi</p>;
+}
+
+type SidebarView = "home" | "completed" | "today" | "personal" | "work";
+
+function ProgressSidebar({ view, onChange, counts }: {
+  view: SidebarView; onChange: (v: SidebarView) => void; counts: Record<SidebarView, number>;
+}) {
+  const [open, setOpen] = useState(true);
+  const items: { key: SidebarView; label: string; icon: typeof Home; color: string }[] = [
+    { key: "home", label: "Home", icon: Home, color: "#6366f1" },
+    { key: "completed", label: "Completed", icon: CheckCircle2, color: "#10b981" },
+    { key: "today", label: "Today", icon: CalendarDays, color: "#f59e0b" },
+    { key: "personal", label: "Personal", icon: User, color: "#3b82f6" },
+    { key: "work", label: "Work", icon: Briefcase, color: "#92400e" },
+  ];
+  return (
+    <div style={{ width: 200, flexShrink: 0 }}>
+      <button type="button" onClick={() => setOpen(o => !o)}
+        style={{ display: "flex", alignItems: "center", gap: 6, width: "100%", padding: "6px 8px", border: "none", background: "none", cursor: "pointer", marginBottom: 2 }}>
+        <ChevronDown size={13} color="#9ca3af" style={{ transform: open ? "none" : "rotate(-90deg)", transition: "transform 0.2s" }} />
+        <span style={{ fontSize: 11, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.06em" }}>To Do Lists</span>
+      </button>
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }} style={{ overflow: "hidden" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 3, paddingTop: 2 }}>
+              {items.map((it, i) => {
+                const active = view === it.key;
+                const Icon = it.icon;
+                return (
+                  <motion.button key={it.key} type="button" onClick={() => onChange(it.key)}
+                    initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.04, duration: 0.18 }}
+                    whileTap={{ scale: 0.98 }}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 10, padding: "9px 10px", borderRadius: 10,
+                      border: "none", cursor: "pointer", textAlign: "left",
+                      background: active ? "#eef2ff" : "transparent", transition: "background 0.15s",
+                    }}>
+                    <Icon size={15} color={active ? "#4f46e5" : it.color} style={{ flexShrink: 0 }} />
+                    <span style={{ flex: 1, fontSize: 13, fontWeight: active ? 700 : 600, color: active ? "#4f46e5" : "#374151" }}>{it.label}</span>
+                    <span style={{
+                      fontSize: 11, fontWeight: 700, color: active ? "#4f46e5" : "#9ca3af",
+                      background: active ? "#fff" : "#f3f4f6", borderRadius: 20, padding: "1px 8px", minWidth: 18, textAlign: "center", flexShrink: 0,
+                    }}>
+                      {counts[it.key]}
+                    </span>
+                  </motion.button>
+                );
+              })}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function PersonalTodoPanel({ todos, loading, newText, onNewTextChange, onAdd, onToggle, onRemove }: {
+  todos: PersonalTodo[]; loading: boolean; newText: string;
+  onNewTextChange: (v: string) => void; onAdd: () => void;
+  onToggle: (id: string) => void; onRemove: (id: string) => void;
+}) {
+  return (
+    <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 16, padding: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+        <User size={16} color="#3b82f6" />
+        <p style={{ fontSize: 14, fontWeight: 700, color: "#111827" }}>Personal</p>
+        <span style={{ fontSize: 11, color: "#9ca3af", marginLeft: "auto" }}>Bebas diisi kapan pun, tidak terikat tanggal</span>
+      </div>
+      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+        <input type="text" placeholder="Tambah to-do pribadi…" value={newText}
+          onChange={e => onNewTextChange(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); onAdd(); } }}
+          style={{ flex: 1, padding: "9px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 13, outline: "none", fontFamily: "inherit", boxSizing: "border-box" }}
+          onFocus={e => (e.target.style.borderColor = "#3b82f6")} onBlur={e => (e.target.style.borderColor = "#e5e7eb")} />
+        <motion.button whileTap={{ scale: 0.95 }} type="button" onClick={onAdd}
+          style={{ display: "flex", alignItems: "center", gap: 5, padding: "0 14px", border: "none", borderRadius: 10, background: "#3b82f6", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
+          <Plus size={14} /> Tambah
+        </motion.button>
+      </div>
+      {loading ? (
+        <p style={{ fontSize: 12, color: "#9ca3af" }}>Memuat…</p>
+      ) : todos.length === 0 ? (
+        <p style={{ fontSize: 12, color: "#d1d5db", fontStyle: "italic", padding: "12px 0" }}>Belum ada to-do pribadi.</p>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <AnimatePresence initial={false}>
+            {todos.map(t => (
+              <motion.div key={t.id} layout initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, height: 0 }}
+                style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 9px", borderRadius: 9, background: t.done ? "#eff6ff" : "transparent" }}>
+                <motion.button type="button" whileTap={{ scale: 0.9 }} onClick={() => onToggle(t.id)}
+                  style={{
+                    width: 17, height: 17, borderRadius: 5, flexShrink: 0, padding: 0,
+                    display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
+                    background: t.done ? "#3b82f6" : "#fff", border: `1.5px solid ${t.done ? "#3b82f6" : "#d1d5db"}`,
+                  }}>
+                  {t.done && <Check size={11} color="#fff" strokeWidth={3} />}
+                </motion.button>
+                <span style={{ flex: 1, fontSize: 13, color: t.done ? "#9ca3af" : "#111827", textDecoration: t.done ? "line-through" : "none" }}>{t.text}</span>
+                <button type="button" onClick={() => onRemove(t.id)} style={{ border: "none", background: "none", cursor: "pointer", padding: 4, display: "flex", flexShrink: 0 }}>
+                  <X size={13} color="#ef4444" />
+                </button>
+              </motion.div>
+            ))}
+          </AnimatePresence>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CompletedView({ workCategories, personalTodos }: { workCategories: TodoCategory[]; personalTodos: PersonalTodo[] }) {
+  const doneWork = workCategories.flatMap(c => c.items.filter(i => i.done).map(i => ({ id: i.id, text: i.text, source: c.name || "Kerjaan" })));
+  const donePersonal = personalTodos.filter(t => t.done).map(t => ({ id: t.id, text: t.text, source: "Personal" }));
+  const all = [...doneWork, ...donePersonal];
+  return (
+    <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 16, padding: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+        <CheckCircle2 size={16} color="#10b981" />
+        <p style={{ fontSize: 14, fontWeight: 700, color: "#111827" }}>Completed</p>
+      </div>
+      {all.length === 0 ? (
+        <p style={{ fontSize: 12, color: "#d1d5db", fontStyle: "italic", padding: "12px 0" }}>Belum ada tugas yang selesai.</p>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          {all.map(t => (
+            <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 9px" }}>
+              <CheckCircle2 size={15} color="#10b981" style={{ flexShrink: 0 }} />
+              <span style={{ flex: 1, fontSize: 13, color: "#9ca3af", textDecoration: "line-through" }}>{t.text}</span>
+              <span style={{ fontSize: 10, fontWeight: 700, color: "#9ca3af", background: "#f3f4f6", borderRadius: 20, padding: "1px 7px", flexShrink: 0 }}>{t.source}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function PhaseCard({ phase, status, entry, isToday, isSuperAdmin, onAction }: {
