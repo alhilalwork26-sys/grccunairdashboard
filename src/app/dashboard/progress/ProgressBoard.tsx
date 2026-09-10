@@ -8,7 +8,7 @@ import {
   ChevronLeft, ChevronRight, X, Check, AlertCircle, Lightbulb,
   CalendarDays, Users, TrendingUp, Edit2, BarChart2,
   ChevronDown, Paperclip, Link as LinkIcon, Upload, FileText, ExternalLink, Bell,
-  Plus, FolderKanban, Home, CheckCircle2, Briefcase, User,
+  Plus, FolderKanban, Home, CheckCircle2, Briefcase, User, Smile,
 } from "lucide-react";
 
 const MOOD_CFG = [
@@ -141,6 +141,7 @@ export default function ProgressBoard({ currentUser, initialEntries, profiles, t
   const [personalTodos, setPersonalTodos] = useState<PersonalTodo[]>([]);
   const [personalLoading, setPersonalLoading] = useState(true);
   const [newPersonalText, setNewPersonalText] = useState("");
+  const [newPersonalEmoji, setNewPersonalEmoji] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -157,10 +158,12 @@ export default function ProgressBoard({ currentUser, initialEntries, profiles, t
     const text = newPersonalText.trim();
     if (!text) return;
     setNewPersonalText("");
+    const emoji = newPersonalEmoji;
+    setNewPersonalEmoji(null);
     try {
       const { data, error } = await supabase
         .from("personal_todos")
-        .insert({ user_id: currentUser.id, text, position: personalTodos.length })
+        .insert({ user_id: currentUser.id, text, emoji, position: personalTodos.length })
         .select("*").single();
       if (error) { console.error("[personal_todos] insert failed:", error); showToast(`Gagal menambah to-do: ${error.message}`, false); return; }
       if (data) setPersonalTodos(p => [...p, data]);
@@ -742,6 +745,7 @@ export default function ProgressBoard({ currentUser, initialEntries, profiles, t
                     todos={personalTodos} loading={personalLoading} newText={newPersonalText}
                     onNewTextChange={setNewPersonalText} onAdd={addPersonalTodo}
                     onToggle={togglePersonalTodo} onRemove={removePersonalTodo}
+                    newEmoji={newPersonalEmoji} onNewEmojiChange={setNewPersonalEmoji}
                   />
                 )}
 
@@ -1177,11 +1181,107 @@ function ProgressSidebar({ view, onChange, counts }: {
   );
 }
 
-function PersonalTodoPanel({ todos, loading, newText, onNewTextChange, onAdd, onToggle, onRemove }: {
+const EMOJI_GROUPS: { label: string; emojis: { char: string; keywords: string }[] }[] = [
+  {
+    label: "Smileys & Semangat",
+    emojis: [
+      { char: "😀", keywords: "senyum happy" }, { char: "😄", keywords: "ceria senang" }, { char: "😊", keywords: "tersenyum" },
+      { char: "😉", keywords: "kedip" }, { char: "😍", keywords: "cinta suka" }, { char: "🤔", keywords: "mikir" },
+      { char: "😴", keywords: "tidur ngantuk" }, { char: "😎", keywords: "keren santai" }, { char: "🥳", keywords: "pesta rayakan" },
+      { char: "😢", keywords: "sedih" }, { char: "😡", keywords: "marah" }, { char: "🙌", keywords: "semangat rayakan" },
+      { char: "👍", keywords: "bagus setuju oke" }, { char: "👏", keywords: "tepuk tangan apresiasi" },
+      { char: "💪", keywords: "kuat olahraga semangat gym" }, { char: "🙏", keywords: "doa terima kasih" },
+    ],
+  },
+  {
+    label: "Aktivitas & Olahraga",
+    emojis: [
+      { char: "⚽", keywords: "bola sepak sport" }, { char: "🏀", keywords: "basket" }, { char: "🏃", keywords: "lari jogging" },
+      { char: "🚴", keywords: "sepeda gowes" }, { char: "🏋️", keywords: "gym angkat beban fitness" }, { char: "🧘", keywords: "yoga meditasi" },
+      { char: "🥊", keywords: "tinju" }, { char: "🎯", keywords: "target fokus" }, { char: "🎮", keywords: "game main" },
+      { char: "🎨", keywords: "seni desain gambar" }, { char: "🎵", keywords: "musik" }, { char: "📚", keywords: "buku baca belajar" },
+      { char: "✏️", keywords: "tulis catat" }, { char: "💻", keywords: "laptop kerja coding" },
+    ],
+  },
+  {
+    label: "Objek & Simbol",
+    emojis: [
+      { char: "📝", keywords: "catatan tulis" }, { char: "📌", keywords: "pin penting" }, { char: "📅", keywords: "kalender jadwal" },
+      { char: "⏰", keywords: "alarm waktu" }, { char: "💡", keywords: "ide lampu" }, { char: "🔥", keywords: "semangat api" },
+      { char: "⭐", keywords: "bintang favorit" }, { char: "✅", keywords: "selesai centang" }, { char: "💰", keywords: "uang keuangan" },
+      { char: "🛒", keywords: "belanja" }, { char: "🧹", keywords: "bersih beres" }, { char: "🧺", keywords: "cucian laundry" },
+      { char: "🍳", keywords: "masak dapur" }, { char: "🛠️", keywords: "perbaikan alat" },
+    ],
+  },
+  {
+    label: "Makanan & Minuman",
+    emojis: [
+      { char: "☕", keywords: "kopi minum" }, { char: "🍵", keywords: "teh" }, { char: "🍎", keywords: "apel buah sehat" },
+      { char: "🥗", keywords: "salad sehat diet" }, { char: "🍔", keywords: "burger makan" }, { char: "🍕", keywords: "pizza" },
+      { char: "🍜", keywords: "mie makan" }, { char: "🍱", keywords: "bekal makan siang" }, { char: "💧", keywords: "air minum" },
+    ],
+  },
+  {
+    label: "Perjalanan & Tempat",
+    emojis: [
+      { char: "🚗", keywords: "mobil kendaraan" }, { char: "✈️", keywords: "pesawat travel" }, { char: "🏠", keywords: "rumah" },
+      { char: "🏢", keywords: "kantor gedung" }, { char: "🏥", keywords: "rumah sakit dokter" }, { char: "🎓", keywords: "sekolah kuliah wisuda" },
+      { char: "🕌", keywords: "masjid ibadah" }, { char: "🛌", keywords: "istirahat tidur" },
+    ],
+  },
+];
+
+function EmojiPickerPopover({ onSelect, onClose }: { onSelect: (emoji: string) => void; onClose: () => void }) {
+  const [query, setQuery] = useState("");
+  const q = query.trim().toLowerCase();
+  const groups = EMOJI_GROUPS
+    .map(g => ({ ...g, emojis: q ? g.emojis.filter(e => e.keywords.includes(q) || e.char.includes(q)) : g.emojis }))
+    .filter(g => g.emojis.length > 0);
+  return (
+    <>
+      <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 29 }} />
+      <motion.div initial={{ opacity: 0, y: -6, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -4, scale: 0.97 }}
+        transition={{ duration: 0.15 }}
+        style={{
+          position: "absolute", top: "calc(100% + 6px)", left: 0, zIndex: 30, width: 280,
+          background: "#fff", border: "1px solid #e5e7eb", borderRadius: 14, boxShadow: "0 12px 32px rgba(0,0,0,0.14)",
+          padding: 12, maxHeight: 320, display: "flex", flexDirection: "column", gap: 10,
+        }}
+        onClick={e => e.stopPropagation()}>
+        <input type="text" autoFocus placeholder="Cari emoji…" value={query} onChange={e => setQuery(e.target.value)}
+          style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 9, fontSize: 13, outline: "none", boxSizing: "border-box", fontFamily: "inherit" }}
+          onFocus={e => (e.target.style.borderColor = "#3b82f6")} onBlur={e => (e.target.style.borderColor = "#e5e7eb")} />
+        <div style={{ overflowY: "auto", display: "flex", flexDirection: "column", gap: 10 }}>
+          {groups.length === 0 ? (
+            <p style={{ fontSize: 12, color: "#9ca3af", textAlign: "center", padding: "12px 0" }}>Tidak ditemukan.</p>
+          ) : groups.map(g => (
+            <div key={g.label}>
+              <p style={{ fontSize: 10, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 5 }}>{g.label}</p>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gap: 2 }}>
+                {g.emojis.map(e => (
+                  <button key={e.char} type="button" onClick={() => onSelect(e.char)}
+                    style={{ fontSize: 18, padding: 5, border: "none", background: "none", cursor: "pointer", borderRadius: 7, lineHeight: 1 }}
+                    onMouseEnter={ev => (ev.currentTarget.style.background = "#f3f4f6")}
+                    onMouseLeave={ev => (ev.currentTarget.style.background = "none")}>
+                    {e.char}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </motion.div>
+    </>
+  );
+}
+
+function PersonalTodoPanel({ todos, loading, newText, onNewTextChange, onAdd, onToggle, onRemove, newEmoji, onNewEmojiChange }: {
   todos: PersonalTodo[]; loading: boolean; newText: string;
   onNewTextChange: (v: string) => void; onAdd: () => void;
   onToggle: (id: string) => void; onRemove: (id: string) => void;
+  newEmoji: string | null; onNewEmojiChange: (v: string | null) => void;
 }) {
+  const [pickerOpen, setPickerOpen] = useState(false);
   return (
     <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 16, padding: 16 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
@@ -1190,6 +1290,23 @@ function PersonalTodoPanel({ todos, loading, newText, onNewTextChange, onAdd, on
         <span style={{ fontSize: 11, color: "#9ca3af", marginLeft: "auto" }}>Bebas diisi kapan pun, tidak terikat tanggal</span>
       </div>
       <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+        <div style={{ position: "relative" }}>
+          <motion.button whileTap={{ scale: 0.94 }} type="button" onClick={() => setPickerOpen(o => !o)}
+            style={{
+              width: 38, height: 38, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+              border: "1.5px solid #e5e7eb", borderRadius: 10, background: "#fafafa", cursor: "pointer", fontSize: 17,
+            }}>
+            {newEmoji ?? <Smile size={16} color="#9ca3af" />}
+          </motion.button>
+          <AnimatePresence>
+            {pickerOpen && (
+              <EmojiPickerPopover
+                onSelect={e => { onNewEmojiChange(e); setPickerOpen(false); }}
+                onClose={() => setPickerOpen(false)}
+              />
+            )}
+          </AnimatePresence>
+        </div>
         <input type="text" placeholder="Tambah to-do pribadi…" value={newText}
           onChange={e => onNewTextChange(e.target.value)}
           onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); onAdd(); } }}
@@ -1222,7 +1339,10 @@ function PersonalTodoPanel({ todos, loading, newText, onNewTextChange, onAdd, on
                   }}>
                   {t.done && <Check size={11} color="#fff" strokeWidth={3} />}
                 </motion.button>
-                <span style={{ flex: 1, fontSize: 13, color: t.done ? "#9ca3af" : "#111827", textDecoration: t.done ? "line-through" : "none" }}>{t.text}</span>
+                <span style={{ flex: 1, fontSize: 13, color: t.done ? "#9ca3af" : "#111827", textDecoration: t.done ? "line-through" : "none", display: "flex", alignItems: "center", gap: 6 }}>
+                  {t.emoji && <span style={{ fontSize: 14 }}>{t.emoji}</span>}
+                  {t.text}
+                </span>
                 <button type="button" onClick={() => onRemove(t.id)} style={{ border: "none", background: "none", cursor: "pointer", padding: 4, display: "flex", flexShrink: 0 }}>
                   <X size={13} color="#ef4444" />
                 </button>
@@ -1236,8 +1356,8 @@ function PersonalTodoPanel({ todos, loading, newText, onNewTextChange, onAdd, on
 }
 
 function CompletedView({ workCategories, personalTodos }: { workCategories: TodoCategory[]; personalTodos: PersonalTodo[] }) {
-  const doneWork = workCategories.flatMap(c => c.items.filter(i => i.done).map(i => ({ id: i.id, text: i.text, source: c.name || "Kerjaan" })));
-  const donePersonal = personalTodos.filter(t => t.done).map(t => ({ id: t.id, text: t.text, source: "Personal" }));
+  const doneWork = workCategories.flatMap(c => c.items.filter(i => i.done).map(i => ({ id: i.id, text: i.text, emoji: null as string | null, source: c.name || "Kerjaan" })));
+  const donePersonal = personalTodos.filter(t => t.done).map(t => ({ id: t.id, text: t.text, emoji: t.emoji ?? null, source: "Personal" }));
   const all = [...doneWork, ...donePersonal];
   return (
     <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 16, padding: 16 }}>
@@ -1252,7 +1372,10 @@ function CompletedView({ workCategories, personalTodos }: { workCategories: Todo
           {all.map(t => (
             <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 9px" }}>
               <CheckCircle2 size={15} color="#10b981" style={{ flexShrink: 0 }} />
-              <span style={{ flex: 1, fontSize: 13, color: "#9ca3af", textDecoration: "line-through" }}>{t.text}</span>
+              <span style={{ flex: 1, fontSize: 13, color: "#9ca3af", textDecoration: "line-through", display: "flex", alignItems: "center", gap: 6 }}>
+                {t.emoji && <span style={{ fontSize: 14 }}>{t.emoji}</span>}
+                {t.text}
+              </span>
               <span style={{ fontSize: 10, fontWeight: 700, color: "#9ca3af", background: "#f3f4f6", borderRadius: 20, padding: "1px 7px", flexShrink: 0 }}>{t.source}</span>
             </div>
           ))}

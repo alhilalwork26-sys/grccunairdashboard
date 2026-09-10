@@ -83,6 +83,7 @@ export interface PersonalTodo {
   id: string;
   user_id: string;
   text: string;
+  emoji?: string | null;
   done: boolean;
   position: number;
   created_at: string;
