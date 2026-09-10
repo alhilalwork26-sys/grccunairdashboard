@@ -157,34 +157,51 @@ export default function ProgressBoard({ currentUser, initialEntries, profiles, t
     const text = newPersonalText.trim();
     if (!text) return;
     setNewPersonalText("");
-    const { data, error } = await supabase
-      .from("personal_todos")
-      .insert({ user_id: currentUser.id, text, position: personalTodos.length })
-      .select("*").single();
-    if (error) { console.error("[personal_todos] insert failed:", error); showToast(`Gagal menambah to-do: ${error.message}`, false); return; }
-    if (data) setPersonalTodos(p => [...p, data]);
+    try {
+      const { data, error } = await supabase
+        .from("personal_todos")
+        .insert({ user_id: currentUser.id, text, position: personalTodos.length })
+        .select("*").single();
+      if (error) { console.error("[personal_todos] insert failed:", error); showToast(`Gagal menambah to-do: ${error.message}`, false); return; }
+      if (data) setPersonalTodos(p => [...p, data]);
+    } catch (e) {
+      console.error("[personal_todos] insert threw:", e);
+      showToast(`Gagal menambah to-do: ${e instanceof Error ? e.message : "kesalahan tak dikenal"}`, false);
+    }
   };
 
   const togglePersonalTodo = async (id: string) => {
     const item = personalTodos.find(t => t.id === id);
     if (!item) return;
     setPersonalTodos(p => p.map(t => t.id === id ? { ...t, done: !t.done } : t));
-    const { error } = await supabase.from("personal_todos").update({ done: !item.done }).eq("id", id);
-    if (error) {
-      console.error("[personal_todos] update failed:", error);
+    try {
+      const { error } = await supabase.from("personal_todos").update({ done: !item.done }).eq("id", id);
+      if (error) {
+        console.error("[personal_todos] update failed:", error);
+        setPersonalTodos(p => p.map(t => t.id === id ? { ...t, done: item.done } : t));
+        showToast(`Gagal menyimpan: ${error.message}`, false);
+      }
+    } catch (e) {
+      console.error("[personal_todos] update threw:", e);
       setPersonalTodos(p => p.map(t => t.id === id ? { ...t, done: item.done } : t));
-      showToast(`Gagal menyimpan: ${error.message}`, false);
+      showToast(`Gagal menyimpan: ${e instanceof Error ? e.message : "kesalahan tak dikenal"}`, false);
     }
   };
 
   const removePersonalTodo = async (id: string) => {
     const removed = personalTodos.find(t => t.id === id);
     setPersonalTodos(p => p.filter(t => t.id !== id));
-    const { error } = await supabase.from("personal_todos").delete().eq("id", id);
-    if (error) {
-      console.error("[personal_todos] delete failed:", error);
+    try {
+      const { error } = await supabase.from("personal_todos").delete().eq("id", id);
+      if (error) {
+        console.error("[personal_todos] delete failed:", error);
+        if (removed) setPersonalTodos(p => [...p, removed].sort((a, b) => a.position - b.position));
+        showToast(`Gagal menghapus: ${error.message}`, false);
+      }
+    } catch (e) {
+      console.error("[personal_todos] delete threw:", e);
       if (removed) setPersonalTodos(p => [...p, removed].sort((a, b) => a.position - b.position));
-      showToast(`Gagal menghapus: ${error.message}`, false);
+      showToast(`Gagal menghapus: ${e instanceof Error ? e.message : "kesalahan tak dikenal"}`, false);
     }
   };
 
@@ -1178,8 +1195,12 @@ function PersonalTodoPanel({ todos, loading, newText, onNewTextChange, onAdd, on
           onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); onAdd(); } }}
           style={{ flex: 1, padding: "9px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 13, outline: "none", fontFamily: "inherit", boxSizing: "border-box" }}
           onFocus={e => (e.target.style.borderColor = "#3b82f6")} onBlur={e => (e.target.style.borderColor = "#e5e7eb")} />
-        <motion.button whileTap={{ scale: 0.95 }} type="button" onClick={onAdd}
-          style={{ display: "flex", alignItems: "center", gap: 5, padding: "0 14px", border: "none", borderRadius: 10, background: "#3b82f6", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
+        <motion.button whileTap={{ scale: newText.trim() ? 0.95 : 1 }} type="button" onClick={onAdd} disabled={!newText.trim()}
+          style={{
+            display: "flex", alignItems: "center", gap: 5, padding: "0 14px", border: "none", borderRadius: 10,
+            background: newText.trim() ? "#3b82f6" : "#d1d5db", color: "#fff", fontWeight: 700, fontSize: 13,
+            cursor: newText.trim() ? "pointer" : "not-allowed",
+          }}>
           <Plus size={14} /> Tambah
         </motion.button>
       </div>
