@@ -161,19 +161,31 @@ export default function ProgressBoard({ currentUser, initialEntries, profiles, t
       .from("personal_todos")
       .insert({ user_id: currentUser.id, text, position: personalTodos.length })
       .select("*").single();
-    if (!error && data) setPersonalTodos(p => [...p, data]);
+    if (error) { console.error("[personal_todos] insert failed:", error); showToast(`Gagal menambah to-do: ${error.message}`, false); return; }
+    if (data) setPersonalTodos(p => [...p, data]);
   };
 
   const togglePersonalTodo = async (id: string) => {
     const item = personalTodos.find(t => t.id === id);
     if (!item) return;
     setPersonalTodos(p => p.map(t => t.id === id ? { ...t, done: !t.done } : t));
-    await supabase.from("personal_todos").update({ done: !item.done }).eq("id", id);
+    const { error } = await supabase.from("personal_todos").update({ done: !item.done }).eq("id", id);
+    if (error) {
+      console.error("[personal_todos] update failed:", error);
+      setPersonalTodos(p => p.map(t => t.id === id ? { ...t, done: item.done } : t));
+      showToast(`Gagal menyimpan: ${error.message}`, false);
+    }
   };
 
   const removePersonalTodo = async (id: string) => {
+    const removed = personalTodos.find(t => t.id === id);
     setPersonalTodos(p => p.filter(t => t.id !== id));
-    await supabase.from("personal_todos").delete().eq("id", id);
+    const { error } = await supabase.from("personal_todos").delete().eq("id", id);
+    if (error) {
+      console.error("[personal_todos] delete failed:", error);
+      if (removed) setPersonalTodos(p => [...p, removed].sort((a, b) => a.position - b.position));
+      showToast(`Gagal menghapus: ${error.message}`, false);
+    }
   };
 
   const [isMobile, setIsMobile] = useState(false);
