@@ -90,6 +90,7 @@ export default function TaskBoard({ initialTasks, profiles, currentUser, canSeeA
   const [popup, setPopup] = useState<{ type: "status" | "menu"; taskId: string; top: number; left: number } | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [statusLoading, setStatusLoading] = useState<string | null>(null);
+  const [detailTask, setDetailTask] = useState<Task | null>(null);
 
   // Review flow
   const [reviewModal, setReviewModal]       = useState<{ task: Task } | null>(null);
@@ -464,7 +465,8 @@ export default function TaskBoard({ initialTasks, profiles, currentUser, canSeeA
                 <motion.div key={task.id} layout initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: 12, transition: { duration: 0.15 } }} transition={{ delay: i * 0.04, duration: 0.3 }}
                   whileHover={{ background: isUrgent ? "#fef9f9" : "#fafafa" }}
-                  style={{ display: "grid", gridTemplateColumns: "1fr 160px 100px 110px 130px 48px", alignItems: "center", padding: "13px 18px", borderBottom: "1px solid #f9fafb", borderLeft: `3px solid ${accentColor}`, background: isUrgent ? "#fffafa" : "transparent", transition: "background 0.15s", cursor: "default", minWidth: 640 }}>
+                  onClick={() => setDetailTask(task)}
+                  style={{ display: "grid", gridTemplateColumns: "1fr 160px 100px 110px 130px 48px", alignItems: "center", padding: "13px 18px", borderBottom: "1px solid #f9fafb", borderLeft: `3px solid ${accentColor}`, background: isUrgent ? "#fffafa" : "transparent", transition: "background 0.15s", cursor: "pointer", minWidth: 640 }}>
 
                   {/* Title + meta indicators */}
                   <div style={{ minWidth: 0 }}>
@@ -543,7 +545,7 @@ export default function TaskBoard({ initialTasks, profiles, currentUser, canSeeA
                   </div>
 
                   {/* Status badge */}
-                  <div onMouseDown={e => e.stopPropagation()} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <div onMouseDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()} style={{ display: "flex", alignItems: "center", gap: 6 }}>
                     <motion.button whileHover={{ opacity: statusLoading === task.id ? 1 : 0.85 }} whileTap={{ scale: statusLoading === task.id ? 1 : 0.97 }}
                       disabled={statusLoading === task.id}
                       onClick={e => {
@@ -578,7 +580,7 @@ export default function TaskBoard({ initialTasks, profiles, currentUser, canSeeA
                   </div>
 
                   {/* Three-dot menu */}
-                  <div onMouseDown={e => e.stopPropagation()}>
+                  <div onMouseDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()}>
                     <motion.button whileHover={{ background: "#f3f4f6" }} whileTap={{ scale: 0.9 }}
                       onClick={e => {
                         const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
@@ -648,6 +650,98 @@ export default function TaskBoard({ initialTasks, profiles, currentUser, canSeeA
                   </motion.button>
                 </>
               )}
+            </motion.div>
+          );
+        })()}
+      </AnimatePresence>
+
+      {/* ── DETAIL MODAL (read-only) ── */}
+      <AnimatePresence>
+        {detailTask && (() => {
+          const dsc = STATUS_CFG[detailTask.status];
+          const pc = PRIORITY_CFG[detailTask.priority];
+          const DIcon = dsc.Icon;
+          const dl = getDeadlineStatus(detailTask.due_date);
+          const assigneeProfile = profiles.find(p => p.id === detailTask.assigned_to);
+          return (
+            <motion.div key="detail-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              style={{ position: "fixed", inset: 0, zIndex: 100, background: "rgba(17,24,39,0.45)", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}
+              onClick={() => setDetailTask(null)}>
+              <motion.div key="detail-panel" initial={{ opacity: 0, scale: 0.94, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.94, y: 20 }}
+                transition={{ type: "spring", stiffness: 400, damping: 30 }} onClick={e => e.stopPropagation()}
+                style={{ background: "white", borderRadius: 20, width: "100%", maxWidth: 480, boxShadow: "0 24px 48px rgba(0,0,0,0.2)", overflow: "hidden" }}>
+                <div style={{ padding: "22px 24px 18px", borderBottom: "1px solid #f3f4f6", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <h3 style={{ fontSize: 16, fontWeight: 700, color: "#111827", wordBreak: "break-word" }}>{detailTask.title}</h3>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 5, marginTop: 8, padding: "3px 9px", borderRadius: 6, background: dsc.bg, fontSize: 11, fontWeight: 600, color: dsc.color, border: `1px solid ${dsc.color}30` }}>
+                      <DIcon size={10} strokeWidth={2.2} />{dsc.label}
+                    </span>
+                  </div>
+                  <motion.button whileHover={{ background: "#f3f4f6" }} whileTap={{ scale: 0.9 }} onClick={() => setDetailTask(null)}
+                    style={{ width: 30, height: 30, borderRadius: 8, border: "none", background: "none", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}>
+                    <X size={16} color="#6b7280" />
+                  </motion.button>
+                </div>
+                <div style={{ padding: "18px 24px 22px", display: "flex", flexDirection: "column", gap: 16 }}>
+                  <div>
+                    <p style={{ fontSize: 10, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Deskripsi</p>
+                    {detailTask.description ? (
+                      <p style={{ fontSize: 13, color: "#374151", lineHeight: 1.65, whiteSpace: "pre-wrap" }}>{detailTask.description}</p>
+                    ) : (
+                      <p style={{ fontSize: 13, color: "#d1d5db", fontStyle: "italic" }}>Tidak ada deskripsi.</p>
+                    )}
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                    <div>
+                      <p style={{ fontSize: 10, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Ditugaskan ke</p>
+                      {detailTask.assigned_to ? (
+                        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                          {assigneeProfile && <Avatar id={assigneeProfile.id} name={assigneeProfile.full_name} avatarUrl={assigneeProfile.avatar_url} size={24} ringColor="#f3f4f6" />}
+                          <span style={{ fontSize: 13, color: "#374151" }}>{getName(detailTask.assigned_to)}</span>
+                        </div>
+                      ) : <span style={{ fontSize: 13, color: "#d1d5db" }}>—</span>}
+                    </div>
+                    <div>
+                      <p style={{ fontSize: 10, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Diberi oleh</p>
+                      <span style={{ fontSize: 13, color: "#374151" }}>{detailTask.created_by ? getName(detailTask.created_by) : "—"}</span>
+                    </div>
+                    <div>
+                      <p style={{ fontSize: 10, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Prioritas</p>
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 9px", borderRadius: 20, background: pc.bg, fontSize: 11, fontWeight: 600, color: pc.color }}>
+                        <span style={{ width: 5, height: 5, borderRadius: "50%", background: pc.dot, flexShrink: 0 }} />{pc.label}
+                      </span>
+                    </div>
+                    <div>
+                      <p style={{ fontSize: 10, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Deadline</p>
+                      {dl ? (
+                        <span style={{ fontSize: 13, fontWeight: 600, color: detailTask.status === "done" ? "#9ca3af" : dl.color }}>{dl.dateLabel}</span>
+                      ) : <span style={{ fontSize: 13, color: "#d1d5db" }}>—</span>}
+                    </div>
+                  </div>
+
+                  {detailTask.rejected_note && (
+                    <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 10, padding: "10px 12px" }}>
+                      <p style={{ fontSize: 11, fontWeight: 700, color: "#ef4444", marginBottom: 3 }}>↩ Dikembalikan</p>
+                      <p style={{ fontSize: 12, color: "#991b1b" }}>{detailTask.rejected_note}</p>
+                    </div>
+                  )}
+
+                  {detailTask.requires_proof && (
+                    <div>
+                      <p style={{ fontSize: 10, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Bukti Pengerjaan</p>
+                      {detailTask.proof_url ? (
+                        <a href={sanitizeUrl(detailTask.proof_url)} target="_blank" rel="noopener noreferrer"
+                          style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, color: "#3b82f6", textDecoration: "none" }}>
+                          <ExternalLink size={12} />Lihat bukti
+                        </a>
+                      ) : (
+                        <p style={{ fontSize: 12, color: "#f59e0b", fontWeight: 500 }}>Belum ada bukti pengerjaan.</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </motion.div>
             </motion.div>
           );
         })()}
