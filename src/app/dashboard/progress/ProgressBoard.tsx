@@ -8,7 +8,7 @@ import {
   ChevronLeft, ChevronRight, X, Check, AlertCircle, Lightbulb,
   CalendarDays, Users, TrendingUp, Edit2, BarChart2,
   ChevronDown, Paperclip, Link as LinkIcon, Upload, FileText, ExternalLink, Bell,
-  Plus, FolderKanban, Home, CheckCircle2, Briefcase, User, Smile,
+  Plus, FolderKanban, Home, CheckCircle2, Briefcase, User, Smile, Search,
 } from "lucide-react";
 
 const MOOD_CFG = [
@@ -137,7 +137,7 @@ export default function ProgressBoard({ currentUser, initialEntries, profiles, t
   const [expandedUser, setExpandedUser] = useState<string | null>(null);
   const [toast, setToast]         = useState<{ msg: string; ok: boolean } | null>(null);
 
-  const [sidebarView, setSidebarView] = useState<"home" | "completed" | "today" | "personal" | "work">("home");
+  const [sidebarView, setSidebarView] = useState<SidebarView>("home");
   const [personalTodos, setPersonalTodos] = useState<PersonalTodo[]>([]);
   const [personalLoading, setPersonalLoading] = useState(true);
   const [newPersonalText, setNewPersonalText] = useState("");
@@ -250,12 +250,13 @@ export default function ProgressBoard({ currentUser, initialEntries, profiles, t
   const workItems = normalizeTodoCategories(myEntry?.todos).flatMap(c => c.items);
   const workDoneCount = workItems.filter(i => i.done).length;
   const personalDoneCount = personalTodos.filter(t => t.done).length;
-  const sidebarCounts = {
+  const sidebarCounts: Record<SidebarView, number> = {
     home: workItems.length + personalTodos.length,
     completed: workDoneCount + personalDoneCount,
     today: workItems.length,
     personal: personalTodos.length,
     work: workItems.length,
+    team: profiles.length,
   };
 
   const fetchEntries = useCallback(async (d: string) => {
@@ -680,7 +681,7 @@ export default function ProgressBoard({ currentUser, initialEntries, profiles, t
             </AnimatePresence>
 
             <div style={{ display: "flex", gap: 20, alignItems: "flex-start" }}>
-              <ProgressSidebar view={sidebarView} onChange={setSidebarView} counts={sidebarCounts} />
+              <ProgressSidebar view={sidebarView} onChange={setSidebarView} counts={sidebarCounts} showTeam={canViewAll} />
 
               <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 20 }}>
                 {(sidebarView === "home" || sidebarView === "today" || sidebarView === "work") && (
@@ -751,6 +752,13 @@ export default function ProgressBoard({ currentUser, initialEntries, profiles, t
 
                 {sidebarView === "completed" && (
                   <CompletedView workCategories={normalizeTodoCategories(myEntry?.todos)} personalTodos={personalTodos} />
+                )}
+
+                {sidebarView === "team" && canViewAll && (
+                  <TeamView
+                    entries={entries} profiles={profiles} date={date} isToday={isToday}
+                    onChangeDate={changeDate}
+                  />
                 )}
               </div>
             </div>
@@ -1125,10 +1133,10 @@ function TodoChecklist({ todos, fallbackText, size = 13 }: { todos?: TodoCategor
   return <p style={{ fontSize: 12, color: "#d1d5db", fontStyle: "italic" }}>Belum diisi</p>;
 }
 
-type SidebarView = "home" | "completed" | "today" | "personal" | "work";
+type SidebarView = "home" | "completed" | "today" | "personal" | "work" | "team";
 
-function ProgressSidebar({ view, onChange, counts }: {
-  view: SidebarView; onChange: (v: SidebarView) => void; counts: Record<SidebarView, number>;
+function ProgressSidebar({ view, onChange, counts, showTeam }: {
+  view: SidebarView; onChange: (v: SidebarView) => void; counts: Record<SidebarView, number>; showTeam: boolean;
 }) {
   const [open, setOpen] = useState(true);
   const items: { key: SidebarView; label: string; icon: typeof Home; color: string }[] = [
@@ -1137,6 +1145,7 @@ function ProgressSidebar({ view, onChange, counts }: {
     { key: "today", label: "Today", icon: CalendarDays, color: "#f59e0b" },
     { key: "personal", label: "Personal", icon: User, color: "#3b82f6" },
     { key: "work", label: "Work", icon: Briefcase, color: "#92400e" },
+    ...(showTeam ? [{ key: "team" as const, label: "Tim", icon: Users, color: "#059669" }] : []),
   ];
   return (
     <div style={{ width: 200, flexShrink: 0 }}>
@@ -1381,6 +1390,164 @@ function CompletedView({ workCategories, personalTodos }: { workCategories: Todo
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function TeamView({ entries, profiles, date, isToday, onChangeDate }: {
+  entries: DailyProgress[]; profiles: { id: string; full_name: string; role: string }[];
+  date: string; isToday: boolean; onChangeDate: (n: number) => void;
+}) {
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<"all" | "not_morning" | "not_evening" | "complete">("all");
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  const rows = profiles.map(p => {
+    const entry = entries.find(e => e.user_id === p.id);
+    const items = normalizeTodoCategories(entry?.todos).flatMap(c => c.items);
+    const doneCount = items.filter(i => i.done).length;
+    const hasMorning = !!entry?.morning_plan || items.length > 0;
+    const hasEvening = !!entry?.activities;
+    const pct = items.length > 0 ? Math.round((doneCount / items.length) * 100) : 0;
+    return { profile: p, entry, items, doneCount, hasMorning, hasEvening, pct };
+  });
+
+  const filtered = rows
+    .filter(r => r.profile.full_name.toLowerCase().includes(search.trim().toLowerCase()))
+    .filter(r => {
+      if (filter === "not_morning") return !r.hasMorning;
+      if (filter === "not_evening") return !r.hasEvening;
+      if (filter === "complete") return r.items.length > 0 && r.doneCount === r.items.length;
+      return true;
+    });
+
+  const totalMembers = profiles.length;
+  const morningCount = rows.filter(r => r.hasMorning).length;
+  const eveningCount = rows.filter(r => r.hasEvening).length;
+  const avgPct = rows.length > 0 ? Math.round(rows.reduce((s, r) => s + r.pct, 0) / rows.length) : 0;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {/* Date nav + search + filter */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", background: "#fff", border: "1px solid #e5e7eb", borderRadius: 12, overflow: "hidden" }}>
+          <button onClick={() => onChangeDate(-1)} style={{ padding: "10px 14px", border: "none", background: "transparent", cursor: "pointer", display: "flex" }}>
+            <ChevronLeft size={16} color="#6b7280" />
+          </button>
+          <div style={{ padding: "10px 16px", borderLeft: "1px solid #f3f4f6", borderRight: "1px solid #f3f4f6", fontSize: 13, fontWeight: 600, color: "#111827", whiteSpace: "nowrap" }}>
+            {fmt(date)}
+            {isToday && <span style={{ marginLeft: 8, fontSize: 10, fontWeight: 700, color: "#10b981", background: "#f0fdf4", border: "1px solid #d1fae5", borderRadius: 20, padding: "1px 7px" }}>Hari Ini</span>}
+          </div>
+          <button onClick={() => onChangeDate(1)} disabled={isToday} style={{ padding: "10px 14px", border: "none", background: "transparent", cursor: isToday ? "not-allowed" : "pointer", display: "flex", opacity: isToday ? 0.3 : 1 }}>
+            <ChevronRight size={16} color="#6b7280" />
+          </button>
+        </div>
+
+        <div style={{ position: "relative", flex: 1, minWidth: 160 }}>
+          <Search size={14} color="#9ca3af" style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)" }} />
+          <input type="text" placeholder="Cari nama…" value={search} onChange={e => setSearch(e.target.value)}
+            style={{ width: "100%", padding: "10px 12px 10px 34px", border: "1px solid #e5e7eb", borderRadius: 12, fontSize: 13, outline: "none", boxSizing: "border-box", fontFamily: "inherit" }} />
+        </div>
+
+        <select value={filter} onChange={e => setFilter(e.target.value as typeof filter)}
+          style={{ padding: "10px 12px", border: "1px solid #e5e7eb", borderRadius: 12, fontSize: 13, color: "#374151", background: "#fff", outline: "none", cursor: "pointer" }}>
+          <option value="all">Semua</option>
+          <option value="not_morning">Belum isi pagi</option>
+          <option value="not_evening">Belum update sore</option>
+          <option value="complete">Sudah lengkap</option>
+        </select>
+      </div>
+
+      {/* Stat cards */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+        {[
+          { label: "Total Anggota", val: String(totalMembers), color: "#6366f1" },
+          { label: "Isi Rencana Pagi", val: `${morningCount}/${totalMembers}`, color: "#f59e0b" },
+          { label: "Isi Update Sore", val: `${eveningCount}/${totalMembers}`, color: "#4f46e5" },
+          { label: "Rata-rata Selesai", val: `${avgPct}%`, color: "#10b981" },
+        ].map(s => (
+          <div key={s.label} style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 12, padding: "12px 16px" }}>
+            <p style={{ fontSize: 11, color: "#9ca3af", fontWeight: 500 }}>{s.label}</p>
+            <p style={{ fontSize: 22, fontWeight: 800, color: s.color, marginTop: 4 }}>{s.val}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Member rows */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {filtered.length === 0 ? (
+          <div style={{ background: "#fff", border: "1px dashed #e5e7eb", borderRadius: 14, padding: "40px 20px", textAlign: "center" }}>
+            <p style={{ fontSize: 13, color: "#9ca3af" }}>Tidak ada anggota yang cocok.</p>
+          </div>
+        ) : filtered.map((r, i) => {
+          const isOpen = expanded === r.profile.id;
+          const moodCfg = r.entry?.mood ? MOOD_CFG[(r.entry.mood ?? 3) - 1] : null;
+          return (
+            <motion.div key={r.profile.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.03 }}
+              style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 14, overflow: "hidden" }}>
+              <div style={{ padding: "14px 16px", display: "flex", alignItems: "center", gap: 12, cursor: r.entry ? "pointer" : "default" }}
+                onClick={() => r.entry && setExpanded(isOpen ? null : r.profile.id)}>
+                <div style={{
+                  width: 36, height: 36, borderRadius: "50%", flexShrink: 0,
+                  background: r.entry ? "linear-gradient(135deg, #6366f1, #4f46e5)" : "#e5e7eb",
+                  display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: r.entry ? "#fff" : "#9ca3af",
+                }}>{r.profile.full_name.charAt(0).toUpperCase()}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontSize: 13, fontWeight: 700, color: "#111827" }}>{r.profile.full_name}</p>
+                  <p style={{ fontSize: 11, color: "#9ca3af" }}>{ROLE_LABELS[r.profile.role] ?? r.profile.role}</p>
+                </div>
+                {r.items.length > 0 && (
+                  <div style={{ width: 90, flexShrink: 0 }}>
+                    <div style={{ height: 6, background: "#f3f4f6", borderRadius: 99, overflow: "hidden" }}>
+                      <motion.div initial={{ width: 0 }} animate={{ width: `${r.pct}%` }} transition={{ delay: i * 0.03 + 0.15, duration: 0.5 }}
+                        style={{ height: "100%", background: r.pct === 100 ? "#10b981" : r.pct >= 40 ? "#3b82f6" : "#f59e0b", borderRadius: 99 }} />
+                    </div>
+                    <p style={{ fontSize: 10, color: "#9ca3af", marginTop: 3, textAlign: "right" }}>{r.doneCount}/{r.items.length}</p>
+                  </div>
+                )}
+                <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 20, background: r.hasMorning ? "#dcfce7" : "#f3f4f6", color: r.hasMorning ? "#059669" : "#9ca3af", border: `1px solid ${r.hasMorning ? "#bbf7d0" : "#e5e7eb"}` }}>🌅 {r.hasMorning ? "✓" : "–"}</span>
+                  <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 20, background: r.hasEvening ? "#dcfce7" : "#f3f4f6", color: r.hasEvening ? "#059669" : "#9ca3af", border: `1px solid ${r.hasEvening ? "#bbf7d0" : "#e5e7eb"}` }}>🌆 {r.hasEvening ? "✓" : "–"}</span>
+                  {moodCfg && <span style={{ fontSize: 16 }}>{moodCfg.emoji}</span>}
+                  {r.entry && <ChevronDown size={14} color="#9ca3af" style={{ transform: isOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />}
+                </div>
+              </div>
+              <AnimatePresence>
+                {isOpen && r.entry && (
+                  <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }} style={{ overflow: "hidden" }}>
+                    <div style={{ borderTop: "1px solid #f3f4f6", padding: "14px 16px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                      <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 12, padding: "12px 14px" }}>
+                        <p style={{ fontSize: 10, fontWeight: 700, color: "#d97706", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>🌅 To Do List</p>
+                        <TodoChecklist todos={r.entry.todos} fallbackText={r.entry.morning_plan} size={12} />
+                      </div>
+                      <div style={{ background: "#eef2ff", border: "1px solid #c7d2fe", borderRadius: 12, padding: "12px 14px" }}>
+                        <p style={{ fontSize: 10, fontWeight: 700, color: "#4f46e5", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>🌆 Update Sore</p>
+                        {r.entry.activities ? (
+                          <>
+                            <p style={{ fontSize: 12, color: "#374151", lineHeight: 1.6 }}>{r.entry.activities}</p>
+                            {r.entry.achievements && <InfoRow label="Pencapaian" value={r.entry.achievements} color="#10b981" />}
+                            {r.entry.obstacles && <InfoRow label="Hambatan" value={r.entry.obstacles} color="#f59e0b" icon={<AlertCircle size={11} />} />}
+                            {r.entry.plan_tomorrow && <InfoRow label="Rencana Besok" value={r.entry.plan_tomorrow} color="#8b5cf6" />}
+                            {r.entry.proof_url && (
+                              <a href={r.entry.proof_url} target="_blank" rel="noreferrer"
+                                style={{ display: "inline-flex", alignItems: "center", gap: 5, marginTop: 8, fontSize: 12, fontWeight: 600, color: "#4f46e5", textDecoration: "none", background: "#fff", padding: "5px 10px", borderRadius: 8, border: "1px solid #c7d2fe" }}>
+                                <Paperclip size={12} />Lihat Bukti Kerja<ExternalLink size={11} />
+                              </a>
+                            )}
+                          </>
+                        ) : (
+                          <p style={{ fontSize: 12, color: "#d1d5db", fontStyle: "italic" }}>Belum diisi</p>
+                        )}
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </motion.div>
+          );
+        })}
+      </div>
     </div>
   );
 }
