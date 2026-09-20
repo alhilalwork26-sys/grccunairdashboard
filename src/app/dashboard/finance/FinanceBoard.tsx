@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, Fragment, useEffect } from "react";
+import { useState, useRef, Fragment } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { createClient } from "@/lib/supabase/client";
 import { uploadPayProofAction, uploadGroupPayProofAction, reviewReimbursementAction, archiveReimbursementAction, notifyFinanceNewReimbAction } from "./actions";
@@ -58,14 +58,6 @@ function getWeekKeyFromDate(utcDateStr: string): string {
   return [mon.getUTCFullYear(), String(mon.getUTCMonth() + 1).padStart(2, "0"), String(mon.getUTCDate()).padStart(2, "0")].join("-");
 }
 
-function getWeekDeadline(weekKey: string): Date {
-  // Sunday of the week at 17:00 WIB = 10:00 UTC
-  const d = new Date(weekKey + "T00:00:00Z");
-  d.setUTCDate(d.getUTCDate() + 6);
-  d.setUTCHours(10, 0, 0, 0);
-  return d;
-}
-
 function getWeekLabel(weekKey: string): string {
   const mon = new Date(weekKey + "T00:00:00Z");
   const sun = new Date(mon);
@@ -77,12 +69,6 @@ function getWeekLabel(weekKey: string): string {
   }
   const monShort = mon.toLocaleDateString("id-ID", { day: "numeric", month: "short", timeZone: "UTC" });
   return `${monShort} – ${sun.getUTCDate()} ${sunShort} ${year}`;
-}
-
-function getSundayStr(weekKey: string): string {
-  const d = new Date(weekKey + "T00:00:00Z");
-  d.setUTCDate(d.getUTCDate() + 6);
-  return d.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
 }
 
 function TimelineStep({ done, color, label, date, last }: { done: boolean; color: string; label: string; date: string; last?: boolean }) {
@@ -160,30 +146,6 @@ export default function FinanceBoard({ currentUser, initialTransactions, initial
       return next;
     });
   }
-
-  // Weekly countdown
-  const currentWeekKey = getWeekKeyFromDate(new Date().toISOString());
-  const [countdown, setCountdown] = useState<string>("");
-  const [weekClosed, setWeekClosed] = useState(() => Date.now() >= getWeekDeadline(getWeekKeyFromDate(new Date().toISOString())).getTime());
-
-  useEffect(() => {
-    function tick() {
-      const now = Date.now();
-      const wk  = getWeekKeyFromDate(new Date(now).toISOString());
-      const dl  = getWeekDeadline(wk).getTime();
-      const diff = dl - now;
-      if (diff <= 0) { setWeekClosed(true); setCountdown(""); return; }
-      setWeekClosed(false);
-      const d = Math.floor(diff / 86400000);
-      const h = Math.floor((diff % 86400000) / 3600000);
-      const m = Math.floor((diff % 3600000) / 60000);
-      const s = Math.floor((diff % 60000) / 1000);
-      setCountdown(d > 0 ? `${d}h ${h}j ${m}m` : `${h}j ${m}m ${s}d`);
-    }
-    tick();
-    const id = setInterval(tick, 1000);
-    return () => clearInterval(id);
-  }, []);
 
   // Review
   const [reviewTarget, setReviewTarget] = useState<Reimbursement | null>(null);
@@ -426,9 +388,9 @@ export default function FinanceBoard({ currentUser, initialTransactions, initial
           )}
           {tab === "reimbursement" && (
             <motion.button
-              whileHover={{ scale: weekClosed ? 1 : 1.02 }} whileTap={{ scale: weekClosed ? 1 : 0.97 }}
-              onClick={() => { if (weekClosed) { showToast("Periode minggu ini sudah tutup. Dibuka kembali Senin mendatang.", false); return; } setReimbRows([newReimbRow()]); setShowReimbModal(true); }}
-              style={{ display: "flex", alignItems: "center", gap: 7, background: weekClosed ? "#e5e7eb" : "linear-gradient(135deg, #6366f1, #4f46e5)", color: weekClosed ? "#9ca3af" : "#fff", border: "none", borderRadius: 10, padding: "9px 16px", cursor: weekClosed ? "not-allowed" : "pointer", fontSize: 13, fontWeight: 600, boxShadow: weekClosed ? "none" : "0 4px 14px rgba(99,102,241,0.35)" }}>
+              whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
+              onClick={() => { setReimbRows([newReimbRow()]); setShowReimbModal(true); }}
+              style={{ display: "flex", alignItems: "center", gap: 7, background: "linear-gradient(135deg, #6366f1, #4f46e5)", color: "#fff", border: "none", borderRadius: 10, padding: "9px 16px", cursor: "pointer", fontSize: 13, fontWeight: 600, boxShadow: "0 4px 14px rgba(99,102,241,0.35)" }}>
               <Plus size={15} /> Ajukan Reimbursement
             </motion.button>
           )}
@@ -590,36 +552,6 @@ export default function FinanceBoard({ currentUser, initialTransactions, initial
             <motion.div key="reimbursement" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
               style={{ display: "flex", flexDirection: "column", gap: 16 }}>
 
-              {/* Weekly deadline countdown */}
-              <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }}
-                style={{
-                  display: "flex", alignItems: "center", gap: 14, padding: "14px 18px",
-                  background: weekClosed ? "linear-gradient(135deg, #fef2f2, #fee2e2)" : "linear-gradient(135deg, #eef2ff, #e0e7ff)",
-                  border: `1.5px solid ${weekClosed ? "#fecaca" : "#c7d2fe"}`, borderRadius: 12,
-                }}>
-                <div style={{ width: 36, height: 36, borderRadius: 10, background: weekClosed ? "#ef4444" : "#6366f1", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                  <Clock size={16} color="#fff" />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <p style={{ fontSize: 13, fontWeight: 700, color: weekClosed ? "#991b1b" : "#3730a3" }}>
-                    {weekClosed ? "Periode Minggu Ini Sudah Tutup" : `Periode: ${getWeekLabel(currentWeekKey)}`}
-                  </p>
-                  <p style={{ fontSize: 12, color: weekClosed ? "#b91c1c" : "#4f46e5", marginTop: 2 }}>
-                    {weekClosed
-                      ? "Pengajuan reimbursement dibuka kembali Senin mendatang."
-                      : `Tutup: ${getSundayStr(currentWeekKey)} pukul 17.00 WIB`}
-                  </p>
-                </div>
-                {!weekClosed && countdown && (
-                  <div style={{ textAlign: "right", flexShrink: 0 }}>
-                    <p style={{ fontSize: 10, color: "#6366f1", fontWeight: 600, marginBottom: 2, opacity: 0.7 }}>sisa waktu</p>
-                    <p style={{ fontSize: 20, fontWeight: 800, color: "#4f46e5", letterSpacing: "-0.03em", fontVariantNumeric: "tabular-nums", lineHeight: 1 }}>
-                      {countdown}
-                    </p>
-                  </div>
-                )}
-              </motion.div>
-
               {/* Notification banner for kep_finance when there are pending reimbs */}
               {currentUser.role === "kep_finance" && pendingReimb > 0 && (
                 <motion.div
@@ -756,7 +688,7 @@ export default function FinanceBoard({ currentUser, initialTransactions, initial
                     <p style={{ fontSize: 15, fontWeight: 600, color: "#374151" }}>
                       {showArchived ? "Belum ada arsip" : reimbSearch || reimbStatusFilter !== "all" ? "Tidak ada yang cocok" : "Belum ada pengajuan reimbursement"}
                     </p>
-                    {!reimbSearch && reimbStatusFilter === "all" && !weekClosed && !showArchived && (
+                    {!reimbSearch && reimbStatusFilter === "all" && !showArchived && (
                       <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
                         onClick={() => { setReimbRows([newReimbRow()]); setShowReimbModal(true); }}
                         style={{ marginTop: 18, background: "linear-gradient(135deg, #6366f1, #4f46e5)", color: "#fff", border: "none", borderRadius: 10, padding: "10px 22px", fontSize: 13, fontWeight: 600, cursor: "pointer", boxShadow: "0 4px 12px rgba(99,102,241,0.3)" }}>
