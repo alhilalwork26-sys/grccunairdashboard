@@ -567,12 +567,12 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
                   <motion.div key={k.id} layout
                     initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                     transition={{ delay: i * 0.02, duration: 0.18 }}
-                    onClick={() => openEdit(k)}
+                    onClick={canEdit ? () => openEdit(k) : undefined}
                     style={{
                       display: "grid",
                       gridTemplateColumns: canEdit ? "2.2fr 1.2fr 0.9fr 1fr 2fr 0.8fr auto" : "2.2fr 1.2fr 0.9fr 1fr 2fr 0.8fr",
                       gap: 12, padding: "13px 18px", borderBottom: "1px solid #f9fafb",
-                      alignItems: "center", cursor: "pointer",
+                      alignItems: "center", cursor: canEdit ? "pointer" : "default",
                     }}
                     onMouseEnter={e => (e.currentTarget.style.background = "#fafafa")}
                     onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
