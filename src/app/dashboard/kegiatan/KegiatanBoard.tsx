@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { createClient } from "@/lib/supabase/client";
 import type { UserProfile } from "@/types";
@@ -180,223 +180,6 @@ interface Props {
   profiles: { id: string; full_name: string; role: string }[];
 }
 
-function safeHttpUrl(url: string | null | undefined): string | undefined {
-  if (!url) return undefined;
-  try { const p = new URL(url); return p.protocol === "http:" || p.protocol === "https:" ? url : undefined; }
-  catch { return undefined; }
-}
-
-function DetailLabel({ children }: { children: React.ReactNode }) {
-  return <p style={{ fontSize: 10, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 5 }}>{children}</p>;
-}
-
-function DetailAttachments({ kegiatanId }: { kegiatanId: string }) {
-  const [data, setData] = useState<{
-    lampiran: { id: string; file_name: string; file_url: string }[];
-    checklist: { id: string; item_name: string; pic: string | null; pic_profile: { full_name: string } | null; status: "belum" | "sudah"; file_url: string | null; file_name: string | null }[];
-  } | null>(null);
-  const [failed, setFailed] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    const supabase = createClient();
-    Promise.all([
-      supabase.from("kegiatan_lampiran").select("id, file_name, file_url").eq("kegiatan_id", kegiatanId).order("created_at", { ascending: true }),
-      supabase.from("kegiatan_checklist")
-        .select("id, item_name, pic, pic_profile:profiles!kegiatan_checklist_pic_id_fkey(full_name), status, file_url, file_name")
-        .eq("kegiatan_id", kegiatanId).order("created_at", { ascending: true }),
-    ]).then(([l, c]) => {
-      if (cancelled) return;
-      if (l.error || c.error) { setFailed(true); return; }
-      setData({
-        lampiran: l.data ?? [],
-        checklist: (c.data ?? []) as unknown as NonNullable<typeof data>["checklist"],
-      });
-    });
-    return () => { cancelled = true; };
-  }, [kegiatanId]);
-
-  if (failed) return <p style={{ fontSize: 12, color: "#ef4444" }}>Gagal memuat checklist dan lampiran.</p>;
-  if (!data) return <p style={{ fontSize: 12, color: "#9ca3af" }}>Memuat checklist dan lampiran…</p>;
-
-  const done = data.checklist.filter(c => c.status === "sudah").length;
-  return (
-    <>
-      <div>
-        <DetailLabel>Checklist {data.checklist.length > 0 && `· ${done}/${data.checklist.length} selesai`}</DetailLabel>
-        {data.checklist.length === 0 ? (
-          <p style={{ fontSize: 12, color: "#d1d5db", fontStyle: "italic" }}>Belum ada checklist.</p>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-            {data.checklist.map(c => {
-              const fileUrl = safeHttpUrl(c.file_url);
-              return (
-                <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", background: "#f9fafb", border: "1px solid #f3f4f6", borderRadius: 8 }}>
-                  <span style={{
-                    width: 15, height: 15, borderRadius: 4, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
-                    background: c.status === "sudah" ? "#10b981" : "#fff", border: `1.5px solid ${c.status === "sudah" ? "#10b981" : "#d1d5db"}`,
-                  }}>
-                    {c.status === "sudah" && <Check size={10} color="#fff" strokeWidth={3} />}
-                  </span>
-                  <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: c.status === "sudah" ? "#9ca3af" : "#374151", textDecoration: c.status === "sudah" ? "line-through" : "none", wordBreak: "break-word" }}>
-                    {c.item_name}
-                  </span>
-                  {(c.pic_profile?.full_name || c.pic) && (
-                    <span style={{ fontSize: 11, color: "#6b7280", flexShrink: 0 }}>{c.pic_profile?.full_name ?? c.pic}</span>
-                  )}
-                  {fileUrl && (
-                    <a href={fileUrl} target="_blank" rel="noopener noreferrer" title={c.file_name ?? "Lihat file"} style={{ display: "flex", flexShrink: 0 }}>
-                      <Paperclip size={12} color="#6366f1" />
-                    </a>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-      <div>
-        <DetailLabel>Lampiran {data.lampiran.length > 0 && `· ${data.lampiran.length}`}</DetailLabel>
-        {data.lampiran.length === 0 ? (
-          <p style={{ fontSize: 12, color: "#d1d5db", fontStyle: "italic" }}>Belum ada file.</p>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-            {data.lampiran.map(l => (
-              <a key={l.id} href={safeHttpUrl(l.file_url)} target="_blank" rel="noopener noreferrer"
-                style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", background: "#f9fafb", border: "1px solid #f3f4f6", borderRadius: 8, textDecoration: "none" }}>
-                <Paperclip size={12} color="#9ca3af" style={{ flexShrink: 0 }} />
-                <span style={{ fontSize: 12.5, color: "#374151", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.file_name}</span>
-              </a>
-            ))}
-          </div>
-        )}
-      </div>
-    </>
-  );
-}
-
-function KegiatanDetailModal({ item: k, onClose }: { item: Kegiatan; onClose: () => void }) {
-  const typeCfg = CALENDAR_TYPE_CFG[k.calendar_type ?? "event"];
-  const statusCfg = STATUS_CFG[k.status];
-  const endDate = k.end_date ?? k.deadline;
-  const locationUrl = safeHttpUrl(k.location);
-  const links = LINK_FIELDS.map(f => ({ label: f.label, url: safeHttpUrl(k[f.key]) })).filter(l => l.url);
-  const sesi = [...(k.sesi ?? [])].sort((a, b) => a.sesi_ke - b.sesi_ke);
-
-  return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-      style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(17,24,39,0.45)", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}
-      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <motion.div initial={{ opacity: 0, scale: 0.95, y: 14 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 8 }}
-        transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-        style={{ background: "#fff", borderRadius: 20, width: "100%", maxWidth: 560, maxHeight: "90vh", overflow: "auto", boxShadow: "0 25px 60px rgba(0,0,0,0.2)" }}>
-        <div style={{ padding: "22px 24px 16px", borderBottom: "1px solid #f3f4f6", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, position: "sticky", top: 0, background: "#fff", zIndex: 1 }}>
-          <div style={{ minWidth: 0 }}>
-            <h3 style={{ fontSize: 16, fontWeight: 700, color: "#111827", wordBreak: "break-word", margin: 0 }}>{k.title}</h3>
-            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, marginTop: 9 }}>
-              {k.program === "cssl" && (
-                <span style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 10, fontWeight: 800, padding: "2px 8px", borderRadius: 20, background: "linear-gradient(135deg, #8b5cf6, #a855f7)", color: "#fff" }}>
-                  <GraduationCap size={10} /> CSSL
-                </span>
-              )}
-              <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 20, background: typeCfg.bg, color: typeCfg.color }}>{typeCfg.label}</span>
-              <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 20, background: statusCfg.bg, color: statusCfg.color, border: `1px solid ${statusCfg.border}` }}>{statusCfg.label}</span>
-              <EventPhaseBadge phase={getEventPhase(k.deadline, endDate)} />
-              <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 20, background: "#eef2ff", color: "#4f46e5" }}>{getQuarter(k.deadline)}</span>
-            </div>
-          </div>
-          <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.95 }} onClick={onClose}
-            style={{ padding: 6, border: "none", background: "#f3f4f6", borderRadius: 8, cursor: "pointer", display: "flex", flexShrink: 0 }}>
-            <X size={16} color="#6b7280" />
-          </motion.button>
-        </div>
-
-        <div style={{ padding: "18px 24px 24px", display: "flex", flexDirection: "column", gap: 18 }}>
-          <div>
-            <DetailLabel>Keterangan</DetailLabel>
-            {k.description ? (
-              <p style={{ fontSize: 13, color: "#374151", lineHeight: 1.65, whiteSpace: "pre-wrap", margin: 0, wordBreak: "break-word" }}>{k.description}</p>
-            ) : (
-              <p style={{ fontSize: 13, color: "#d1d5db", fontStyle: "italic", margin: 0 }}>Tidak ada keterangan.</p>
-            )}
-          </div>
-
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16 }}>
-            <div>
-              <DetailLabel>Tanggal</DetailLabel>
-              <span style={{ fontSize: 13, color: "#374151", display: "flex", alignItems: "center", gap: 6 }}>
-                <CalendarDays size={13} color="#9ca3af" />{fmtDeadlineRange(k.deadline, endDate)}
-              </span>
-            </div>
-            <div>
-              <DetailLabel>PIC</DetailLabel>
-              <span style={{ fontSize: 13, color: "#374151" }}>{k.pic?.full_name ?? "—"}</span>
-            </div>
-            <div>
-              <DetailLabel>{k.mode === "online" ? "Online" : "Lokasi"}</DetailLabel>
-              {k.location ? (
-                locationUrl ? (
-                  <a href={locationUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: "#4f46e5", fontWeight: 600, textDecoration: "none", wordBreak: "break-all" }}>Buka link</a>
-                ) : (
-                  <span style={{ fontSize: 13, color: "#374151", wordBreak: "break-word" }}>{k.location}</span>
-                )
-              ) : (
-                <span style={{ fontSize: 13, color: "#d1d5db" }}>—</span>
-              )}
-            </div>
-            <div>
-              <DetailLabel>Jumlah Peserta</DetailLabel>
-              <span style={{ fontSize: 13, color: "#374151" }}>{k.jumlah_peserta != null ? k.jumlah_peserta : "—"}</span>
-            </div>
-            {k.pembicara && (
-              <div style={{ gridColumn: "1 / -1" }}>
-                <DetailLabel>Pembicara</DetailLabel>
-                <span style={{ fontSize: 13, color: "#374151", wordBreak: "break-word" }}>{k.pembicara}</span>
-              </div>
-            )}
-          </div>
-
-          {sesi.length > 0 && (
-            <div>
-              <DetailLabel>Sesi</DetailLabel>
-              <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                {sesi.map(s => (
-                  <div key={s.id} style={{ padding: "8px 10px", background: "#f9fafb", border: "1px solid #f3f4f6", borderRadius: 8, fontSize: 12.5, color: "#374151" }}>
-                    <strong>Sesi {s.sesi_ke}</strong> · {fmtDeadline(s.tanggal)}
-                    {s.waktu_mulai && ` · ${s.waktu_mulai.slice(0, 5)}${s.waktu_selesai ? `–${s.waktu_selesai.slice(0, 5)}` : ""}`}
-                    {s.pembicara && <span style={{ color: "#6b7280" }}> · {s.pembicara}</span>}
-                    {s.topik && <div style={{ color: "#6b7280", marginTop: 2 }}>{s.topik}</div>}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {links.length > 0 && (
-            <div>
-              <DetailLabel>Link Terkait</DetailLabel>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                {links.map(l => (
-                  <a key={l.label} href={l.url} target="_blank" rel="noopener noreferrer"
-                    style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 600, color: "#4f46e5", background: "#eef2ff", border: "1px solid #c7d2fe", borderRadius: 8, padding: "5px 10px", textDecoration: "none" }}>
-                    <Link2 size={11} />{l.label}
-                  </a>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <DetailAttachments kegiatanId={k.id} />
-
-          {k.creator?.full_name && (
-            <p style={{ fontSize: 11, color: "#9ca3af", margin: 0 }}>Dibuat oleh {k.creator.full_name}</p>
-          )}
-        </div>
-      </motion.div>
-    </motion.div>
-  );
-}
-
 function MiniDonut({ done, total }: { done: number; total: number }) {
   const pct = total > 0 ? Math.round((done / total) * 100) : 0;
   const size = 26, stroke = 4, r = (size - stroke) / 2, c = 2 * Math.PI * r;
@@ -420,7 +203,6 @@ function MiniDonut({ done, total }: { done: number; total: number }) {
 
 export default function KegiatanBoard({ currentUser, initialItems, profiles }: Props) {
   const supabase = createClient();
-  const canEdit = ["super_admin", "manager", "kep_trainer", "staff_dokumen"].includes(currentUser.role);
 
   const [items, setItems]           = useState<Kegiatan[]>(initialItems);
   const [tab, setTab]               = useState<"all" | "belum" | "sudah">("all");
@@ -431,7 +213,6 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
   const [form, setForm]             = useState(EMPTY);
   const [submitting, setSubmitting] = useState(false);
   const [deleteId, setDeleteId]     = useState<string | null>(null);
-  const [detailItem, setDetailItem] = useState<Kegiatan | null>(null);
   const [blasting, setBlasting]     = useState<string | null>(null);
   const [toast, setToast]           = useState<{ msg: string; ok: boolean } | null>(null);
   const [showLinks, setShowLinks]   = useState(false);
@@ -661,30 +442,28 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
           )}
         </div>
 
-        {canEdit && (
-          <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
-            <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }} onClick={openCsslCreate}
-              style={{
-                display: "flex", alignItems: "center", gap: 7, flexShrink: 0,
-                background: "linear-gradient(135deg, #8b5cf6, #a855f7)",
-                color: "#fff", border: "none", borderRadius: 10, padding: "9px 16px",
-                cursor: "pointer", fontSize: 13, fontWeight: 600,
-                boxShadow: "0 4px 14px rgba(139,92,246,0.35)",
-              }}>
-              <GraduationCap size={15} /> Program CSSL
-            </motion.button>
-            <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }} onClick={openCreate}
-              style={{
-                display: "flex", alignItems: "center", gap: 7, flexShrink: 0,
-                background: "linear-gradient(135deg, #6366f1, #4f46e5)",
-                color: "#fff", border: "none", borderRadius: 10, padding: "9px 16px",
-                cursor: "pointer", fontSize: 13, fontWeight: 600,
-                boxShadow: "0 4px 14px rgba(99,102,241,0.35)",
-              }}>
-              <Plus size={15} /> Tambah Kegiatan
-            </motion.button>
-          </div>
-        )}
+        <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+          <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }} onClick={openCsslCreate}
+            style={{
+              display: "flex", alignItems: "center", gap: 7, flexShrink: 0,
+              background: "linear-gradient(135deg, #8b5cf6, #a855f7)",
+              color: "#fff", border: "none", borderRadius: 10, padding: "9px 16px",
+              cursor: "pointer", fontSize: 13, fontWeight: 600,
+              boxShadow: "0 4px 14px rgba(139,92,246,0.35)",
+            }}>
+            <GraduationCap size={15} /> Program CSSL
+          </motion.button>
+          <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }} onClick={openCreate}
+            style={{
+              display: "flex", alignItems: "center", gap: 7, flexShrink: 0,
+              background: "linear-gradient(135deg, #6366f1, #4f46e5)",
+              color: "#fff", border: "none", borderRadius: 10, padding: "9px 16px",
+              cursor: "pointer", fontSize: 13, fontWeight: 600,
+              boxShadow: "0 4px 14px rgba(99,102,241,0.35)",
+            }}>
+            <Plus size={15} /> Tambah Kegiatan
+          </motion.button>
+        </div>
       </div>
 
       {/* Tabs */}
@@ -755,7 +534,7 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
             <p style={{ fontSize: 16, fontWeight: 600, color: "#374151" }}>
               {search ? `Tidak ada hasil untuk "${search}"` : "Belum ada kegiatan"}
             </p>
-            {canEdit && !search && (
+            {!search && (
               <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }} onClick={openCreate}
                 style={{ marginTop: 20, background: "#4f46e5", color: "#fff", border: "none", borderRadius: 10, padding: "10px 22px", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
                 Tambah Kegiatan Pertama
@@ -767,14 +546,14 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
             {/* Table header */}
             <div style={{
               display: "grid",
-              gridTemplateColumns: canEdit ? "2.2fr 1.2fr 0.9fr 1fr 2fr 0.8fr auto" : "2.2fr 1.2fr 0.9fr 1fr 2fr 0.8fr",
+              gridTemplateColumns: "2.2fr 1.2fr 0.9fr 1fr 2fr 0.8fr auto",
               gap: 12, padding: "10px 18px", background: "#f9fafb", borderBottom: "1px solid #f3f4f6",
               borderTopLeftRadius: 14, borderTopRightRadius: 14,
             }}>
               {["Nama Kegiatan", "PIC", "Status", "Deadline", "Keterangan", "Lampiran"].map(h => (
                 <span key={h} style={{ fontSize: 11, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.04em" }}>{h}</span>
               ))}
-              {canEdit && <span />}
+              <span />
             </div>
 
             <AnimatePresence mode="popLayout">
@@ -785,10 +564,10 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
                   <motion.div key={k.id} layout
                     initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                     transition={{ delay: i * 0.02, duration: 0.18 }}
-                    onClick={() => (canEdit ? openEdit(k) : setDetailItem(k))}
+                    onClick={() => openEdit(k)}
                     style={{
                       display: "grid",
-                      gridTemplateColumns: canEdit ? "2.2fr 1.2fr 0.9fr 1fr 2fr 0.8fr auto" : "2.2fr 1.2fr 0.9fr 1fr 2fr 0.8fr",
+                      gridTemplateColumns: "2.2fr 1.2fr 0.9fr 1fr 2fr 0.8fr auto",
                       gap: 12, padding: "13px 18px", borderBottom: "1px solid #f9fafb",
                       alignItems: "center", cursor: "pointer",
                     }}
@@ -847,28 +626,26 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
                       {lampiranCount > 0 && <><Paperclip size={11} color="#9ca3af" />{lampiranCount}</>}
                     </span>
 
-                    {canEdit && (
-                      <div onClick={e => e.stopPropagation()} style={{ display: "flex", gap: 4 }}>
-                        {k.status !== "sudah" && (
-                          <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.95 }}
-                            onClick={() => handleBlast(k)} disabled={blasting === k.id}
-                            title="Kirim notifikasi ke semua anggota"
-                            style={{ padding: 6, border: "1px solid #e5e7eb", background: "#fff", borderRadius: 7, cursor: blasting === k.id ? "not-allowed" : "pointer", display: "flex" }}>
-                            {blasting === k.id
-                              ? <Loader2 size={12} color="#9ca3af" className="spin" />
-                              : <Megaphone size={12} color="#d97706" />}
-                          </motion.button>
-                        )}
-                        <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.95 }} onClick={() => openEdit(k)}
-                          style={{ padding: 6, border: "1px solid #e5e7eb", background: "#fff", borderRadius: 7, cursor: "pointer", display: "flex" }}>
-                          <Edit2 size={12} color="#6b7280" />
+                    <div onClick={e => e.stopPropagation()} style={{ display: "flex", gap: 4 }}>
+                      {k.status !== "sudah" && (
+                        <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.95 }}
+                          onClick={() => handleBlast(k)} disabled={blasting === k.id}
+                          title="Kirim notifikasi ke semua anggota"
+                          style={{ padding: 6, border: "1px solid #e5e7eb", background: "#fff", borderRadius: 7, cursor: blasting === k.id ? "not-allowed" : "pointer", display: "flex" }}>
+                          {blasting === k.id
+                            ? <Loader2 size={12} color="#9ca3af" className="spin" />
+                            : <Megaphone size={12} color="#d97706" />}
                         </motion.button>
-                        <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.95 }} onClick={() => setDeleteId(k.id)}
-                          style={{ padding: 6, border: "1px solid #fee2e2", background: "#fff", borderRadius: 7, cursor: "pointer", display: "flex" }}>
-                          <Trash2 size={12} color="#ef4444" />
-                        </motion.button>
-                      </div>
-                    )}
+                      )}
+                      <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.95 }} onClick={() => openEdit(k)}
+                        style={{ padding: 6, border: "1px solid #e5e7eb", background: "#fff", borderRadius: 7, cursor: "pointer", display: "flex" }}>
+                        <Edit2 size={12} color="#6b7280" />
+                      </motion.button>
+                      <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.95 }} onClick={() => setDeleteId(k.id)}
+                        style={{ padding: 6, border: "1px solid #fee2e2", background: "#fff", borderRadius: 7, cursor: "pointer", display: "flex" }}>
+                        <Trash2 size={12} color="#ef4444" />
+                      </motion.button>
+                    </div>
                   </motion.div>
                 );
               })}
@@ -1155,11 +932,6 @@ export default function KegiatanBoard({ currentUser, initialItems, profiles }: P
             </motion.div>
           </motion.div>
         )}
-      </AnimatePresence>
-
-      {/* Read-only detail (non-editors) */}
-      <AnimatePresence>
-        {detailItem && <KegiatanDetailModal key={detailItem.id} item={detailItem} onClose={() => setDetailItem(null)} />}
       </AnimatePresence>
 
       {/* Delete confirm */}

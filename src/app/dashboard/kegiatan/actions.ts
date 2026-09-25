@@ -11,7 +11,6 @@ function adminClient() {
   });
 }
 
-const CAN_EDIT = ["super_admin", "manager", "kep_trainer", "staff_dokumen"];
 const SELECT_WITH_RELATIONS =
   "*, pic:profiles!kegiatan_pic_id_fkey(full_name), creator:profiles!kegiatan_created_by_fkey(full_name), lampiran:kegiatan_lampiran(count), checklist:kegiatan_checklist(status), sesi:kegiatan_sesi(id, sesi_ke, tanggal, waktu_mulai, waktu_selesai, pembicara, topik)";
 
@@ -34,7 +33,7 @@ async function requireKegiatanAuth(): Promise<{ userId: string; role: string } |
     const admin = adminClient();
     const { data: profile } = await admin
       .from("profiles").select("role").eq("id", user.id).single();
-    if (!profile || !CAN_EDIT.includes(profile.role)) return { error: "Akses ditolak." };
+    if (!profile) return { error: "Akses ditolak." };
     return { userId: user.id, role: profile.role };
   } catch {
     return { error: "Sesi habis, silakan login ulang." };
