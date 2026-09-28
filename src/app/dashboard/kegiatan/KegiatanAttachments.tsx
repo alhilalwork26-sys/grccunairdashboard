@@ -6,15 +6,19 @@ import type { UserProfile } from "@/types";
 import { notifyChecklistPicAction } from "./actions";
 import {
   X, Check, Edit2, Paperclip, Upload, Loader2, FileText,
-  CalendarDays, ListChecks, ImageIcon, Plus, ChevronDown, UserCircle2,
+  CalendarDays, ListChecks, ImageIcon, Plus, ChevronDown, UserCircle2, Video,
 } from "lucide-react";
 
-const CHECKLIST_FILE_ACCEPT = ".pdf,.png,.jpg,.jpeg,.doc,.docx,.xls,.xlsx,application/pdf,image/png,image/jpeg,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+const CHECKLIST_FILE_ACCEPT = ".pdf,.png,.jpg,.jpeg,.doc,.docx,.xls,.xlsx,.mp4,application/pdf,image/png,image/jpeg,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,video/mp4";
 const CHECKLIST_FILE_ALLOWED_TYPES = [
   "application/pdf", "image/png", "image/jpeg",
   "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "video/mp4",
 ];
+// Batas upload per file di proyek Supabase (paket Free = 50 MB). Naikkan angka ini
+// setelah batas di Supabase Storage dinaikkan (perlu paket Pro).
+const CHECKLIST_FILE_MAX_MB = 50;
 
 interface Lampiran {
   id: string;
@@ -309,7 +313,12 @@ export default function KegiatanAttachments({ currentUser, profiles, kegiatanId,
   const handleUploadChecklistFile = async (itemId: string, file: File | undefined) => {
     if (!file) return;
     if (!CHECKLIST_FILE_ALLOWED_TYPES.includes(file.type)) {
-      showToast("File harus PDF, PNG, JPG, DOC, atau XLS", false);
+      showToast("File harus PDF, PNG, JPG, DOC, XLS, atau MP4", false);
+      if (checklistFileInputRef.current) checklistFileInputRef.current.value = "";
+      return;
+    }
+    if (file.size > CHECKLIST_FILE_MAX_MB * 1024 * 1024) {
+      showToast(`File ${(file.size / 1024 / 1024).toFixed(0)} MB terlalu besar. Batas upload ${CHECKLIST_FILE_MAX_MB} MB per file.`, false);
       if (checklistFileInputRef.current) checklistFileInputRef.current.value = "";
       return;
     }
@@ -471,7 +480,9 @@ export default function KegiatanAttachments({ currentUser, profiles, kegiatanId,
                             style={{ display: "flex", padding: 5, borderRadius: 6, background: "#f0fdf4", border: "1px solid #d1fae5" }}>
                             {/\.(png|jpe?g|gif|webp)$/i.test(item.file_name ?? "")
                               ? <ImageIcon size={12} color="#10b981" />
-                              : <FileText size={12} color="#10b981" />}
+                              : /\.mp4$/i.test(item.file_name ?? "")
+                                ? <Video size={12} color="#10b981" />
+                                : <FileText size={12} color="#10b981" />}
                           </a>
                           <button onClick={() => handleRemoveChecklistFile(item)} title="Hapus file"
                             style={{ border: "none", background: "none", cursor: "pointer", padding: 2, display: "flex" }}>
@@ -482,7 +493,7 @@ export default function KegiatanAttachments({ currentUser, profiles, kegiatanId,
                         <button
                           onClick={() => { setUploadTargetId(item.id); checklistFileInputRef.current?.click(); }}
                           disabled={isUploadingThis}
-                          title="Upload file bukti (PDF/PNG/JPG/DOC/XLS)"
+                          title={`Upload file bukti (PDF/PNG/JPG/DOC/XLS/MP4, maks ${CHECKLIST_FILE_MAX_MB} MB)`}
                           style={{
                             flexShrink: 0, display: "flex", padding: 5, borderRadius: 6,
                             border: "1px solid #e5e7eb", background: "#fff",
