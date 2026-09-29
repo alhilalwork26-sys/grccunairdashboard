@@ -7,6 +7,10 @@
     {
       "path": "/api/cron/remind-evening",
       "schedule": "0 10 * * 1-5"
+    },
+    {
+      "path": "/api/cron/remind-evening-final",
+      "schedule": "45 10 * * 1-5"
     }
   ]
 }
