@@ -458,7 +458,7 @@ export default function ProgressBoard({ currentUser, initialEntries, profiles, t
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Gagal");
       if (json.phase === "off_hours") {
-        showToast("Di luar jam pengisian (11:00 & 12:00–18:00 WIB)", false);
+        showToast("Di luar jam pengisian (sebelum 12:00 & 12:00–18:00 WIB)", false);
       } else if (json.sent === 0) {
         showToast("Semua anggota sudah mengisi! 🎉", true);
       } else {
